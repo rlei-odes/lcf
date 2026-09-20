@@ -16,7 +16,15 @@ from sqlalchemy.orm import selectinload
 
 from lcf.engine.state import dependents_of
 from lcf.engine.view import DocumentView
-from lcf.models.tables import Answer, Block, Document, Revision, Section
+from lcf.models.tables import (
+    Answer,
+    Block,
+    Document,
+    EvidenceItem,
+    EvidenceLink,
+    Revision,
+    Section,
+)
 from lcf.services.doc_types import NotFound, get_version, spec_of
 from lcf.spec.models import DocTypeSpec
 
@@ -25,6 +33,12 @@ class Author:
     USER = "user"
     LLM_ACCEPTED = "llm_accepted"
     LLM_ACCEPTED_EDITED = "llm_accepted_edited"
+
+
+# An answer's `source`. Anything other than `user` is a proposal waiting to be
+# confirmed — see `DocumentView.missing_required_answers`.
+ANSWER_CONFIRMED = "user"
+ANSWER_PROPOSED = "proposed"
 
 
 @dataclass
@@ -64,8 +78,17 @@ async def create(
     return document
 
 
-async def load(session: AsyncSession, document_id: UUID) -> tuple[Document, DocTypeSpec]:
-    document = await session.scalar(
+async def load(
+    session: AsyncSession, document_id: UUID, refresh: bool = False
+) -> tuple[Document, DocTypeSpec]:
+    """Load a document with its sections, blocks, revisions and answers.
+
+    `refresh` re-reads collections the session already has. Without it, a session
+    that loaded a document *before* writing to it keeps the collections as they
+    were at load time — so a read-back in the same session would miss rows written
+    since. Requests get a fresh session each, but a job does several things in one.
+    """
+    query = (
         select(Document)
         .where(Document.id == document_id)
         .options(
@@ -75,6 +98,9 @@ async def load(session: AsyncSession, document_id: UUID) -> tuple[Document, DocT
             selectinload(Document.sections).selectinload(Section.answers),
         )
     )
+    if refresh:
+        query = query.execution_options(populate_existing=True)
+    document = await session.scalar(query)
     if document is None:
         raise NotFound(f"no document {document_id}")
     return document, spec_of(document.version)
@@ -82,13 +108,14 @@ async def load(session: AsyncSession, document_id: UUID) -> tuple[Document, DocT
 
 async def view(session: AsyncSession, document_id: UUID) -> DocumentView:
     """The document as plain data — what checks and prompts consume."""
-    document, spec = await load(session, document_id)
+    document, spec = await load(session, document_id, refresh=True)
 
     content: dict[str, dict[str, Any]] = {}
     answers: dict[str, dict[str, Any]] = {}
     completed: set[str] = set()
     stale: set[str] = set()
     provenance: dict[str, dict[str, Any]] = {}
+    proposed: dict[str, dict[str, str]] = {}
 
     for section in document.sections:
         if section.completed_at is not None:
@@ -107,8 +134,27 @@ async def view(session: AsyncSession, document_id: UUID) -> DocumentView:
                 }
         for answer in section.answers:
             answers.setdefault(section.key, {})[answer.question_key] = answer.value["v"]
+            if answer.source != ANSWER_CONFIRMED:
+                proposed.setdefault(section.key, {})[answer.question_key] = str(
+                    answer.value.get("quote") or ""
+                )
 
-    return DocumentView(spec, content, answers, completed, stale, provenance)
+    evidence = await _evidence_by_section(session, document_id)
+    return DocumentView(spec, content, answers, completed, stale, provenance, evidence, proposed)
+
+
+async def _evidence_by_section(session: AsyncSession, document_id: UUID) -> dict[str, list[str]]:
+    """The author's own passages, filed under the sections intake put them in."""
+    rows = await session.execute(
+        select(EvidenceLink.section_key, EvidenceLink.quote)
+        .join(EvidenceItem, EvidenceLink.evidence_id == EvidenceItem.id)
+        .where(EvidenceItem.document_id == document_id)
+        .order_by(EvidenceLink.created_at)
+    )
+    out: dict[str, list[str]] = {}
+    for section_key, quote in rows.all():
+        out.setdefault(section_key, []).append(quote)
+    return out
 
 
 async def set_answers(
@@ -116,24 +162,35 @@ async def set_answers(
     document_id: UUID,
     section_key: str,
     values: dict[str, Any],
-    source: str = "user",
+    source: str = ANSWER_CONFIRMED,
+    quotes: dict[str, str] | None = None,
 ) -> None:
+    """Record answers. `quotes` carries the author's words behind a proposal.
+
+    The quote rides in the value column beside `v` rather than in a column of its
+    own: it exists only for proposed answers, and an answer a person typed has
+    nothing to cite.
+    """
     section = await _section(session, document_id, section_key)
     _, spec = await load(session, document_id)
     spec_section = spec.section(section_key)
+    quotes = quotes or {}
 
     for key, value in values.items():
         if spec_section and spec_section.question(key) is None:
             raise ValueError(f"{section_key}: no question {key!r} in spec")
+        stored: dict[str, Any] = {"v": value}
+        if quotes.get(key):
+            stored["quote"] = quotes[key]
         existing = await session.scalar(
             select(Answer).where(Answer.section_id == section.id, Answer.question_key == key)
         )
         if existing is None:
             session.add(
-                Answer(section_id=section.id, question_key=key, value={"v": value}, source=source)
+                Answer(section_id=section.id, question_key=key, value=stored, source=source)
             )
         else:
-            existing.value = {"v": value}
+            existing.value = stored
             existing.source = source
     await session.flush()
 

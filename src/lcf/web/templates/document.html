@@ -33,6 +33,10 @@
 </div>
 
 {% with document_id = document.id %}
+  {% include "partials/intake_card.html" %}
+{% endwith %}
+
+{% with document_id = document.id %}
   {% include "partials/gate_card.html" %}
 {% endwith %}
 

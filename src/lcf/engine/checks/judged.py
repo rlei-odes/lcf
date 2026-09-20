@@ -15,6 +15,7 @@ from typing import Any
 from lcf.engine.checks.result import CheckResult, Outcome, errored, failed, not_applicable, passed
 from lcf.engine.view import DocumentView
 from lcf.llm.provider import LLMMalformed, LLMUnavailable, complete_json, prompt
+from lcf.llm.quoting import quoted_from
 from lcf.llm.schemas import JUDGEMENT_SCHEMA, mentions_schema
 from lcf.spec.models import DocTypeSpec, QualityCriterion, Requirement, Section, Severity
 
@@ -104,7 +105,7 @@ async def _mentions(
         verdict = verdicts.get(point)
         quote = str((verdict or {}).get("quote") or "").strip()
         established = bool((verdict or {}).get("established")) and bool(quote)
-        if established and not _quoted_from(quote, content):
+        if established and not quoted_from(quote, content):
             established = False
         if not established:
             missing.append(point)
@@ -121,23 +122,6 @@ async def _mentions(
     return passed(
         check_id, severity, evidence=evidence, section_key=section_key, confidence=confidence
     )
-
-
-def _quoted_from(quote: str, content: str) -> bool:
-    """Is this quote actually in the content?
-
-    Compared on collapsed whitespace and casing, because a model reflows text it
-    quotes. A long quote is checked by its opening words: models truncate and
-    elide, and we are guarding against fabrication, not sloppy transcription.
-    """
-    haystack = " ".join(content.split()).casefold()
-    needle = " ".join(quote.split()).casefold()
-    if not needle:
-        return False
-    if needle in haystack:
-        return True
-    words = needle.split()
-    return len(words) > 8 and " ".join(words[:8]) in haystack
 
 
 async def _rubric(

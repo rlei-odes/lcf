@@ -56,6 +56,13 @@ class QuestionView:
     question: Question
     value: Any
     answered: bool
+    # The author's words this answer was drawn from, when intake proposed it and
+    # nobody has confirmed it yet. `None` means a person put it there.
+    proposed_from: str | None = None
+
+    @property
+    def proposed(self) -> bool:
+        return self.proposed_from is not None
 
     @property
     def text(self) -> str:
@@ -74,6 +81,7 @@ def section_panel_context(
     decided: list | None = None,
     gaps: list[dict[str, str]] | None = None,
     llm_errors: list[str] | None = None,
+    evidence: list | None = None,
 ) -> dict[str, Any]:
     section: Section = spec.section(key)
     state: SectionState = section_state(view, key)
@@ -95,7 +103,12 @@ def section_panel_context(
 
     answers = view.answers.get(key, {})
     questions = [
-        QuestionView(q, answers.get(q.key), answers.get(q.key) not in ("", None))
+        QuestionView(
+            q,
+            answers.get(q.key),
+            answers.get(q.key) not in ("", None),
+            view.proposed_from(key, q.key),
+        )
         for q in section.questions
     ]
 
@@ -110,6 +123,8 @@ def section_panel_context(
         # asked which dependents the change actually affects.
         "dependents": dependents,
         "decided": decided or [],
+        # Passages of the author's own paste that intake filed under this section.
+        "evidence": evidence or [],
         "gaps": gaps or [],
         "llm_errors": llm_errors or [],
         "pending_count": sum(len(v) for v in proposals.values()),

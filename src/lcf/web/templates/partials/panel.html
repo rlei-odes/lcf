@@ -66,17 +66,43 @@
       {% if section.guidance %}<p class="hint">{{ section.guidance }}</p>{% endif %}
     </div>
 
+    {% if evidence %}
+    <div class="card">
+      <h3>What you supplied about this</h3>
+      <p class="lead">
+        Your own words, filed here from what you pasted. The draft is written from
+        these — nothing else about this case reaches the assistant.
+      </p>
+      {% for e in evidence %}
+      <blockquote class="quote">
+        {{ e.quote }}
+        {% if e.why %}<span class="where">{{ e.why }}</span>{% endif %}
+      </blockquote>
+      {% endfor %}
+    </div>
+    {% endif %}
+
     {% if questions %}
     <div class="card">
       <h3>Questions{% if state.missing_answers %} · {{ state.missing_answers|length }} open{% endif %}</h3>
       <p class="lead">Answered here, these become the material the draft is written from.</p>
+      {% if questions|selectattr('proposed')|list %}
+      <div class="notice">
+        <strong>Some answers were filled in from your material.</strong>
+        <div class="hint">
+          They are proposals until you save them. Read each one against the words
+          it came from, correct what is wrong, then save — drafting waits for that.
+        </div>
+      </div>
+      {% endif %}
       <form hx-post="/documents/{{ document.id }}/sections/{{ section.key }}/answers"
             hx-target="#workspace" hx-swap="outerHTML" hx-disabled-elt="find button">
         {% for q in questions %}
-        <div class="field">
+        <div class="field{{ ' proposed' if q.proposed }}">
           <label for="q-{{ q.question.key }}">
             {{ q.question.prompt }}
             {%- if q.question.required %} <span class="s-needs_input">*</span>{% endif %}
+            {%- if q.proposed %} <span class="pill drafted">from your notes</span>{% endif %}
           </label>
           {% if q.question.hint %}<div class="hint">{{ q.question.hint }}</div>{% endif %}
           {% if q.question.type == 'choice' %}
@@ -99,6 +125,9 @@
             <input type="number" step="any" id="q-{{ q.question.key }}" name="q.{{ q.question.key }}" value="{{ q.text }}">
           {% else %}
             <textarea id="q-{{ q.question.key }}" name="q.{{ q.question.key }}" rows="2">{{ q.text }}</textarea>
+          {% endif %}
+          {% if q.proposed_from %}
+          <div class="hint">Read from: “{{ q.proposed_from|truncate(200) }}”</div>
           {% endif %}
         </div>
         {% endfor %}
@@ -152,6 +181,8 @@
       {% if not state.can_draft %}
       <p class="hint">
         {%- if state.blocked_by %}Drafting needs the sections above completed first.
+        {%- elif questions|selectattr('proposed')|list %}Confirm the answers filled in from your
+          material — read them, then save. Drafting waits for that, not for the assistant.
         {%- else %}Answer the required questions first — the draft is written from them.{% endif -%}
       </p>
       {% endif %}

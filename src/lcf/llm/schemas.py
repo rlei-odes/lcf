@@ -131,6 +131,116 @@ def mentions_schema(must_mention: list[str]) -> dict[str, Any]:
     }
 
 
+def mapping_schema(section_keys: list[str], titles: dict[str, str]) -> dict[str, Any]:
+    """Where the pasted material belongs.
+
+    Two constraints do the work. `section` is an `enum` of the spec's own keys, so
+    a section cannot be invented or misspelled. `quote` must be the author's own
+    words, and is verified against the paste afterwards — a mapping is a pointer
+    into what they wrote, never a rewrite of it, which is why intake can run
+    without anyone approving each fragment.
+    """
+    described = "\n".join(f"{key}: {titles.get(key, key)}" for key in section_keys)
+    return {
+        "type": "object",
+        "properties": {
+            "assignments": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "section": {
+                            "type": "string",
+                            "enum": list(section_keys),
+                            "description": f"One of:\n{described}",
+                        },
+                        "quote": {
+                            "type": "string",
+                            "description": (
+                                "The passage from the supplied material, copied"
+                                " word for word. Do not paraphrase or correct it."
+                            ),
+                        },
+                        "why": {
+                            "type": "string",
+                            "description": "What this passage tells that section, in one line",
+                        },
+                    },
+                    "required": ["section", "quote", "why"],
+                    "additionalProperties": False,
+                },
+                "maxItems": min(3 * len(section_keys), 24) or 1,
+            },
+            "confidence": {"type": "number"},
+        },
+        "required": ["assignments", "confidence"],
+        "additionalProperties": False,
+    }
+
+
+def _question_value(question: Any) -> dict[str, Any]:
+    """The leaf schema for one question's answer, from its declared type."""
+    kind = str(question.type)
+    if kind == "choice" and question.options:
+        return {"type": "string", "enum": list(question.options)}
+    if kind == "number":
+        return {"type": "number"}
+    if kind == "boolean":
+        return {"type": "boolean"}
+    if kind == "date":
+        return {"type": "string", "description": _DATE_HINT}
+    return {"type": "string"}
+
+
+def prefill_schema(questions: list[Any]) -> dict[str, Any]:
+    """A proposed answer to every question in a section, each with its source.
+
+    Keyed by question key with a per-question value type, so a proposed answer is
+    already the shape storage expects — no parsing of free text into a date or a
+    choice afterwards.
+
+    `found` and `quote` are what keep this from becoming invention. The model has
+    to say which words in the author's own material support each answer, and an
+    answer whose quote is not in the material is discarded rather than shown.
+    """
+    properties = {
+        question.key: {
+            "type": "object",
+            "properties": {
+                "found": {
+                    "type": "boolean",
+                    "description": "True only if the supplied material answers this question",
+                },
+                "quote": {
+                    "type": "string",
+                    "description": (
+                        "The words from the material that answer it, copied exactly."
+                        " Empty string if it is not answered there."
+                    ),
+                },
+                "value": _question_value(question),
+            },
+            "required": ["found", "quote", "value"],
+            "additionalProperties": False,
+            "title": question.prompt,
+        }
+        for question in questions
+    }
+    return {
+        "type": "object",
+        "properties": {
+            "answers": {
+                "type": "object",
+                "properties": properties,
+                "required": list(properties),
+                "additionalProperties": False,
+            }
+        },
+        "required": ["answers"],
+        "additionalProperties": False,
+    }
+
+
 JUDGEMENT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {

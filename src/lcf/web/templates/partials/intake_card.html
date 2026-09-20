@@ -1,0 +1,105 @@
+{# The paste box, and what came of pasting.
+
+   This is the first thing the app does that saves anyone time, so it says plainly
+   what it will and will not do with the text: file passages under the sections
+   they belong to, and propose answers, both quoting the author back to
+   themselves. Nothing here writes content. #}
+<div class="card" id="intake">
+  <h3>Your material</h3>
+
+  {% if outcome %}
+  <p class="lead">
+    {%- if outcome.sections -%}
+      Placed {{ outcome.placed }} passage(s) across {{ outcome.sections|length }} section(s).
+    {%- else -%}
+      Nothing in that text matched a section of this document.
+    {%- endif -%}
+  </p>
+
+  {% for s in outcome.sections %}
+  <div class="check pass">
+    <span class="mark">·</span>
+    <span>
+      <a href="/documents/{{ document_id }}/sections/{{ s.key }}">{{ s.title }}</a>
+      <span class="where">
+        {{ s.passages|length }} passage(s){% if s.prefilled %},
+        {{ s.prefilled|length }} answer(s) proposed{% endif %}
+      </span>
+    </span>
+  </div>
+  {% endfor %}
+
+  {% if outcome.discarded %}
+  <div class="notice" style="margin-top:14px">
+    <strong>{{ outcome.discarded }} fragment(s) discarded.</strong>
+    <div class="hint">
+      The assistant quoted words that are not in what you pasted, so they were
+      dropped rather than filed. Only your own text is kept.
+    </div>
+  </div>
+  {% endif %}
+
+  {% for e in outcome.errors %}
+  <div class="check blocker"><span class="mark">✗</span><span>{{ e }}</span></div>
+  {% endfor %}
+
+  <p class="hint" style="margin-top:14px">
+    Nothing was written into the document. Open a section to see what was filed
+    there, and confirm the proposed answers before drafting.
+  </p>
+  {% else %}
+  <p class="lead">
+    Paste the email, the notes, the measurements — whatever you already have. It
+    gets filed under the sections it belongs to, and the questions it answers get
+    filled in for you to confirm. Your text is kept exactly as you paste it.
+  </p>
+  {% endif %}
+
+  {# A job started here, or still running from an earlier visit. #}
+  <div id="intake-slot">
+    {% if running_intake %}
+      {% with job = running_intake,
+              done_url = "/documents/" ~ document_id ~ "/intake/panel?job=" ~ running_intake.id,
+              done_target = "#intake",
+              working_title = "Sorting what you pasted" %}
+        {% include "partials/job.html" %}
+      {% endwith %}
+    {% endif %}
+  </div>
+
+  <form hx-post="/documents/{{ document_id }}/intake"
+        hx-target="#intake-slot" hx-swap="innerHTML" hx-disabled-elt="find button">
+    <details {% if not items and not outcome %}open{% endif %}>
+      <summary style="cursor:pointer;color:var(--muted);font-size:13px">
+        {{ 'Paste more material' if items else 'Paste your material' }}
+      </summary>
+      <div class="field" style="margin-top:12px">
+        <textarea name="text" rows="8" required
+                  placeholder="Paste anything you have about this case."></textarea>
+      </div>
+      <div class="actions">
+        <button class="primary" type="submit" {{ 'disabled' if running_intake }}>
+          Sort it into the sections</button>
+        <span class="htmx-indicator working">Starting…</span>
+        <span class="why">One assistant call, then one per section it lands in.</span>
+      </div>
+    </details>
+  </form>
+
+  {% if items %}
+  <details style="margin-top:14px">
+    <summary style="cursor:pointer;color:var(--muted);font-size:13px">
+      What you pasted ({{ items|length }})
+    </summary>
+    <ul class="plain" style="margin-top:12px">
+      {% for item in items %}
+      <li>
+        <span class="dot s-complete">·</span>
+        <span><span class="where">{{ item.text|truncate(180) }}</span></span>
+        <span class="meta">{{ item.created_at|localtime }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+</div>

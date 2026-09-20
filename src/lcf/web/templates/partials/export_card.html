@@ -5,9 +5,23 @@
    The override field is rendered inline when the gate has not passed, rather than
    after a refused attempt. Downloads have to be ordinary form posts (a file
    cannot come back through an htmx swap), so a refusal would otherwise navigate
-   the browser to a bare fragment with no page around it. #}
+   the browser to a bare fragment with no page around it.
+
+   `data-export-card` is the URL static/export.js asks for once a download has
+   finished — the export it just made belongs in the list below. Without it the
+   form still posts and still downloads; the list is then a reload behind. #}
 <div class="card" id="exports" {% if oob %}hx-swap-oob="true"{% endif %}>
   <h3>Export</h3>
+
+  {% if blocked %}
+  <div class="notice blocker">
+    <strong>Not exported.</strong> {{ blocked }}.
+    <div class="hint">
+      The document changed while this panel was open. The reason field below is
+      asking again for what is outstanding now.
+    </div>
+  </div>
+  {% endif %}
 
   {% set blocked = not report.passed %}
   <p class="lead">
@@ -24,7 +38,8 @@
     {%- endif -%}
   </p>
 
-  <form method="post" action="/documents/{{ document_id }}/export/docx" id="export-form">
+  <form method="post" action="/documents/{{ document_id }}/export/docx" id="export-form"
+        data-export-card="/documents/{{ document_id }}/exports?opened=1">
     {% if blocked %}
     <div class="notice blocker">
       <label for="override">Exporting anyway? Say why.</label>
@@ -46,7 +61,7 @@
   </form>
 
   {% if history %}
-  <details style="margin-top:18px">
+  <details style="margin-top:18px" {% if opened %}open{% endif %}>
     <summary style="cursor:pointer;color:var(--muted);font-size:13px">
       Previous exports ({{ history|length }})
     </summary>

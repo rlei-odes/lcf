@@ -20,7 +20,7 @@ from fastapi.templating import Jinja2Templates
 from lcf.core.db import session
 from lcf.engine.state import Status, document_state, ordered_sections, section_state
 from lcf.models.tables import Document
-from lcf.services import assessment, doc_types, documents, exports, jobs, proposals
+from lcf.services import assessment, doc_types, documents, exports, intake, jobs, proposals
 from lcf.web.forms import parse_block_value, parse_pasted_table
 from lcf.web.presenters import section_panel_context
 
@@ -62,7 +62,14 @@ async def index(request: Request):
 
 
 @app.post("/documents")
-async def create_document(doc_type: str = Form(...), title: str = Form(...)):
+async def create_document(doc_type: str = Form(...), title: str = Form("")):
+    """Start a document.
+
+    `title` has a default rather than being required: an empty text input submits
+    as no field at all, and a required Form field answers that with FastAPI's raw
+    422 JSON — a validation dump where a page should be. Nothing the browser can
+    send should be able to take someone out of the application.
+    """
     async with session() as s:
         document = await documents.create(s, doc_type, title.strip() or "Untitled")
     return RedirectResponse(f"/documents/{document.id}", status_code=303)
@@ -77,7 +84,9 @@ async def document_overview(request: Request, document_id: UUID):
         # must not cost a dozen model calls.
         report = await assessment.report_for(s, document_id)
         past_exports = await exports.history(s, document_id)
+        pasted = await intake.items(s, document_id)
     running = await jobs.latest_for(document_id, "assess")
+    running_intake = await jobs.latest_for(document_id, "intake")
     return page(
         request,
         "document.html",
@@ -86,7 +95,66 @@ async def document_overview(request: Request, document_id: UUID):
         states=document_state(view),
         report=report,
         history=past_exports,
+        items=pasted,
         running_job=running if running is not None and not running.done else None,
+        running_intake=running_intake if _unfinished(running_intake) else None,
+    )
+
+
+def _unfinished(job) -> bool:
+    return job is not None and not job.done
+
+
+@app.post("/documents/{document_id}/intake", response_class=HTMLResponse)
+async def start_intake(request: Request, document_id: UUID, text: str = Form("")):
+    """Take the paste, store it verbatim, and queue the distribution.
+
+    The paste is saved before the job starts, so material is never lost to a model
+    that was unreachable — the worst case is an unsorted item the author can sort
+    by running intake again.
+    """
+    if not text.strip():
+        return page(
+            request,
+            "partials/notice.html",
+            message="Nothing was pasted — the box was empty.",
+        )
+
+    async with session() as s:
+        item = await intake.record(s, document_id, text)
+        item_id = item.id
+    job = await jobs.enqueue("intake", document_id, str(item_id))
+    return page(
+        request,
+        "partials/job.html",
+        job=job,
+        done_url=f"/documents/{document_id}/intake/panel?job={job.id}",
+        done_target="#intake",
+        working_title="Sorting what you pasted",
+    )
+
+
+@app.get("/documents/{document_id}/intake/panel", response_class=HTMLResponse)
+async def intake_panel(request: Request, document_id: UUID, job: UUID | None = None):
+    """The intake card, carrying the outcome of a finished run."""
+    outcome: dict | None = None
+    if job is not None:
+        finished = await jobs.get(job)
+        if finished is not None:
+            outcome = finished.result
+            if finished.error:
+                outcome = (outcome or {"sections": [], "placed": 0, "discarded": 0}) | {
+                    "errors": [finished.error]
+                }
+    async with session() as s:
+        pasted = await intake.items(s, document_id)
+    return page(
+        request,
+        "partials/intake_card.html",
+        document_id=document_id,
+        items=pasted,
+        outcome=outcome,
+        running_intake=None,
     )
 
 
@@ -124,13 +192,22 @@ async def document_gate(request: Request, document_id: UUID):
 async def export_document(
     request: Request, document_id: UUID, fmt: str, override_reason: str = Form("")
 ):
-    """Produce the deliverable, or refuse and say why."""
+    """Produce the deliverable, or refuse and say why.
+
+    Answers with the file either way it is asked. `static/export.js` posts this
+    with `X-LCF-Fetch` so it can hand the bytes over itself and then refresh the
+    export card; a plain form post — or curl — gets exactly the same response.
+    Only the refusal differs, because a fragment needs a page around it and the
+    script has one already.
+    """
     async with session() as s:
         try:
             export, rendered = await exports.create(
                 s, document_id, fmt, override_reason=override_reason
             )
         except exports.GateBlocked as blocked:
+            if request.headers.get("x-lcf-fetch"):
+                return await _export_card(request, s, document_id, blocked=blocked.summary)
             document, _ = await documents.load(s, document_id)
             return page(request, "export_blocked.html", document=document, blocked=blocked)
     return Response(
@@ -141,16 +218,31 @@ async def export_document(
 
 
 @app.get("/documents/{document_id}/exports", response_class=HTMLResponse)
-async def export_card(request: Request, document_id: UUID):
+async def export_card(request: Request, document_id: UUID, opened: bool = False):
+    """The export card on its own. `opened` unfolds the history, which is what a
+    finished export wants: the thing it just produced is the first entry."""
     async with session() as s:
-        report = await assessment.report_for(s, document_id)
-        past = await exports.history(s, document_id)
+        return await _export_card(request, s, document_id, opened=opened)
+
+
+async def _export_card(
+    request: Request,
+    s,
+    document_id: UUID,
+    *,
+    opened: bool = False,
+    blocked: str | None = None,
+) -> HTMLResponse:
+    report = await assessment.report_for(s, document_id)
+    past = await exports.history(s, document_id)
     return page(
         request,
         "partials/export_card.html",
         document_id=document_id,
         report=report,
         history=past,
+        opened=opened,
+        blocked=blocked,
     )
 
 
@@ -271,6 +363,7 @@ async def job_card(request: Request, job_id: UUID, next: str = "/", target: str 
 _WORKING_TITLES = {
     "assess": "Checking the document",
     "draft_section": "The assistant is working",
+    "intake": "Sorting what you pasted",
 }
 
 
@@ -329,11 +422,12 @@ async def _panel_context(
         view = await documents.view(s, document_id)
         pending = await proposals.pending_for(s, document_id, key)
         decided = await proposals.decided_for(s, document_id, key)
+        evidence = await intake.links_for(s, document_id, key)
     # A job may still be running from an earlier visit — pick it back up rather
     # than offering a second one.
     latest = await jobs.latest_for(document_id, key)
     context = section_panel_context(
-        document, spec, view, key, dependents or [], pending, decided, gaps, errors
+        document, spec, view, key, dependents or [], pending, decided, gaps, errors, evidence
     )
     context["running_job"] = latest if latest is not None and not latest.done else None
     return context

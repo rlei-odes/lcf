@@ -1,8 +1,6 @@
 # Lancy Content Flow
 
-LLM-guided creation of rule-bound documents. Sister project to
-[lancy](https://github.com/) — where lancy retrieves and condenses existing documents, LCF elicits
-and creates new ones against a rule set.
+Guided, LLM-assisted creation of rule-bound documents.
 
 A **rule builder** defines document types: sections, the questions a creator must answer,
 requirements, quality criteria, and a branded docx template. A **document creator** then works
@@ -31,10 +29,11 @@ Early. Build-order steps 1–3 of [ARCHITECTURE §14](docs/ARCHITECTURE.md) are 
 | ✓ | Object storage bucket provisioning |
 | ✓ | Web UI (FastAPI + Jinja + HTMX), paste-from-spreadsheet tables |
 | ✓ | LLM drafting: schema-constrained proposals, gaps, accept/decline, decision log |
-| ✓ | Background jobs with live progress over SSE — drafting no longer blocks the request |
+| ✓ | Background jobs with live progress — drafting no longer blocks the request |
 | ✓ | The full quality gate: judged checks, quote-backed, run as a job |
 | ✓ | Export: JSON, Markdown and docx, gated and recorded |
-| | Evidence intake — paste a blob of notes, distributed across the sections |
+| ✓ | Evidence intake: paste a blob of notes, distributed across the sections, answers proposed from it |
+| | Image evidence: upload and captioning |
 | | Span-level suggestions and the TipTap editor island |
 | | Spec editor UI for the rule builder |
 

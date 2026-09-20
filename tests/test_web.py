@@ -8,14 +8,17 @@ database from .env is unreachable.
 import asyncio
 import re
 import uuid
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, select
 
 from lcf.core.db import session
-from lcf.models.tables import DocType, DocTypeVersion, Document
+from lcf.llm.calls import Assignment, Mapping, Prefilled
+from lcf.models.tables import DocType, DocTypeVersion, Document, Job
 from lcf.services import doc_types
+from lcf.services import intake as intake_service
 from lcf.web.app import app
 
 
@@ -400,3 +403,148 @@ async def test_the_export_record_distinguishes_unrun_from_failing(published_4d, 
 
     assert "before the checks were run" in history_html
     assert "past 0 blocking problem(s)" not in history_html, "nonsense wording"
+
+
+async def test_creating_without_a_title_is_not_a_validation_dump(published_4d, client):
+    """An empty text input submits as no field at all, and a required Form field
+    answers that with FastAPI's raw 422 JSON. Nothing the browser can send should
+    be able to take someone out of the application."""
+    response = client.post("/documents", data={"doc_type": published_4d.id}, follow_redirects=False)
+
+    assert response.status_code == 303, response.text
+    page_html = client.get(response.headers["location"]).text
+    assert "Untitled" in page_html
+
+
+async def test_an_empty_paste_says_so_instead_of_starting_a_job(published_4d, client):
+    location = _new_document(client, published_4d)
+    document_id = UUID(location.rsplit("/", 1)[1])
+
+    response = client.post(f"{location}/intake", data={"text": "   "})
+
+    assert response.status_code == 200
+    assert "Nothing was pasted" in response.text
+    assert "/jobs/" not in response.text, "no assistant call for an empty box"
+    async with session() as s:
+        assert await intake_service.items(s, document_id) == []
+
+
+async def test_pasting_material_stores_it_and_hands_back_a_watcher(
+    published_4d, client, stub_handler
+):
+    """The paste is saved before the job runs. A model that cannot be reached must
+    not be able to lose what the author typed."""
+
+    async def quick(document_id, scope, progress):
+        await progress.start(1, "sorting")
+        return {"sections": [], "placed": 0, "discarded": 0, "errors": []}
+
+    stub_handler("intake", quick)
+    location = _new_document(client, published_4d)
+    document_id = UUID(location.rsplit("/", 1)[1])
+
+    response = client.post(f"{location}/intake", data={"text": "Cracked housings on order 4471."})
+
+    assert response.status_code == 200
+    assert "/jobs/" in response.text, "a job to watch, not the finished work"
+    async with session() as s:
+        stored = await intake_service.items(s, document_id)
+    assert [i.text for i in stored] == ["Cracked housings on order 4471."]
+
+
+async def test_the_intake_panel_reports_where_the_material_landed(published_4d, client):
+    location = _new_document(client, published_4d)
+    document_id = UUID(location.rsplit("/", 1)[1])
+
+    async with session() as s:
+        job = Job(
+            document_id=document_id,
+            kind="intake",
+            status="succeeded",
+            result={
+                "sections": [
+                    {
+                        "key": "d2_problem",
+                        "title": "D2 — Describe the Problem",
+                        "passages": ["cracked housings on order 4471"],
+                        "prefilled": ["what_is_wrong"],
+                    }
+                ],
+                "placed": 1,
+                "discarded": 2,
+                "errors": [],
+            },
+        )
+        s.add(job)
+        await s.flush()
+        job_id = job.id
+
+    response = client.get(f"/documents/{document_id}/intake/panel?job={job_id}")
+
+    assert response.status_code == 200
+    assert "Placed 1 passage(s)" in response.text
+    assert "1 answer(s) proposed" in response.text
+    assert "2 fragment(s) discarded" in response.text, "quotes it could not find, said out loud"
+    assert "Nothing was written into the document" in response.text
+
+
+async def test_a_section_shows_the_material_filed_under_it(published_4d, client, monkeypatch):
+    """The payoff of intake, on the working surface: your own words, and the
+    answers read from them, marked as unconfirmed."""
+
+    async def fake_mapping(spec, material):
+        return Mapping([Assignment("d2_problem", "cracked housings on order 4471", "defect")], 0.9)
+
+    async def fake_prefill(section, material, whole=None):
+        if section.key != "d2_problem":
+            return []
+        return [Prefilled("what_is_wrong", "Cracked housings", "cracked housings on order 4471")]
+
+    monkeypatch.setattr(intake_service, "map_evidence_to_sections", fake_mapping)
+    monkeypatch.setattr(intake_service, "prefill_answers", fake_prefill)
+
+    location = _new_document(client, published_4d)
+    document_id = UUID(location.rsplit("/", 1)[1])
+    _complete_header(client, location)  # so d2_problem is not blocked for another reason
+    async with session() as s:
+        item = await intake_service.record(s, document_id, "Cracked housings on order 4471.")
+        await intake_service.distribute(s, document_id, item.id)
+
+    page_html = client.get(f"{location}/sections/d2_problem").text
+
+    assert "What you supplied about this" in page_html
+    assert "cracked housings on order 4471" in page_html
+    assert "from your notes" in page_html, "the answer is marked as unconfirmed"
+    assert "Read from:" in page_html, "with the words it was read from"
+    assert "Confirm the answers filled in from your" in page_html, "drafting still waits"
+
+
+async def test_a_finished_export_can_reopen_the_card_with_its_history_showing(
+    published_4d, client, sample_4d
+):
+    """What static/export.js asks for once the bytes are handed over: the card
+    again, with the thing it has just made visible in it."""
+    location = _new_document(client, published_4d)
+    _fill_from_sample(client, location, sample_4d)
+    client.post(f"{location}/export/json", data={"override_reason": "deadline"})
+
+    document_id = location.rsplit("/", 1)[1]
+    response = client.get(f"/documents/{document_id}/exports?opened=1")
+
+    assert response.status_code == 200
+    assert 'id="exports"' in response.text
+    assert ".json" in response.text, "the export it just made is listed"
+    assert "<details" in response.text and " open" in response.text, "unfolded, not hidden"
+
+
+async def test_a_refusal_comes_back_as_the_card_when_the_script_asked(published_4d, client):
+    """The script has a page already; it needs the panel, not another one."""
+    location = _new_document(client, published_4d)
+    response = client.post(
+        f"{location}/export/docx", data={"override_reason": ""}, headers={"X-LCF-Fetch": "1"}
+    )
+
+    assert response.status_code == 200
+    assert "<!doctype html>" not in response.text.lower(), "a fragment this time"
+    assert 'id="exports"' in response.text
+    assert "Not exported." in response.text

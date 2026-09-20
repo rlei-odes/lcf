@@ -131,7 +131,8 @@ doc_type ──┬─< doc_type_version ─┐         (immutable, pinned by doc
            └─< exemplar         │         section_key, block_key, value,
                                 │         harvested_from (revision id)
 document ───────────────────────┘
-   ├──< evidence_item        kind, uri, text, caption, meta
+   ├──< evidence_item        kind, uri, text, caption, meta      (verbatim, never edited)
+   │      └──< evidence_link      section_key, quote, why, confidence
    ├──< section              key, status
    │      ├──< answer        question_key, value, source
    │      └──< block         key, kind
@@ -377,7 +378,8 @@ PUT   /doc-types/{id}/versions/{v}/template
 # Creator
 POST  /documents                          {doc_type_id, version}
 GET   /documents/{id}                     flow overview: section states, open work
-POST  /documents/{id}/intake              paste text + images   → job
+POST  /documents/{id}/intake              paste text (images later) → job
+GET   /documents/{id}/intake/panel        where the material landed
 GET   /documents/{id}/sections/{key}      the working surface
 POST  /documents/{id}/sections/{key}/answers
 POST  /documents/{id}/sections/{key}/draft                      → job
@@ -390,7 +392,7 @@ GET   /documents/{id}/blame
 POST  /documents/{id}/export/{format}     json | markdown | docx
 
 # Jobs
-GET   /jobs/{id}                          GET /jobs/{id}/events   (SSE)
+GET   /jobs/{id}/card                     one poll (see the jobs section)
 ```
 
 `GET /documents/{id}` is deliberately rich — one request renders everything the flow needs, so the
@@ -544,9 +546,16 @@ the architecture has failed.
 9. Export: JSON, then Markdown, then docx with template linting.
 10. Spec editor UI for the rule builder.
 
-Steps 1–5 and 7–9 are done; drafting and assessment both run as background jobs. What remains is
-evidence intake (step 7's paste-and-distribute), the editor island (step 6) and the spec editor
-(step 10).
+Steps 1–5 and 7–9 are done; drafting, assessment and intake all run as background jobs. Step 7's
+text half is complete — paste, `map_evidence_to_sections`, `prefill_answers` — and its image half
+(upload and captioning) is not. What remains is images, the editor island (step 6) and the spec
+editor (step 10).
+
+**Intake stores nothing the author did not write.** A mapping is a quotation plus a section key, and
+the quotation is verified against the paste before the row exists (`llm/quoting.py`, shared with the
+judged checks). A pre-filled answer is stored as `source: proposed`, shows the words behind it, and
+does not satisfy a required question until a person saves it — so drafting still waits for a human,
+exactly as it did before intake existed.
 
 **docx has two paths**, because a rule builder should not have to produce a Word template before
 anyone can get a document out, and should be able to when branding matters. `render_plain` builds

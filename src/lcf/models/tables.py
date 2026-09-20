@@ -108,9 +108,68 @@ class Section(Base):
     )
 
 
+class EvidenceItem(Base):
+    """What the author supplied, kept exactly as they supplied it.
+
+    The pasted blob is the document's raw material and the record of what a
+    person actually said. Nothing rewrites it — mapping, prefilling and drafting
+    all point into it instead (DESIGN §6.1, §7). `kind` is `text` today; image
+    evidence lands in the same pool, which is what `image_ref` blocks will
+    reference.
+    """
+
+    __tablename__ = "evidence_item"
+
+    id: Mapped[UUID] = _pk()
+    document_id: Mapped[UUID] = mapped_column(
+        ForeignKey("document.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="text")
+    text: Mapped[str | None] = mapped_column(Text)
+    uri: Mapped[str | None] = mapped_column(Text)
+    caption: Mapped[str | None] = mapped_column(Text)
+    meta: Mapped[dict | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = _created()
+
+    links: Mapped[list["EvidenceLink"]] = relationship(
+        back_populates="item", cascade="all, delete-orphan"
+    )
+
+
+class EvidenceLink(Base):
+    """A claim that one part of an evidence item belongs to one section.
+
+    `quote` is verbatim from the item and is verified against it before the row
+    exists, so a link can only ever carry the author's own words. That is what
+    makes intake safe to run automatically: the worst a bad mapping can do is file
+    a real sentence under the wrong heading, where a person will see it.
+    """
+
+    __tablename__ = "evidence_link"
+
+    id: Mapped[UUID] = _pk()
+    evidence_id: Mapped[UUID] = mapped_column(
+        ForeignKey("evidence_item.id", ondelete="CASCADE"), index=True
+    )
+    section_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    quote: Mapped[str] = mapped_column(Text, nullable=False)
+    why: Mapped[str | None] = mapped_column(Text)
+    confidence: Mapped[float | None] = mapped_column(Float)
+    created_at: Mapped[datetime] = _created()
+
+    item: Mapped[EvidenceItem] = relationship(back_populates="links")
+
+
 class Answer(Base):
     """A creator's answer to a spec question. Input to drafting, never content
-    directly (DESIGN decision 13)."""
+    directly (DESIGN decision 13).
+
+    `source` is `user` for an answer a person gave or confirmed, and `proposed`
+    for one intake derived from their pasted material. A proposed answer fills the
+    field in but does not count as answered: drafting stays locked until a person
+    has looked at it and saved, which is the confirmation step DESIGN §6.2 asks
+    for.
+    """
 
     __tablename__ = "answer"
     __table_args__ = (UniqueConstraint("section_id", "question_key"),)

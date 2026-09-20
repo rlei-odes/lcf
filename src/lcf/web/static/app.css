@@ -99,6 +99,22 @@ nav.sections a.blocked { color: var(--muted); }
 .pill.complete { color: var(--ok); border-color: var(--ok); }
 .pill.needs_input { color: var(--blocker); border-color: var(--blocker); }
 .pill.stale { color: var(--warning); border-color: var(--warning); }
+.pill.drafted { color: var(--accent); border-color: var(--accent); }
+
+/* The author's own words, quoted back to them: what intake filed under a section,
+   and what a proposed answer was read from. Distinct from content on purpose —
+   this is material, not document. */
+blockquote.quote {
+  margin: 0 0 10px; padding: 10px 14px;
+  border-left: 3px solid var(--accent); background: var(--accent-soft);
+  border-radius: 0 6px 6px 0; white-space: pre-wrap;
+}
+blockquote.quote .where {
+  display: block; margin-top: 6px;
+  color: var(--muted); font-size: 12px; font-family: var(--mono);
+}
+/* A field holding an answer nobody has confirmed yet. */
+.field.proposed > label { color: var(--accent); }
 
 /* forms */
 label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
@@ -182,3 +198,6 @@ ul.plain .meta { color: var(--muted); font-size: 12.5px; margin-left: auto; }
 @keyframes pulse { 0%, 100% { opacity: 1 } 50% { opacity: .45 } }
 /* A form mid-request shouldn't look dead, only busy. */
 form.htmx-request { opacity: 1; }
+/* Rendering a docx is not instant; the buttons say so while it happens. */
+form.busy { cursor: progress; }
+form.busy button { animation: pulse 1.4s ease-in-out infinite; }

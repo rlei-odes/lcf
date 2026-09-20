@@ -348,6 +348,17 @@ whatever they have — a complaint email, meeting notes, measurement results, ph
 Sections that receive material get pre-filled question answers to confirm. Sections that receive
 nothing become the question queue. That mapping *is* the first useful thing the app does.
 
+**Intake may only point, never write.** Every assignment and every pre-filled answer carries a
+quotation from the paste, and the quotation is checked against the paste before anything is stored —
+the same rule the judged checks use, in [`llm/quoting.py`](../src/lcf/llm/quoting.py). A quote that
+is not there is discarded, and the creator is told how many were. This is what makes it safe to run
+mapping automatically on a paste rather than asking someone to approve each fragment: the worst a
+wrong mapping can do is file a real sentence under the wrong heading, where a person will see it.
+
+A pre-filled answer is stored with `source: proposed` and **does not count as answered**. It fills
+the field in, shows the words it was read from, and drafting stays locked until a person saves it.
+An answer the creator typed themselves is never overwritten by one the model derived.
+
 Parsing uploaded PDF/DOCX files is a later convenience, not the primary path.
 
 ### 6.2 The section working surface
