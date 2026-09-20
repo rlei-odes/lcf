@@ -175,12 +175,22 @@ vLLM supports **guided decoding** (xgrammar/outlines), so a JSON schema is a gra
 guarantee rather than a hope. Every structured call:
 
 1. Defines its response as a Pydantic model.
-2. Passes the schema via `extra_body={"guided_json": schema}`.
+2. Passes the schema as `response_format`, in the form verified below.
 3. Validates the result against the model anyway.
 4. Retries once with the validation error appended on failure.
 
-Steps 3–4 look redundant under guided decoding and are not: they keep us correct against any
-endpoint that ignores the hint, and turn silent corruption into a logged retry.
+**Verified against the running gateway** (2026-09-20), because the parameter form matters and the
+wrong one fails silently:
+
+| Form | Result |
+|---|---|
+| `response_format: {"type": "json_schema", "json_schema": {name, schema, strict: true}}` | **Works.** Schema held exactly |
+| `response_format: {"type": "json_object"}` | Valid JSON, but arbitrary shape — not usable |
+| `guided_json` at the top level | **Silently ignored.** Returns plain prose, no error |
+
+The last row is why steps 3–4 are not redundant. An endpoint that ignores a constraint returns a
+`200` with unusable content, and without local validation that becomes corruption rather than a
+logged retry. Never trust the constraint alone.
 
 ### 5.2 Call taxonomy
 

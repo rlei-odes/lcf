@@ -1,0 +1,103 @@
+# Sample content for a 4D report — a worked instance of 4d-report.yaml.
+#
+# Used by `lcf walkthrough` and by the test suite. Hand-written on purpose: the
+# milestone is walking a document end to end with NO model involved, and this file
+# is what stands in for one.
+
+document_title: "4D — Cracked weld seam, bracket A-4471"
+
+sections:
+
+  header:
+    answers:
+      complaint_source: customer_claim
+    blocks:
+      meta:
+        report_no: "4D-2026-0143"
+        customer: "Nordwerk Fahrzeugtechnik GmbH"
+        claim_no: "NW-CL-88213"
+        part_no: "A-4471"
+        part_name: "Mounting bracket, rear axle"
+        quantity: 1450
+        opened_at: "2026-09-08"
+
+  d1_team:
+    answers:
+      members_raw: |
+        Sabine Vogt, quality manager, champion
+        Tomas Reiner, process engineering, welding cell 3
+        Lena Hofmann, customer quality, Nordwerk account
+    blocks:
+      members:
+        - { name: "Sabine Vogt",  role: "8D Champion",       function: "Quality management", is_champion: true }
+        - { name: "Tomas Reiner", role: "Process engineer",  function: "Welding cell 3",     is_champion: false }
+        - { name: "Lena Hofmann", role: "Customer quality",  function: "Nordwerk account",   is_champion: false }
+
+  d2_problem:
+    answers:
+      what_is_wrong: "Cracks in the weld seam at the flange, found during incoming inspection at the customer."
+      first_observed: "2026-09-05"
+      quantity_affected: "31 of 1450 delivered parts, found in two delivery lots"
+      where_occurred: "Welding cell 3, seam WS-02 at the flange transition"
+      how_detected: "Customer incoming inspection, visual plus dye penetrant on a sample"
+    blocks:
+      description: |
+        Nordwerk Fahrzeugtechnik reported cracking in the weld seam at the flange
+        transition of mounting bracket A-4471. Of 1450 parts delivered in lots
+        L-2608 and L-2612, 31 parts showed cracks in seam WS-02, a rate of 2.1 per
+        cent. The cracks run longitudinally along the seam and are between 3 and 11
+        millimetres long. The condition was first observed on 5 September 2026
+        during incoming inspection at the customer, and confirmed by dye penetrant
+        testing on a sample of 60 parts. All affected parts originate from welding
+        cell 3. No cracking has been observed on parts produced in cells 1 or 2
+        during the same period.
+      is_is_not:
+        - { dimension: "Location",      is: "Seam WS-02 at the flange transition", is_not: "Seams WS-01 and WS-03" }
+        - { dimension: "Production",    is: "Welding cell 3",                      is_not: "Welding cells 1 and 2" }
+        - { dimension: "Period",        is: "Lots L-2608 and L-2612 (Aug–Sep)",    is_not: "Lots before L-2608" }
+        - { dimension: "Part variant",  is: "A-4471 rear axle bracket",            is_not: "A-4470 front variant" }
+      detection: |
+        Detected at the customer's incoming inspection by visual check, then
+        confirmed by dye penetrant testing on a sample of 60 parts. Our own final
+        inspection is visual only and did not flag the condition.
+
+  d3_containment:
+    answers:
+      actions_taken: "Blocked stock, 100 per cent dye penetrant inspection, customer notified same day."
+      stock_disposition: "Customer stock sorted on site, parts in transit recalled to our warehouse."
+      customer_informed: true
+      containment_effective: "All 1450 parts re-inspected, 31 rejects found and quarantined, no further escapes reported since 9 September."
+    blocks:
+      actions:
+        - { action: "Blocked all A-4471 finished stock in warehouse",     owner: "Sabine Vogt",  implemented_at: "2026-09-08", effectiveness: "412 parts blocked, confirmed by stock count" }
+        - { action: "100% dye penetrant inspection before dispatch",      owner: "Tomas Reiner", implemented_at: "2026-09-08", effectiveness: "Applied to all output of cell 3 since 8 September" }
+        - { action: "Sorted customer stock on site at Nordwerk",          owner: "Lena Hofmann", implemented_at: "2026-09-09", effectiveness: "638 parts sorted, 19 rejects removed" }
+        - { action: "Recalled parts in transit to our warehouse",         owner: "Sabine Vogt",  implemented_at: "2026-09-09", effectiveness: "400 parts recalled and re-inspected" }
+      scope: |
+        Containment covers finished goods in our warehouse, all parts in transit to
+        the customer, and stock already held at the customer's plant, which was
+        sorted on site on 9 September. Work in progress at welding cell 3 is held
+        and inspected before release. Parts already fitted to vehicles at the
+        customer are outside the scope of this containment and are being assessed
+        with the customer separately.
+
+  d4_root_cause:
+    answers:
+      suspected_cause: "Shielding gas flow at cell 3 dropped below specification after a regulator was replaced, causing porosity that initiated cracking."
+      cause_verified: true
+      escape_cause: "Final inspection is visual only; sub-surface porosity is not visible without penetrant testing."
+      ruled_out: "Base material batch, welding wire batch, operator technique"
+    blocks:
+      causes:
+        - { id: "C1", cause: "Shielding gas flow at welding cell 3 fell to 8 l/min against a specified 14 l/min after the pressure regulator was replaced on 2026-08-21, producing porosity in seam WS-02 that initiated cracking under load", type: "occurrence", verified: "Gas flow measured at 8 l/min on 2026-09-10; reproduced cracking on 12 test parts welded at reduced flow" }
+        - { id: "C2", cause: "Final inspection specifies visual checking only, which cannot detect sub-surface porosity, so no control existed capable of catching the defect before dispatch", type: "detection", verified: "Reviewed inspection instruction PA-221 rev. 4; confirmed no NDT step is specified for this part" }
+      five_why:
+        - { level: 1, why: "Why did the bracket crack at seam WS-02?",                     answer: "The weld contained porosity that initiated a crack under load" }
+        - { level: 2, why: "Why did the weld contain porosity?",                           answer: "Shielding gas flow was 8 l/min instead of the specified 14 l/min" }
+        - { level: 3, why: "Why was the gas flow too low?",                                answer: "The replacement pressure regulator was set to a different default and never verified" }
+        - { level: 4, why: "Why was the setting not verified after replacement?",          answer: "The maintenance procedure for regulator replacement has no verification step for process gas parameters" }
+        - { level: 5, why: "Why does the maintenance procedure lack that step?",           answer: "Process-critical parameters are not identified in the maintenance work instructions, so no link exists between a maintenance action and the process settings it affects" }
+      rejected:
+        - "Base material batch — certificates checked, within specification"
+        - "Welding wire batch — same wire used in cells 1 and 2, no defects there"
+        - "Operator technique — the cell is fully automated, no manual welding involved"
