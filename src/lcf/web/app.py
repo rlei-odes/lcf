@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -21,6 +21,8 @@ from lcf.core.db import session
 from lcf.engine.state import Status, document_state, ordered_sections, section_state
 from lcf.models.tables import Document
 from lcf.services import assessment, doc_types, documents, exports, intake, jobs, proposals
+from lcf.spec import loader
+from lcf.spec.describe import describe_criterion, describe_requirement, scope_of
 from lcf.web.forms import parse_block_value, parse_pasted_table
 from lcf.web.presenters import section_panel_context
 
@@ -45,6 +47,13 @@ def _localtime(value):
 
 templates.env.filters["localtime"] = _localtime
 
+# The spec view renders a check with the same function that composes it into the
+# drafting prompt, so what the rule builder reads is literally what the assistant
+# is told (DESIGN §5.8).
+templates.env.filters["describe"] = describe_requirement
+templates.env.filters["describe_criterion"] = describe_criterion
+templates.env.filters["scope"] = scope_of
+
 app = FastAPI(title="Lancy Content Flow")
 app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
 
@@ -59,6 +68,158 @@ async def index(request: Request):
         types = await doc_types.list_types(s)
         docs = await documents.recent(s)
     return page(request, "index.html", doc_types=types, documents=docs)
+
+
+# --- the rule builder's side -------------------------------------------------
+#
+# Declared before `/doc-types/{key}` because routes match in order and `new` would
+# otherwise be read as a document type key.
+
+
+@app.get("/doc-types", response_class=HTMLResponse)
+async def doc_type_list(request: Request):
+    async with session() as s:
+        types = await doc_types.list_types(s)
+        rows = [
+            {
+                "type": t,
+                "versions": await doc_types.versions_of(s, t.key),
+                "usage": await doc_types.usage(s, t.key),
+            }
+            for t in types
+        ]
+    return page(request, "doc_types.html", rows=rows)
+
+
+@app.get("/doc-types/new", response_class=HTMLResponse)
+async def new_doc_type(request: Request):
+    """The editor on a skeleton that already lints and publishes."""
+    return page(
+        request,
+        "spec_editor.html",
+        yaml=doc_types.SKELETON,
+        key=None,
+        heading="New document type",
+        note="A minimal type that works. Change it into the one you need.",
+    )
+
+
+@app.get("/doc-types/{key}", response_class=HTMLResponse)
+async def doc_type_latest(request: Request, key: str):
+    async with session() as s:
+        version = await doc_types.get_version(s, key)
+    return RedirectResponse(f"/doc-types/{key}/versions/{version.version}", status_code=303)
+
+
+@app.get("/doc-types/{key}/edit", response_class=HTMLResponse)
+async def edit_doc_type(request: Request, key: str):
+    """Edit the latest version — as the *next* version.
+
+    A published version is immutable and documents pin it, so editing cannot mean
+    changing it. The version is bumped in the text the editor opens with, which
+    makes the rule that would otherwise only surface as a publish error visible
+    before anything is typed.
+    """
+    async with session() as s:
+        latest = await doc_types.get_version(s, key)
+        spec = doc_types.spec_of(latest)
+        in_use = (await doc_types.usage(s, key)).get(latest.version, 0)
+    spec.version = latest.version + 1
+    return page(
+        request,
+        "spec_editor.html",
+        yaml=loader.dump(spec),
+        key=key,
+        heading=f"Edit {spec.title}",
+        note=(
+            f"Opened as v{spec.version}. v{latest.version} stays as it is"
+            + (f" — {in_use} document(s) are built on it." if in_use else ".")
+        ),
+    )
+
+
+@app.get("/doc-types/{key}/versions/{version}.yaml")
+async def doc_type_yaml(key: str, version: int):
+    """Declared before the view route: routes match in order, and a typed path
+    parameter is validated only after matching — so `{version}` would swallow
+    "1.yaml" and answer 422 instead of falling through to here."""
+    async with session() as s:
+        row = await doc_types.get_version(s, key, version)
+    body = loader.dump(doc_types.spec_of(row))
+    return Response(
+        content=body.encode("utf-8"),
+        media_type="application/yaml",
+        headers={"Content-Disposition": f'attachment; filename="{key}-v{version}.yaml"'},
+    )
+
+
+@app.get("/doc-types/{key}/versions/{version}", response_class=HTMLResponse)
+async def doc_type_version(request: Request, key: str, version: int):
+    """What this type demands, in the words the assistant is given."""
+    async with session() as s:
+        row = await doc_types.get_version(s, key, version)
+        spec = doc_types.spec_of(row)
+        versions = await doc_types.versions_of(s, key)
+        counts = await doc_types.usage(s, key)
+    return page(
+        request,
+        "doc_type.html",
+        spec=spec,
+        row=row,
+        key=key,
+        versions=versions,
+        usage=counts,
+    )
+
+
+@app.post("/doc-types/check", response_class=HTMLResponse)
+async def check_spec(request: Request, yaml: str = Form("")):
+    """Validate without publishing. The same parse, model and linter the real
+    publish uses — a draft that checks clean cannot be refused for its content."""
+    return page(request, "partials/spec_review.html", review=doc_types.review(yaml))
+
+
+@app.post("/doc-types/publish", response_class=HTMLResponse)
+async def publish_spec(request: Request, yaml: str = Form("")):
+    reviewed = doc_types.review(yaml)
+    if not reviewed.ok:
+        return page(request, "partials/spec_review.html", review=reviewed)
+
+    try:
+        async with session() as s:
+            await doc_types.publish(s, reviewed.spec)
+    except doc_types.VersionExists as exc:
+        return page(
+            request,
+            "partials/spec_review.html",
+            review=doc_types.Review(None, [str(exc)]),
+        )
+    return page(
+        request,
+        "partials/spec_review.html",
+        review=reviewed,
+        published=f"/doc-types/{reviewed.spec.id}/versions/{reviewed.spec.version}",
+    )
+
+
+@app.post("/doc-types/import", response_class=HTMLResponse)
+async def import_spec(request: Request, file: UploadFile | None = None):
+    """Open an uploaded YAML in the editor rather than publishing it blind.
+
+    Someone else's spec is exactly the thing worth reading before it becomes a
+    type people build documents on.
+    """
+    text = (await file.read()).decode("utf-8", "replace") if file is not None else ""
+    if not text.strip():
+        return page(request, "partials/notice.html", message="That file was empty.")
+    return page(
+        request,
+        "spec_editor.html",
+        yaml=text,
+        key=None,
+        heading="Imported document type",
+        note="Nothing is published yet. Check it, then publish.",
+    )
 
 
 @app.post("/documents")

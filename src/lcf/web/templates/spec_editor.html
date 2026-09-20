@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}{{ heading }}{% endblock %}
+{% block subtitle %}<a href="/doc-types">document types</a>{% endblock %}
+
+{# The spec is edited as YAML on purpose. It is a nested, referential document —
+   sections referring to sections, checks referring to columns — and a form-per-
+   field editor would hide exactly the relationships a rule builder is reasoning
+   about. What the UI owes them instead is an honest answer to "is this valid?"
+   before they publish, which is what Check gives: the same parse, the same
+   model, the same linter the publish runs. #}
+{% block content %}
+<div class="card">
+  <h2>{{ heading }}</h2>
+  {% if note %}<p class="lead">{{ note }}</p>{% endif %}
+
+  <form hx-post="/doc-types/check" hx-target="#review" hx-swap="innerHTML"
+        hx-disabled-elt="find button" id="spec-form">
+    <div class="field">
+      <textarea name="yaml" id="spec-yaml" rows="30" spellcheck="false"
+                class="code">{{ yaml }}</textarea>
+    </div>
+    <div class="actions">
+      <button type="submit">Check</button>
+      <button class="primary" type="submit"
+              hx-post="/doc-types/publish" hx-target="#review" hx-swap="innerHTML">
+        Publish this version</button>
+      <span class="htmx-indicator working">Reading it…</span>
+      <span class="why">
+        Publishing is additive: a new version, never a change to an old one.
+      </span>
+    </div>
+  </form>
+</div>
+
+<div id="review">
+  {% if key %}
+  <div class="card">
+    <p class="hint">
+      Not checked yet. <a href="/doc-types/{{ key }}">Back to {{ key }}</a>.
+    </p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

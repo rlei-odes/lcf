@@ -14,7 +14,8 @@ from lcf.engine.view import DocumentView
 from lcf.llm.provider import Completion, complete_json, prompt
 from lcf.llm.quoting import quoted_from
 from lcf.llm.schemas import draft_response_schema, mapping_schema, prefill_schema
-from lcf.spec.models import Block, DocTypeSpec, Requirement, Section
+from lcf.spec.describe import describe_requirement
+from lcf.spec.models import Block, DocTypeSpec, Section
 
 
 @dataclass
@@ -260,7 +261,7 @@ def _requirement_targets(section: Section, block: Block) -> str:
     The same rule is the instruction and the grade, so the two cannot drift apart
     and neither has to be written twice (DESIGN §5.8).
     """
-    targets = [_describe(r) for r in section.requirements if r.block == block.key]
+    targets = [describe_requirement(r) for r in section.requirements if r.block == block.key]
     targets = [t for t in targets if t]
     if not targets:
         return ""
@@ -270,47 +271,6 @@ def _requirement_targets(section: Section, block: Block) -> str:
         "Your draft is graded on these. Satisfy what the evidence supports, and "
         f"raise a gap for anything it does not.\n\n{body}"
     )
-
-
-def _describe(req: Requirement) -> str:
-    kind = req.kind
-    if kind == "present":
-        return "Must not be empty."
-    if kind == "length":
-        parts = []
-        if req.min_words:
-            parts.append(f"at least {req.min_words} words")
-        if req.max_words:
-            parts.append(f"at most {req.max_words} words")
-        if req.min_chars:
-            parts.append(f"at least {req.min_chars} characters")
-        if req.max_chars:
-            parts.append(f"at most {req.max_chars} characters")
-        return f"Length: {', '.join(parts)}." if parts else ""
-    if kind == "rows":
-        parts = []
-        if req.min is not None:
-            parts.append(f"at least {req.min} row(s)")
-        if req.max is not None:
-            parts.append(f"at most {req.max} row(s)")
-        return f"Rows: {', '.join(parts)}." if parts else ""
-    if kind == "fields_filled":
-        return f"Every row must have these filled: {', '.join(req.fields or [])}."
-    if kind == "format":
-        shape = {
-            "date": "an ISO date (YYYY-MM-DD)",
-            "number": "a number",
-            "enum": "one of the allowed values",
-        }
-        return f"`{req.field}` must be {shape.get(req.format or '', req.format)}."
-    if kind == "cross_ref":
-        return f"Every `{req.field}` must match an id that already exists in {req.references}."
-    if kind == "mentions":
-        items = "; ".join(req.must_mention or [])
-        return f"Must mention: {items}."
-    if kind in {"rubric", "consistency"}:
-        return (req.rubric or "").strip()
-    return ""
 
 
 def _runtime_data(view: DocumentView, section: Section, block: Block) -> str:

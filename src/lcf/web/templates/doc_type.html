@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}{{ spec.title }} v{{ spec.version }}{% endblock %}
+{% block subtitle %}<a href="/doc-types">document types</a>{% endblock %}
+
+{# What this type demands, read back in the words the assistant is given. Every
+   check below is rendered by `spec/describe.py` — the same function that composes
+   it into the drafting prompt, so this page cannot drift from what the model is
+   actually told (DESIGN §5.8). #}
+{% block content %}
+<div class="card">
+  <div class="block-head">
+    <h2>{{ spec.title }}</h2>
+    <span class="pill">v{{ spec.version }}</span>
+  </div>
+  {% if spec.description %}<p class="lead">{{ spec.description }}</p>{% endif %}
+  <p class="hint">
+    <code>{{ spec.id }}</code> · language {{ spec.language }} ·
+    {{ spec.sections|length }} section(s) ·
+    published {{ row.published_at|localtime }}
+    {%- set used = usage.get(spec.version, 0) %}
+    {%- if used %} · {{ used }} document(s) built on it{% endif %}
+  </p>
+
+  <div class="actions">
+    <a href="/doc-types/{{ key }}/edit">
+      <button class="primary" type="button">Edit as v{{ versions[0].version + 1 }}</button></a>
+    <a href="/doc-types/{{ key }}/versions/{{ spec.version }}.yaml">
+      <button type="button">Download YAML</button></a>
+    {% if versions|length > 1 %}
+    <span class="why">
+      Versions:
+      {% for v in versions %}
+        {%- if v.version == spec.version %}<strong>v{{ v.version }}</strong>
+        {%- else %}<a href="/doc-types/{{ key }}/versions/{{ v.version }}">v{{ v.version }}</a>
+        {%- endif %}{% if not loop.last %} · {% endif %}
+      {%- endfor %}
+    </span>
+    {% endif %}
+  </div>
+</div>
+
+{% if spec.style %}
+<div class="card">
+  <h3>House style</h3>
+  <p class="lead">
+    Layered under the system default and above any section's own. It shapes how
+    the writing reads, never what it claims.
+  </p>
+  <blockquote class="quote">{{ spec.style }}</blockquote>
+</div>
+{% endif %}
+
+{% for section in spec.sections %}
+<div class="card">
+  <div class="block-head">
+    <h3 style="margin:0">{{ section.title }}</h3>
+    <span class="kind">{{ section.key }}</span>
+    {% if not section.required %}<span class="pill">optional</span>{% endif %}
+  </div>
+  {% if section.description %}<p class="lead">{{ section.description }}</p>{% endif %}
+  {% if section.guidance %}<p class="hint">{{ section.guidance }}</p>{% endif %}
+  {% if section.depends_on %}
+  <p class="hint">Cannot be drafted until {{ section.depends_on|join(', ') }} are complete.</p>
+  {% endif %}
+
+  {% if section.questions %}
+  <h4>Asked before anything is written</h4>
+  <ul class="plain">
+    {% for q in section.questions %}
+    <li>
+      <span class="dot {{ 's-needs_input' if q.required else 's-blocked' }}">
+        {{ '*' if q.required else '·' }}</span>
+      <span>
+        {{ q.prompt }}
+        <span class="where">
+          {{ q.key }} · {{ q.type }}{% if q.required %} · required{% endif %}
+          {%- if q.options %} · {{ q.options|join(' | ') }}{% endif %}
+          {%- if q.hint %} · {{ q.hint }}{% endif %}
+        </span>
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if section.blocks %}
+  <h4>Content</h4>
+  <ul class="plain">
+    {% for b in section.blocks %}
+    <li>
+      <span class="dot s-drafted">·</span>
+      <span>
+        {{ b.label }}
+        <span class="where">
+          {{ b.key }} · {{ b.kind }}
+          {%- if b.kind|string == 'table' %} · {{ b.columns|map(attribute='label')|join(', ') }}
+          {%- elif b.kind|string == 'keyvalue' %} · {{ b.fields|map(attribute='label')|join(', ') }}
+          {%- endif %}
+          {%- if b.hint %} · {{ b.hint }}{% endif %}
+        </span>
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if section.requirements %}
+  <h4>What it is checked against</h4>
+  <p class="hint">
+    These are the instructions. Each one is given to the assistant as a target
+    before it drafts, and used to grade the result afterwards.
+  </p>
+  {% for r in section.requirements %}
+  <div class="check {{ r.severity }}">
+    <span class="mark">{{ '!' if r.severity|string == 'blocker' else '·' }}</span>
+    <span>
+      {{ r|describe }}
+      <span class="where">
+        {{ r.id }} · {{ r.kind }} · {{ r.block }} ·
+        {{ 'blocks export' if r.severity|string == 'blocker' else 'warning' }} ·
+        {{ 'checked by the assistant' if not r.is_deterministic else 'checked by the app' }}
+      </span>
+    </span>
+  </div>
+  {% endfor %}
+  {% endif %}
+</div>
+{% endfor %}
+
+{% if spec.quality_criteria %}
+<div class="card">
+  <h3>Quality criteria</h3>
+  <p class="lead">
+    Judged across sections at the final gate, once there is a whole document to
+    read.
+  </p>
+  {% for c in spec.quality_criteria %}
+  <div class="check {{ c.severity }}">
+    <span class="mark">{{ '!' if c.severity|string == 'blocker' else '·' }}</span>
+    <span>
+      <strong>{{ c.title }}</strong> — {{ c|describe_criterion }}
+      <span class="where">
+        {{ c.id }} · {{ c.kind }} · over {{ c|scope }} ·
+        {{ 'blocks export' if c.severity|string == 'blocker' else 'warning' }}
+      </span>
+    </span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

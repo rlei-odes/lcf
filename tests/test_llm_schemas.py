@@ -8,8 +8,9 @@ says what we think it says.
 import pytest
 from tests.conftest import tiny_spec
 
-from lcf.llm.calls import _describe, _requirement_targets, resolve_style
+from lcf.llm.calls import _requirement_targets, resolve_style
 from lcf.llm.schemas import block_value_schema, draft_response_schema
+from lcf.spec.describe import describe_requirement
 from lcf.spec.models import Requirement
 
 
@@ -104,8 +105,10 @@ def test_draft_response_always_asks_for_value_and_gaps():
     ],
 )
 def test_requirements_render_as_drafting_targets(payload, expected):
+    """The same sentence is shown to the rule builder in the spec view — one
+    function, so the instruction and the documentation cannot drift."""
     req = Requirement.model_validate({"id": "r", "block": "text", **payload})
-    assert expected in _describe(req)
+    assert expected in describe_requirement(req)
 
 
 def test_a_blocks_own_checks_reach_its_prompt(spec_4d):

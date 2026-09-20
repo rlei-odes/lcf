@@ -1,0 +1,40 @@
+{# The verdict on a draft spec: what is wrong, or what it would publish as. #}
+<div class="card">
+  {% if published %}
+  <div class="notice">
+    <h3>Published</h3>
+    <p>
+      <strong>{{ review.spec.title }} v{{ review.spec.version }}</strong> is live.
+      Documents already under way stay on the version they pinned.
+    </p>
+    <div class="actions">
+      <a href="{{ published }}"><button class="primary" type="button">See what it demands</button></a>
+      <a href="/"><button type="button">Start a document with it</button></a>
+    </div>
+  </div>
+
+  {% elif review.ok %}
+  <div class="check pass">
+    <span class="mark">✓</span>
+    <span>
+      This checks out: <strong>{{ review.spec.title }}</strong>, v{{ review.spec.version }},
+      {{ review.spec.sections|length }} section(s),
+      {{ review.spec.sections|map(attribute='requirements')|map('length')|sum }} requirement(s),
+      {{ review.spec.quality_criteria|length }} quality criteria.
+      <span class="where">Nothing is published until you press Publish.</span>
+    </span>
+  </div>
+
+  {% else %}
+  <div class="notice blocker">
+    <h3>{{ review.errors|length }} problem(s)</h3>
+    <p class="hint">
+      Parsing, shape and references are checked together, so this is everything
+      that would stop it publishing — not just the first thing.
+    </p>
+  </div>
+  {% for e in review.errors %}
+  <div class="check blocker"><span class="mark">✗</span><span>{{ e }}</span></div>
+  {% endfor %}
+  {% endif %}
+</div>

@@ -17,7 +17,7 @@ Design: [docs/DESIGN.md](docs/DESIGN.md) · Architecture: [docs/ARCHITECTURE.md]
 
 ## Status
 
-Early. Build-order steps 1–3 of [ARCHITECTURE §14](docs/ARCHITECTURE.md) are done:
+Early. Most of the build order in [ARCHITECTURE §14](docs/ARCHITECTURE.md) is done:
 
 | Done | |
 |---|---|
@@ -33,9 +33,9 @@ Early. Build-order steps 1–3 of [ARCHITECTURE §14](docs/ARCHITECTURE.md) are 
 | ✓ | The full quality gate: judged checks, quote-backed, run as a job |
 | ✓ | Export: JSON, Markdown and docx, gated and recorded |
 | ✓ | Evidence intake: paste a blob of notes, distributed across the sections, answers proposed from it |
+| ✓ | Spec editor for the rule builder: check, publish as a new version, import/export YAML |
 | | Image evidence: upload and captioning |
 | | Span-level suggestions and the TipTap editor island |
-| | Spec editor UI for the rule builder |
 
 **The milestone that matters:** a 4D report can be driven from empty to a clean quality gate with
 hand-written content and no model involved. If that ever stops working, the deterministic core is

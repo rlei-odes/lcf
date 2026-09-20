@@ -368,12 +368,15 @@ is plausible. Both are thin.
 
 ```
 # Rule builder
-GET   /doc-types                          list
-GET   /doc-types/{id}/versions/{v}        spec editor
-POST  /doc-types/{id}/versions            publish  (validate + lint template)
-POST  /doc-types/import                   YAML in
-GET   /doc-types/{id}/versions/{v}.yaml   YAML out
-PUT   /doc-types/{id}/versions/{v}/template
+GET   /doc-types                          list, with how many documents pin each
+GET   /doc-types/new                      editor on a skeleton that publishes
+GET   /doc-types/{key}/versions/{v}       what this type demands, in prose
+GET   /doc-types/{key}/versions/{v}.yaml  YAML out  (declared before the route above)
+GET   /doc-types/{key}/edit               editor, opened as version v+1
+POST  /doc-types/check                    parse + model + lint, publishing nothing
+POST  /doc-types/publish                  publish a new version
+POST  /doc-types/import                   YAML in → opens in the editor
+PUT   /doc-types/{key}/versions/{v}/template
 
 # Creator
 POST  /documents                          {doc_type_id, version}
@@ -546,10 +549,19 @@ the architecture has failed.
 9. Export: JSON, then Markdown, then docx with template linting.
 10. Spec editor UI for the rule builder.
 
-Steps 1–5 and 7–9 are done; drafting, assessment and intake all run as background jobs. Step 7's
+Steps 1–5 and 7–10 are done; drafting, assessment and intake all run as background jobs. Step 7's
 text half is complete — paste, `map_evidence_to_sections`, `prefill_answers` — and its image half
-(upload and captioning) is not. What remains is images, the editor island (step 6) and the spec
-editor (step 10).
+(upload and captioning) is not. What remains is images and the editor island (step 6).
+
+**The spec is edited as YAML, deliberately.** It is nested and referential — sections depending on
+sections, checks naming columns in other sections' tables — and a form-per-field editor would hide
+the relationships a rule builder is actually reasoning about, while being far more code. What the UI
+owes them instead is an honest answer to *is this valid?* before they publish (what a structured
+form editor would take instead, and what to watch for, is [§15](#15-a-structured-spec-editor-if-it-is-ever-wanted)): `doc_types.review()`
+runs the same parse, the same Pydantic model and the same linter the publish runs, and reports all
+three failure modes as one list. Alongside it is a **read view** that renders what a type demands in
+prose, with every check rendered by `spec/describe.py` — the same function that composes that check
+into the drafting prompt, so the page cannot drift from what the model is told.
 
 **Intake stores nothing the author did not write.** A mapping is a quotation plus a section key, and
 the quotation is verified against the paste before the row exists (`llm/quoting.py`, shared with the
@@ -567,3 +579,115 @@ headers, so a template naming a renamed section fails then rather than at export
 Step 3 is the checkpoint that matters. If a 4D cannot be walked from start to finish with
 hand-typed content and no model involved, something was built in the wrong order — and every later
 step will be debugged through an LLM that makes everything non-deterministic.
+
+## 15. A structured spec editor, if it is ever wanted
+
+The shipped editor is YAML plus an honest validator ([§14](#14-build-order)). That is the right
+trade while the rule builders are the people who wrote the spec in the first place. It stops being
+the right trade the moment a quality manager who has never seen YAML is expected to define a
+document type — and this is what that would actually take.
+
+### 15.1 What it is, concretely
+
+Five object types, and one of them carries the weight:
+
+| Form | Shape | Difficulty |
+|---|---|---|
+| Section | key, title, description, guidance, required, `depends_on`, style | Easy |
+| Question | key, prompt, type (5), required, hint, options for `choice` | Easy |
+| Block | key, label, kind (5) — plus a row editor for table columns or keyvalue fields | Moderate |
+| Quality criterion | id, title, kind (3), scope (document, or a set of sections), rubric or points | Moderate |
+| **Requirement** | id, kind (**9**), block, severity, and a different parameter set per kind | **The bulk of the work** |
+
+The requirement builder *is* the product. Everything else is a form over flat fields; this one is a
+discriminated union whose parameters must be chosen from what exists elsewhere in the spec:
+
+- `block` — a select over this section's blocks, never a text field.
+- `fields` / `field` — a second select over *that block's* columns or fields. Two levels of
+  cascade, and the second must repopulate when the first changes (an HTMX swap of the parameter
+  fieldset, triggered by the kind and block selects).
+- `references` for `cross_ref` — `section.block.column` chosen across the whole spec, which means
+  the form needs the entire spec in scope, not just the section being edited.
+
+The payoff is not prettiness. It is that **most linter errors become unreachable instead of
+reported**: you cannot name a block that does not exist if you are choosing from a list.
+
+### 15.2 The three things that make it harder than it looks
+
+**A draft must be allowed to be invalid.** Today `doc_types.review()` is all-or-nothing, because a
+textarea is submitted whole. A structured editor is a sequence of small edits, and the intermediate
+states are legitimately broken — you add a section before its blocks, a requirement before the
+column it checks. So a draft is stored as **raw JSON, not a validated `DocTypeSpec`**, validation
+moves from "on submit" to "continuously, per field", and the errors must be *anchored*:
+
+> `LintError` needs a structural `path` (`("sections", 1, "requirements", 0, "block")`) beside its
+> human-readable `where`. Pydantic errors already carry `loc`. This is the single highest-value
+> piece of preparation and it is small — an afternoon — because it makes every later UI decision
+> about *where to show an error* a lookup rather than a guess.
+
+**Keys are identity, and a form makes renaming look like editing a label.** A section key appears in
+`depends_on`, in every requirement's `block`, inside `cross_ref` strings, in docx template tags, in
+harvested exemplars, and in the `section`/`block`/`answer` rows of every document. In YAML, renaming
+one is visibly a refactor and the linter catches what breaks inside the spec. In a text input next
+to "Title", it looks like a typo fix. So keys should be **derived from the title when an object is
+created, then locked** behind an explicit *Rename* action that rewrites every reference in the spec
+and warns that docx templates naming the old key will fail their next lint.
+
+**Where the draft lives is an architectural decision, not a detail.** Two options, and they are not
+equivalent:
+
+| | Client-held draft | Server-held draft |
+|---|---|---|
+| Edit | Local, instant | `POST` per edit, HTML swapped back |
+| Lost tab | Work lost | Work survives |
+| Consistency with the app | Contradicts [§1](#why-not-a-split-frontend-and-backend) | The same bet as everything else |
+| Cost | No migration | `doc_type_draft` table, lifecycle, conflict handling |
+
+Take the server-held one. A `doc_type_draft` row (`spec` JSONB, `based_on` version, `updated_at`)
+also buys resumability and, later, more than one person editing a type — and the moment two people
+do, you need an optimistic `updated_at` check per edit that answers with a conflict fragment rather
+than letting the last write win in silence. Design that in; retrofitting it means auditing every
+edit route.
+
+### 15.3 What a rule builder actually needs beyond forms
+
+Filling in forms does not tell anyone whether a document type is any good. Five things do, and three
+of them are nearly free because the functions already exist:
+
+| Feature | What it gives | Cost |
+|---|---|---|
+| Live prose view of the draft | The `/doc-types/{key}/versions/{v}` read view, rendered from the draft as it is edited | Small — the template exists |
+| "This is what the assistant will be told" | `describe_requirement()` rendered live beneath a judged requirement's rubric field, as they type it | Small — the function exists, and it makes [DESIGN §5.8](DESIGN.md#58-instructing-the-model) tangible instead of theoretical |
+| The assembled prompt, read-only | [DESIGN §5.8](DESIGN.md#58-instructing-the-model) already promises this and it is not built. `draft_block` composes the system message; exposing it costs a route | Small |
+| A scratch document from the draft | The only real test of a type: walk it. Needs a document to pin something unpublished — cleanest as a version flagged `draft`, hidden from the creator's type list | Moderate |
+| Diff against the version it is based on | People will not think in versions once there is autosave; show them what changed | Moderate — a YAML text diff is honest and cheap; a structural diff is neither |
+
+### 15.4 Things to watch out for
+
+1. **No free-text prompt field. Ever.** In a form editor the temptation is overwhelming — an empty
+   *Additional instructions for the assistant* textarea is one commit away, and it dissolves
+   [DESIGN §5.8](DESIGN.md#58-instructing-the-model) completely. The checks are the instructions;
+   the only free text a rule builder writes is a **rubric**, which is a check, and is graded.
+2. **Publishing must stay additive and deliberate.** Autosave belongs to drafts. If autosave ever
+   creates versions, `doc_type_version` becomes a keystroke log and pinning stops meaning anything.
+3. **Keep the YAML path authoritative.** The form and the YAML are two views of one model, and a
+   round-trip test — form-edited draft → YAML → parse → equal — is what keeps them honest. Specs
+   are meant to be git-tracked and reviewed by people; losing that to a database-only editor would
+   be a real regression.
+4. **The requirement kinds are a closed vocabulary on purpose** ([Deliberately absent](#deliberately-absent)).
+   A form editor invites "just one more kind" per request, because adding one looks like adding a
+   `<select>` option. Every kind is also a check implementation, a schema, a description sentence
+   and a test.
+5. **`depends_on` is a graph, and a form will let someone draw a cycle.** The linter catches it; the
+   UI should refuse it at the point of clicking, by offering only sections that cannot create one.
+6. **Severity needs plain language.** `blocker` and `warning` mean "cannot export without writing
+   down why" and "flagged, not blocking" — say that in the form, not in a tooltip.
+
+### 15.5 Effort, honestly
+
+Path-anchored errors and the draft table are small. The section, question and block forms are
+ordinary work. The requirement builder with its cascading selects is most of it, and the preview
+features are what make the difference between a form and a tool. Altogether it is comparable to
+everything the creator's side has taken so far — which is the honest reason it is not built yet, and
+the reason the YAML editor plus a validator that tells the whole truth is a defensible place to
+stop until someone who cannot read YAML actually needs to define a type.

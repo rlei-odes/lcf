@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Document types{% endblock %}
+{% block subtitle %}rule builder{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h2>Document types</h2>
+  <p class="lead">
+    A type is the rules: the sections, the questions asked before anything is
+    written, and the checks a finished document has to pass. Every document pins
+    the version it was started on, so publishing a new one never disturbs work
+    already under way.
+  </p>
+
+  {% if rows %}
+  <ul class="plain">
+    {% for r in rows %}
+    {% set latest = r.versions[0] %}
+    <li>
+      <span class="dot s-complete">·</span>
+      <span>
+        <a href="/doc-types/{{ r.type.key }}/versions/{{ latest.version }}">{{ r.type.title }}</a>
+        <span class="where">
+          {{ r.type.key }} · v{{ latest.version }} current
+          {%- if r.versions|length > 1 %} · {{ r.versions|length }} versions{% endif -%}
+          {%- set used = r.usage.values()|sum %}
+          {%- if used %} · {{ used }} document(s){% endif %}
+        </span>
+      </span>
+      <span class="meta">{{ latest.published_at|localtime }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="lead">Nothing published yet.</p>
+  {% endif %}
+
+  <div class="actions" style="margin-top:18px">
+    <a href="/doc-types/new"><button class="primary" type="button">New type</button></a>
+    <form method="post" action="/doc-types/import" enctype="multipart/form-data"
+          style="display:flex;gap:10px;align-items:center;margin-left:auto">
+      <input type="file" name="file" accept=".yaml,.yml,text/yaml" required
+             style="width:auto;font-size:13px">
+      <button type="submit">Import YAML</button>
+    </form>
+  </div>
+  <p class="hint">
+    An imported file opens in the editor. Nothing is published until you say so.
+  </p>
+</div>
+{% endblock %}
