@@ -1,0 +1,15 @@
+{% for f in b.block.fields %}
+{% set current = (b.value or {}).get(f.key, '') %}
+<div class="field">
+  <label for="f-{{ b.block.key }}-{{ f.key }}">
+    {{ f.label }}{% if f.required %} <span class="s-needs_input">*</span>{% endif %}
+  </label>
+  {% if f.type|string == 'date' %}
+    <input type="date" id="f-{{ b.block.key }}-{{ f.key }}" name="f.{{ f.key }}" value="{{ current }}">
+  {% elif f.type|string == 'number' %}
+    <input type="number" step="any" id="f-{{ b.block.key }}-{{ f.key }}" name="f.{{ f.key }}" value="{{ current }}">
+  {% else %}
+    <input type="text" id="f-{{ b.block.key }}-{{ f.key }}" name="f.{{ f.key }}" value="{{ current }}">
+  {% endif %}
+</div>
+{% endfor %}

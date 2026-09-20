@@ -16,27 +16,6 @@ from lcf.services import assessment, doc_types, documents
 from lcf.spec.linter import SpecInvalid
 
 
-async def _database_available() -> bool:
-    try:
-        async with session() as s:
-            await s.execute(select(1))
-        return True
-    except Exception:
-        return False
-
-
-@pytest.fixture
-async def db():
-    if not await _database_available():
-        pytest.skip("database from .env not reachable")
-    yield
-    # Each async test runs in its own event loop; pooled connections belong to the
-    # loop that opened them. Disposing between tests avoids reusing a dead one.
-    from lcf.core.db import engine
-
-    await engine().dispose()
-
-
 @pytest.fixture
 async def published(db, spec_4d):
     """A uniquely-keyed copy of the 4D spec, removed again afterwards."""

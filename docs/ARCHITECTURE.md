@@ -192,6 +192,31 @@ The last row is why steps 3–4 are not redundant. An endpoint that ignores a co
 `200` with unusable content, and without local validation that becomes corruption rather than a
 logged retry. Never trust the constraint alone.
 
+**Two further constraints the schema itself must carry**, both learned the hard way:
+
+- **Every array needs `maxItems`.** A constrained array has no reason to stop, so the model
+  generates rows until it exhausts the context — minutes of work for a table wanting four entries.
+  Spec `min_rows`/`max_rows` supply the real bounds; a ceiling covers the rest.
+- **Guard against whitespace padding.** A JSON grammar permits unlimited whitespace between
+  tokens, and this model routinely exploits it: generations pad thousands of newlines *mid-object*
+  and run to the token ceiling without ever closing. Measured on all three calls of a typical
+  section.
+
+Because the padding happens inside the object, no amount of token budget fixes it — the object
+never closes. So requests are **streamed**, with two aborts:
+
+| Guard | Effect |
+|---|---|
+| Stop when brace depth returns to zero | The object is complete; everything after is padding |
+| Abort on a whitespace run outside a string | The pathology has started and will not terminate |
+
+An aborted call is retried immediately with a compacted echo of what came back. The retry succeeds
+in practice, and catching the pathology early is what makes the difference between a section
+drafting in **16 seconds and in nearly three minutes** — measured, same section, same model.
+
+Independent blocks are drafted **concurrently** under `LCF_LLM_CONCURRENCY`, so a section costs
+its slowest block rather than the sum of them.
+
 ### 5.2 Call taxonomy
 
 Per [DESIGN §6.3](DESIGN.md#64-narrow-calls-flexible-context), every call answers one question and

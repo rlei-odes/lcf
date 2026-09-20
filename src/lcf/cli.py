@@ -178,6 +178,22 @@ async def _walkthrough(spec_path: Path, content_path: Path) -> int:
     return 0 if report.blockers == [] else 1
 
 
+def cmd_serve(args) -> int:
+    import uvicorn
+
+    from lcf.core.config import settings
+
+    s = settings()
+    uvicorn.run(
+        "lcf.web.app:app",
+        host=args.host or s.host,
+        port=args.port or s.port,
+        reload=args.reload,
+        log_level=s.log_level.lower(),
+    )
+    return 0
+
+
 def cmd_walkthrough(args) -> int:
     return asyncio.run(_walkthrough(Path(args.spec), Path(args.content)))
 
@@ -200,6 +216,12 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("buckets", help="create missing object storage buckets")
     p.set_defaults(func=cmd_buckets)
+
+    p = sub.add_parser("serve", help="run the web application")
+    p.add_argument("--host", default=None)
+    p.add_argument("--port", type=int, default=None)
+    p.add_argument("--reload", action="store_true")
+    p.set_defaults(func=cmd_serve)
 
     p = sub.add_parser("walkthrough", help="drive a document end to end, no LLM")
     p.add_argument("--spec", default=str(DEFAULT_SPEC))

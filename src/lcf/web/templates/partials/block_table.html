@@ -1,0 +1,45 @@
+{# Existing rows plus two blank ones, so adding a row needs no button. A row
+   left wholly empty is dropped on save, which is also how a row is deleted. #}
+<div class="scroll">
+  <table>
+    <thead><tr>{% for c in b.block.columns %}<th>{{ c.label }}</th>{% endfor %}</tr></thead>
+    <tbody>
+      {% for row in b.rows + [{}, {}] %}
+      {% set ri = loop.index0 %}
+      <tr>
+        {% for c in b.block.columns %}
+        {% set v = row.get(c.key, '') %}
+        <td>
+          {% if c.type|string == 'enum' %}
+            <select name="r{{ ri }}.{{ c.key }}">
+              <option value="">—</option>
+              {% for option in c.values or [] %}
+              <option value="{{ option }}" {{ 'selected' if v|string == option }}>{{ option }}</option>
+              {% endfor %}
+            </select>
+          {% elif c.type|string == 'date' %}
+            <input type="date" name="r{{ ri }}.{{ c.key }}" value="{{ v }}">
+          {% elif c.type|string == 'number' %}
+            <input type="number" step="any" name="r{{ ri }}.{{ c.key }}" value="{{ v }}">
+          {% elif c.type|string == 'boolean' %}
+            <select name="r{{ ri }}.{{ c.key }}">
+              <option value="false" {{ 'selected' if not v }}>no</option>
+              <option value="true" {{ 'selected' if v is sameas true }}>yes</option>
+            </select>
+          {% else %}
+            <input type="text" name="r{{ ri }}.{{ c.key }}" value="{{ v }}">
+          {% endif %}
+        </td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<div class="hint">An empty row is ignored; clearing a row deletes it.</div>
+<details class="paste">
+  <summary>Paste from a spreadsheet</summary>
+  <textarea name="paste" rows="4"
+    placeholder="Copy cells from Excel and paste here. A header row is matched to the columns; dates like 08.09.2026 are normalised."></textarea>
+  <div class="hint">Pasting replaces every row in this table.</div>
+</details>

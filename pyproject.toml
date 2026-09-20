@@ -4,6 +4,10 @@ version = "0.1.0"
 description = "Lancy Content Flow — LLM-guided creation of rule-bound documents"
 requires-python = ">=3.13"
 dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.12",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
     "sqlalchemy[asyncio]>=2.0.36",

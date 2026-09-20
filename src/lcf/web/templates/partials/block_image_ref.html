@@ -1,0 +1,6 @@
+{# Image evidence arrives with the upload step; until then this block is inert
+   so the flow can be exercised without it. #}
+<p class="hint">Image evidence is not wired up yet — uploads land in a later step.</p>
+{% for ref in b.value or [] %}
+<div class="check"><span class="mark">·</span><span>{{ ref.get('caption', ref) }}</span></div>
+{% endfor %}

@@ -1,0 +1,253 @@
+{# The whole workspace: navigation plus the working surface.
+
+   Both are swapped together because section statuses in the nav change as soon
+   as a block is saved — swapping only the panel would leave the nav lying. #}
+<div class="layout" id="workspace">
+
+  <nav class="sections card">
+    <h3>Sections</h3>
+    {% for s in nav %}
+    {% set target = spec.section(s.key) %}
+    <a href="/documents/{{ document.id }}/sections/{{ s.key }}"
+       class="{{ 'active' if s.key == section.key }} {{ 'blocked' if s.status == Status.BLOCKED }}">
+      <span class="dot s-{{ s.status }}">
+        {%- if s.status == Status.COMPLETE %}✓{% elif s.status == Status.BLOCKED %}⊘
+        {%- elif s.status == Status.NEEDS_INPUT %}!{% elif s.status == Status.STALE %}~
+        {%- elif s.status == Status.DRAFTED %}◐{% else %}·{% endif -%}
+      </span>
+      <span>{{ target.title }}</span>
+    </a>
+    {% endfor %}
+  </nav>
+
+  <div>
+    {% if dependents %}
+    <div class="notice">
+      <h3>You changed a completed section</h3>
+      <p>These were built on {{ section.title }}. Which of them does the change affect?</p>
+      <form hx-post="/documents/{{ document.id }}/affected"
+            hx-target="#workspace" hx-swap="outerHTML">
+        <input type="hidden" name="origin" value="{{ section.key }}">
+        {% for key in dependents %}
+        <label><input type="checkbox" name="affected" value="{{ key }}">
+          {{ spec.section(key).title }}</label>
+        {% endfor %}
+        <div class="actions">
+          <button class="primary" type="submit">Mark those as needing rework</button>
+          <span class="why">Leave all unticked if the change was cosmetic.</span>
+        </div>
+      </form>
+    </div>
+    {% endif %}
+
+    {% if state.status == Status.STALE %}
+    <div class="notice">
+      <h3>Needs rework</h3>
+      <p>A section this one was built on has changed since it was completed.</p>
+    </div>
+    {% endif %}
+
+    {% if state.blocked_by %}
+    <div class="notice">
+      <h3>Blocked</h3>
+      <p>Waiting on
+        {% for key in state.blocked_by %}<strong>{{ spec.section(key).title }}</strong>
+        {%- if not loop.last %}, {% endif %}{% endfor %}.
+        You can still write here, but the guided draft needs those first.</p>
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <div class="block-head">
+        <h2>{{ section.title }}</h2>
+        <span class="pill {{ state.status }}">{{ state.status|replace('_', ' ') }}</span>
+      </div>
+      {% if section.description %}<p class="lead">{{ section.description }}</p>{% endif %}
+      {% if section.guidance %}<p class="hint">{{ section.guidance }}</p>{% endif %}
+    </div>
+
+    {% if questions %}
+    <div class="card">
+      <h3>Questions{% if state.missing_answers %} · {{ state.missing_answers|length }} open{% endif %}</h3>
+      <p class="lead">Answered here, these become the material the draft is written from.</p>
+      <form hx-post="/documents/{{ document.id }}/sections/{{ section.key }}/answers"
+            hx-target="#workspace" hx-swap="outerHTML">
+        {% for q in questions %}
+        <div class="field">
+          <label for="q-{{ q.question.key }}">
+            {{ q.question.prompt }}
+            {%- if q.question.required %} <span class="s-needs_input">*</span>{% endif %}
+          </label>
+          {% if q.question.hint %}<div class="hint">{{ q.question.hint }}</div>{% endif %}
+          {% if q.question.type == 'choice' %}
+            <select id="q-{{ q.question.key }}" name="q.{{ q.question.key }}">
+              <option value="">—</option>
+              {% for option in q.question.options %}
+              <option value="{{ option }}" {{ 'selected' if q.text == option }}>
+                {{ option|replace('_', ' ') }}</option>
+              {% endfor %}
+            </select>
+          {% elif q.question.type == 'boolean' %}
+            <select id="q-{{ q.question.key }}" name="q.{{ q.question.key }}">
+              <option value="">—</option>
+              <option value="true" {{ 'selected' if q.text == 'true' }}>Yes</option>
+              <option value="false" {{ 'selected' if q.text == 'false' }}>No</option>
+            </select>
+          {% elif q.question.type == 'date' %}
+            <input type="date" id="q-{{ q.question.key }}" name="q.{{ q.question.key }}" value="{{ q.text }}">
+          {% elif q.question.type == 'number' %}
+            <input type="number" step="any" id="q-{{ q.question.key }}" name="q.{{ q.question.key }}" value="{{ q.text }}">
+          {% else %}
+            <textarea id="q-{{ q.question.key }}" name="q.{{ q.question.key }}" rows="2">{{ q.text }}</textarea>
+          {% endif %}
+        </div>
+        {% endfor %}
+        <button type="submit">Save answers</button>
+      </form>
+    </div>
+    {% endif %}
+
+    {% if llm_errors %}
+    <div class="notice blocker">
+      <h3>The assistant could not be reached</h3>
+      {% for e in llm_errors %}<p>{{ e }}</p>{% endfor %}
+    </div>
+    {% endif %}
+
+    {% if gaps %}
+    <div class="notice">
+      <h3>The assistant needs {{ gaps|length }} thing(s) from you</h3>
+      <p>It would not write these without being told. Answer above, then draft again.</p>
+      {% for g in gaps %}
+      <div class="check"><span class="mark">?</span>
+        <span>{{ g.question }}<span class="where">{{ g.block }} — {{ g.why }}</span></span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <div class="block-head">
+        <h3 style="margin:0">Content</h3>
+        <form hx-post="/documents/{{ document.id }}/sections/{{ section.key }}/draft"
+              hx-target="#workspace" hx-swap="outerHTML"
+              hx-indicator="#drafting" style="margin-left:auto">
+          <button type="submit" {{ 'disabled' if not state.can_draft }}>
+            Draft the empty blocks
+          </button>
+        </form>
+      </div>
+      {% if not state.can_draft %}
+      <p class="hint">
+        {%- if state.blocked_by %}Drafting needs the sections above completed first.
+        {%- else %}Answer the required questions first — the draft is written from them.{% endif -%}
+      </p>
+      {% else %}
+      <p class="hint" id="drafting" style="display:none">Asking the assistant…</p>
+      {% endif %}
+
+      {% for b in blocks %}
+      <div class="block">
+        {% for p in b.proposals %}
+        <div class="notice proposal">
+          <h3>Proposed · confidence {{ '%.0f'|format((p.confidence or 0) * 100) }}%</h3>
+          <pre style="white-space:pre-wrap;margin:0 0 10px;font:inherit">{{ b.preview(p) }}</pre>
+          {% if p.rationale %}<div class="hint">Still unresolved: {{ p.rationale }}</div>{% endif %}
+          <div class="actions">
+            <form hx-post="/proposals/{{ p.id }}/accept" hx-target="#workspace" hx-swap="outerHTML">
+              <input type="hidden" name="document_id" value="{{ document.id }}">
+              <input type="hidden" name="section" value="{{ section.key }}">
+              <button class="primary" type="submit">Accept</button>
+            </form>
+            <form hx-post="/proposals/{{ p.id }}/reject" hx-target="#workspace" hx-swap="outerHTML">
+              <input type="hidden" name="document_id" value="{{ document.id }}">
+              <input type="hidden" name="section" value="{{ section.key }}">
+              <button type="submit">Decline</button>
+            </form>
+            <span class="why">Accept, then edit below — nothing is written until you do.</span>
+          </div>
+        </div>
+        {% endfor %}
+
+        <form hx-post="/documents/{{ document.id }}/sections/{{ section.key }}/blocks/{{ b.block.key }}"
+              hx-target="#workspace" hx-swap="outerHTML">
+          <div class="block-head">
+            <label>{{ b.block.label }}</label>
+            <span class="kind">{{ b.block.kind }}</span>
+          </div>
+          {% if b.block.hint %}<div class="hint">{{ b.block.hint }}</div>{% endif %}
+          {% include "partials/block_" + b.block.kind|string + ".html" ignore missing %}
+
+          {% for f in b.failures %}
+          <div class="check {{ f.severity }}">
+            <span class="mark">✗</span><span>{{ f.reason }}</span>
+          </div>
+          {% endfor %}
+
+          <div class="actions"><button type="submit">Save {{ b.block.label|lower }}</button></div>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+
+    {% if decided %}
+    <div class="card">
+      <details>
+        <summary style="cursor:pointer;color:var(--muted);font-size:13px">
+          Decisions ({{ decided|length }})
+        </summary>
+        <ul class="plain" style="margin-top:12px">
+          {% for block_key, p in decided %}
+          <li>
+            <span class="dot {{ 's-needs_input' if p.status == 'rejected' else 's-complete' }}">
+              {{ '✗' if p.status == 'rejected' else '✓' }}</span>
+            <span>
+              <strong>{{ p.status|replace('_', ' ') }}</strong> · {{ block_key }}
+              <span class="where">{{ p.proposed_value['v']|string|truncate(160) }}</span>
+            </span>
+            <span class="meta">
+              {{ p.decided_by or 'local' }} ·
+              {{ p.decided_at.strftime('%Y-%m-%d %H:%M') if p.decided_at else '' }}
+            </span>
+          </li>
+          {% endfor %}
+        </ul>
+      </details>
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <h3>Checks</h3>
+      {% if state.results %}
+        {% for r in state.results %}
+        <div class="check {{ r.severity if r.failed else 'pass' }}">
+          <span class="mark">{{ '✗' if r.failed else ('·' if r.outcome == 'not_applicable' else '✓') }}</span>
+          <span>{{ r.check_id }}{% if r.reason %} — {{ r.reason }}{% endif %}</span>
+        </div>
+        {% endfor %}
+      {% else %}
+      <p class="lead">No deterministic checks on this section.</p>
+      {% endif %}
+
+      <div class="actions">
+        {% if state.status == Status.COMPLETE %}
+        <button hx-post="/documents/{{ document.id }}/sections/{{ section.key }}/reopen"
+                hx-target="#workspace" hx-swap="outerHTML">Reopen</button>
+        <span class="why">Completed. Revisions are kept either way.</span>
+        {% else %}
+        <button class="primary"
+                hx-post="/documents/{{ document.id }}/sections/{{ section.key }}/complete"
+                hx-target="#workspace" hx-swap="outerHTML"
+                {{ 'disabled' if not state.can_complete }}>Mark complete</button>
+        {% if not state.can_complete %}
+        <span class="why">
+          {%- if state.blockers %}{{ state.blockers|length }} blocking check(s) still failing.
+          {%- else %}Nothing supplied yet.{% endif -%}
+        </span>
+        {% endif %}
+        {% endif %}
+        <a href="/documents/{{ document.id }}" style="margin-left:auto;font-size:13px">document overview →</a>
+      </div>
+    </div>
+  </div>
+</div>

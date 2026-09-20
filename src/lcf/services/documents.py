@@ -174,9 +174,23 @@ async def set_block(
     return EditResult(revision.seq, dependents)
 
 
+async def recent(session: AsyncSession, limit: int = 30) -> list[Document]:
+    return list(
+        await session.scalars(select(Document).order_by(Document.created_at.desc()).limit(limit))
+    )
+
+
 async def mark_complete(session: AsyncSession, document_id: UUID, section_key: str) -> None:
     section = await _section(session, document_id, section_key)
     section.completed_at = datetime.now(UTC)
+    section.stale = False
+    await session.flush()
+
+
+async def reopen(session: AsyncSession, document_id: UUID, section_key: str) -> None:
+    """Withdraw a completion. The revisions stay — nothing is ever unwritten."""
+    section = await _section(session, document_id, section_key)
+    section.completed_at = None
     section.stale = False
     await session.flush()
 

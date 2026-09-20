@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+  <h2>Start a document</h2>
+  <p class="lead">Pick a document type. Its rules, questions and quality criteria come with it.</p>
+  {% if doc_types %}
+  <form method="post" action="/documents">
+    <div class="field">
+      <label for="doc_type">Document type</label>
+      <select id="doc_type" name="doc_type">
+        {% for t in doc_types %}<option value="{{ t.key }}">{{ t.title }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="title">Title</label>
+      <input type="text" id="title" name="title" placeholder="What is this document about?">
+    </div>
+    <button class="primary" type="submit">Create</button>
+  </form>
+  {% else %}
+  <p class="lead">No document types published yet. Publish one first:</p>
+  <p><code>lcf publish docs/examples/4d-report.yaml</code></p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3>Documents</h3>
+  {% if documents %}
+  <ul class="plain">
+    {% for d in documents %}
+    <li>
+      <a href="/documents/{{ d.id }}">{{ d.title }}</a>
+      <span class="meta">{{ d.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="lead">Nothing yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

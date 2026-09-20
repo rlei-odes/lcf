@@ -29,9 +29,11 @@ Early. Build-order steps 1–3 of [ARCHITECTURE §14](docs/ARCHITECTURE.md) are 
 | ✓ | Section state machine, dependency gating, staleness |
 | ✓ | Service layer: publish, create, answer, edit, assess, blame |
 | ✓ | Object storage bucket provisioning |
-| | Web UI (FastAPI + Jinja + HTMX) |
-| | LLM integration, proposals, the editor island |
-| | docx / Markdown / JSON export |
+| ✓ | Web UI (FastAPI + Jinja + HTMX), paste-from-spreadsheet tables |
+| ✓ | LLM drafting: schema-constrained proposals, gaps, accept/decline, decision log |
+| | Background jobs and progress streaming — drafting currently blocks the request |
+| | Span-level suggestions and the TipTap editor island |
+| | Evidence intake (paste + images), docx / Markdown / JSON export |
 
 **The milestone that matters:** a 4D report can be driven from empty to a clean quality gate with
 hand-written content and no model involved. If that ever stops working, the deterministic core is
@@ -84,7 +86,8 @@ lcf lint docs/examples/8d-report.yaml        # validate a spec
 lcf roundtrip docs/examples/4d-report.yaml   # YAML survives a round-trip
 lcf publish docs/examples/4d-report.yaml     # publish a version
 lcf buckets                                  # create missing buckets
-lcf walkthrough                              # drive a 4D end to end
+lcf walkthrough                              # drive a 4D end to end, no LLM
+lcf serve                                    # the web application
 ```
 
 ## Example document types

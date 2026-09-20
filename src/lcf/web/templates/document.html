@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}{{ document.title }}{% endblock %}
+{% block subtitle %}{{ spec.title }} v{{ spec.version }}{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h2>{{ document.title }}</h2>
+  <p class="lead">{{ spec.description }}</p>
+
+  <ul class="plain">
+    {% for s in states %}
+    {% set section = spec.section(s.key) %}
+    <li>
+      <span class="dot s-{{ s.status }}">
+        {%- if s.status == Status.COMPLETE %}✓{% elif s.status == Status.BLOCKED %}⊘
+        {%- elif s.status == Status.NEEDS_INPUT %}!{% elif s.status == Status.STALE %}~
+        {%- elif s.status == Status.DRAFTED %}◐{% else %}·{% endif -%}
+      </span>
+      {% if s.status == Status.BLOCKED %}
+        <span>{{ section.title }}</span>
+      {% else %}
+        <a href="/documents/{{ document.id }}/sections/{{ s.key }}">{{ section.title }}</a>
+      {% endif %}
+      <span class="meta">
+        {%- if s.blocked_by %}waiting on {{ s.blocked_by|join(', ') }}
+        {%- elif s.missing_answers %}{{ s.missing_answers|length }} question(s) open
+        {%- elif s.blockers %}{{ s.blockers|length }} check(s) failing
+        {%- else %}{{ s.status }}{% endif -%}
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+
+<div class="card">
+  <h3>Quality gate</h3>
+  {% include "partials/gate.html" %}
+</div>
+{% endblock %}

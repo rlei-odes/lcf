@@ -1,7 +1,9 @@
 from pathlib import Path
 
 import pytest
+from sqlalchemy import select
 
+from lcf.core.db import session
 from lcf.engine.view import DocumentView
 from lcf.spec import loader
 from lcf.spec.models import DocTypeSpec
@@ -95,3 +97,19 @@ def tiny_spec(**overrides) -> DocTypeSpec:
     }
     data.update(overrides)
     return DocTypeSpec.model_validate(data)
+
+
+async def _database_available() -> bool:
+    try:
+        async with session() as s:
+            await s.execute(select(1))
+        return True
+    except Exception:
+        return False
+
+
+@pytest.fixture
+async def db():
+    """Skip rather than fail when the database from .env is unreachable."""
+    if not await _database_available():
+        pytest.skip("database from .env not reachable")

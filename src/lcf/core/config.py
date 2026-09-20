@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     llm_api_key: str = "not-needed"
     llm_model: str = ""
     llm_max_images_per_call: int = 4
+    # A ceiling, not a target. Without it a constrained array schema lets the
+    # model emit rows until it exhausts the context — minutes of generation for
+    # a table that should have four entries. Set generously: a JSON grammar also
+    # permits unlimited whitespace, and truncating mid-object costs a full retry.
+    llm_max_tokens: int = 4096
     llm_context_window: int = 32768
     llm_temperature: float = 0.2
     llm_timeout_s: int = 180
