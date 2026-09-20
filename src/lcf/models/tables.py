@@ -234,6 +234,10 @@ class Export(Base):
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     gate_passed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     blockers: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Recorded separately because "shipped past 9 known problems" and "shipped
+    # without running the checks" are different admissions, and the record should
+    # say which one this was.
+    unchecked: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     override_reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _created()
 

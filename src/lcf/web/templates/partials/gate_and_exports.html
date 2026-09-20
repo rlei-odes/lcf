@@ -1,0 +1,9 @@
+{# What an assessment returns when it finishes.
+
+   The gate card replaces #gate, and the export card rides along out of band: a
+   finished check changes what export is allowed to do, so leaving it showing the
+   old count would state the opposite of the truth. #}
+{% include "partials/gate_card.html" %}
+{% with oob = True %}
+  {% include "partials/export_card.html" %}
+{% endwith %}

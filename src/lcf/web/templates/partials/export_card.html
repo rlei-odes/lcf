@@ -1,59 +1,52 @@
 {# Export. The three formats come off one representation, so none is a
    second-class citizen — JSON is the handover to whatever comes next, Markdown is
-   for reading and diffing, docx is what goes to the customer. #}
-<div class="card" id="exports">
+   for reading and diffing, docx is what goes to the customer.
+
+   The override field is rendered inline when the gate has not passed, rather than
+   after a refused attempt. Downloads have to be ordinary form posts (a file
+   cannot come back through an htmx swap), so a refusal would otherwise navigate
+   the browser to a bare fragment with no page around it. #}
+<div class="card" id="exports" {% if oob %}hx-swap-oob="true"{% endif %}>
   <h3>Export</h3>
 
-  {% if blocked %}
-  <div class="notice blocker">
-    <h3>Blocked by the quality gate</h3>
-    <p>
-      {{ blocked.summary }}.
-      {% if blocked.unchecked and not blocked.blockers %}
-      Run the full check above first — a document nobody checked is not a document
-      that passed.
-      {% endif %}
-      Fix it, or export anyway and say why: the reason is recorded against the
-      export permanently.
-    </p>
-    <form hx-post="/documents/{{ document_id }}/export/{{ attempted }}"
-          hx-target="#exports" hx-swap="outerHTML" hx-disabled-elt="find button">
-      <div class="field">
-        <label for="override">Why is this going out with unresolved problems?</label>
-        <input type="text" id="override" name="override_reason" required
-               placeholder="e.g. customer deadline; D6 validation follows next week">
-      </div>
-      <div class="actions">
-        <button class="primary" type="submit">Export anyway</button>
-        <span class="why">This will be attached to the export record.</span>
-      </div>
-    </form>
-  </div>
-  {% else %}
+  {% set blocked = not report.passed %}
   <p class="lead">
     {%- if report.passed -%}
-      Everything checked passes.
+      Everything checked passes. This document is ready to go out.
+    {%- elif report.blockers and report.not_evaluated -%}
+      {{ report.blockers|length }} blocking problem(s) unresolved, and
+      {{ report.not_evaluated|length }} check(s) have never been run.
     {%- elif report.blockers -%}
-      {{ report.blockers|length }} blocking problem(s) — exporting will ask you to justify it.
-    {%- elif report.not_evaluated -%}
-      {{ report.not_evaluated|length }} check(s) have not been run — exporting will ask you
-      to justify it.
+      {{ report.blockers|length }} blocking problem(s) unresolved.
     {%- else -%}
-      No blocking problems.
+      {{ report.not_evaluated|length }} check(s) have never been run — run the full
+      check above first. A document nobody checked is not a document that passed.
     {%- endif -%}
   </p>
-  {% endif %}
 
-  <div class="actions">
-    {% for fmt, label in [('docx', 'Word (.docx)'), ('markdown', 'Markdown'), ('json', 'JSON')] %}
-    <form method="post" action="/documents/{{ document_id }}/export/{{ fmt }}">
-      <button class="{{ 'primary' if fmt == 'docx' }}" type="submit">{{ label }}</button>
-    </form>
-    {% endfor %}
-  </div>
+  <form method="post" action="/documents/{{ document_id }}/export/docx" id="export-form">
+    {% if blocked %}
+    <div class="notice blocker">
+      <label for="override">Exporting anyway? Say why.</label>
+      <div class="hint">
+        Recorded against the export permanently, so anyone reading it later knows
+        what was outstanding when it went out.
+      </div>
+      <input type="text" id="override" name="override_reason" required
+             placeholder="e.g. customer deadline; D6 validation follows next week">
+    </div>
+    {% endif %}
+
+    <div class="actions">
+      {% for fmt, label in [('docx', 'Word (.docx)'), ('markdown', 'Markdown'), ('json', 'JSON')] %}
+      <button class="{{ 'primary' if fmt == 'docx' }}" type="submit"
+              formaction="/documents/{{ document_id }}/export/{{ fmt }}">{{ label }}</button>
+      {% endfor %}
+    </div>
+  </form>
 
   {% if history %}
-  <details style="margin-top:16px">
+  <details style="margin-top:18px">
     <summary style="cursor:pointer;color:var(--muted);font-size:13px">
       Previous exports ({{ history|length }})
     </summary>
@@ -66,7 +59,15 @@
           {% if e.uri %}<a href="/exports/{{ e.id }}">{{ e.filename }}</a>
           {% else %}{{ e.filename }}{% endif %}
           {% if e.override_reason %}
-          <span class="where">exported past {{ e.blockers }} blocker(s): {{ e.override_reason }}</span>
+          <span class="where">
+            {%- if e.blockers and e.unchecked -%}
+              past {{ e.blockers }} blocking problem(s) and {{ e.unchecked }} unrun check(s)
+            {%- elif e.blockers -%}
+              past {{ e.blockers }} blocking problem(s)
+            {%- else -%}
+              before the checks were run
+            {%- endif %} — {{ e.override_reason }}
+          </span>
           {% endif %}
         </span>
         <span class="meta">{{ e.created_at|localtime }}</span>

@@ -127,6 +127,7 @@ async def create(
         size_bytes=len(rendered.data),
         gate_passed=report.passed,
         blockers=blockers,
+        unchecked=unchecked,
         override_reason=reason or None,
     )
     session.add(export)

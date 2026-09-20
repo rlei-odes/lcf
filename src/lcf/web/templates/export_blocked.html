@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Export blocked — {{ document.title }}{% endblock %}
+{% block subtitle %}<a href="/documents/{{ document.id }}">{{ document.title }}</a>{% endblock %}
+
+{# The card offers the override field inline, so reaching this page means the
+   document changed between the page being drawn and the button being pressed.
+   Rare, but it must still be a page and not a bare fragment. #}
+{% block content %}
+<div class="card">
+  <div class="notice blocker">
+    <h3>Export blocked</h3>
+    <p>{{ blocked.summary }}.</p>
+    <p class="hint">
+      The document changed since this page was drawn. Go back, and the export
+      panel will ask for a reason if you still want it to go out.
+    </p>
+  </div>
+  <div class="actions">
+    <a href="/documents/{{ document.id }}"><button class="primary" type="button">
+      Back to the document</button></a>
+  </div>
+</div>
+{% endblock %}

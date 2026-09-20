@@ -334,3 +334,69 @@ async def _settled(job_id, timeout=10.0):
             return job
         await asyncio.sleep(0.05)
     raise AssertionError("job did not finish in time")
+
+
+def _fill_from_sample(client, location: str, sample_4d) -> None:
+    for key, supplied in sample_4d["sections"].items():
+        for block_key, value in (supplied.get("blocks") or {}).items():
+            if block_key == "photos":
+                continue
+            payload = _as_form(block_key, value)
+            client.post(f"{location}/sections/{key}/blocks/{block_key}", data=payload)
+
+
+async def test_finishing_a_check_refreshes_the_export_panel(published_4d, client):
+    """The gate and export cards disagree unless one response updates both."""
+    location = _new_document(client, published_4d)
+    document_id = location.rsplit("/", 1)[1]
+
+    response = client.get(f"/documents/{document_id}/gate")
+    assert response.status_code == 200
+    assert 'id="gate"' in response.text
+    assert 'id="exports"' in response.text, "the export card rides along"
+    assert 'hx-swap-oob="true"' in response.text, "out of band, since it is elsewhere on the page"
+
+
+async def test_the_override_field_is_offered_before_the_attempt(published_4d, client):
+    """Downloads must be plain form posts, so a refusal would navigate the browser
+    to a bare fragment. The card asks for the reason up front instead."""
+    location = _new_document(client, published_4d)
+    page_html = client.get(location).text
+
+    assert 'name="override_reason"' in page_html
+    assert "Exporting anyway? Say why." in page_html
+
+
+async def test_a_refused_export_is_still_a_page(published_4d, client):
+    """The edge case — the document changed between render and submit."""
+    location = _new_document(client, published_4d)
+    response = client.post(f"{location}/export/docx", data={"override_reason": ""})
+
+    assert response.status_code == 200
+    assert "<!doctype html>" in response.text.lower(), "a page, not a bare fragment"
+    assert "/static/app.css" in response.text, "with styling"
+    assert "Export blocked" in response.text
+
+
+async def test_a_clean_export_downloads_a_file(published_4d, client, sample_4d):
+    location = _new_document(client, published_4d)
+    _fill_from_sample(client, location, sample_4d)
+
+    response = client.post(f"{location}/export/markdown", data={"override_reason": "demo"})
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/markdown")
+    assert "attachment;" in response.headers["content-disposition"]
+    assert response.content.startswith(b"# ")
+
+
+async def test_the_export_record_distinguishes_unrun_from_failing(published_4d, client, sample_4d):
+    """ "Shipped past 9 known problems" and "shipped without checking" are
+    different admissions."""
+    location = _new_document(client, published_4d)
+    _fill_from_sample(client, location, sample_4d)
+
+    client.post(f"{location}/export/json", data={"override_reason": "deadline"})
+    history_html = client.get(location).text
+
+    assert "before the checks were run" in history_html
+    assert "past 0 blocking problem(s)" not in history_html, "nonsense wording"
