@@ -13,14 +13,14 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from lcf.core.db import session
 from lcf.engine.state import Status, document_state, ordered_sections, section_state
 from lcf.models.tables import Document
-from lcf.services import assessment, doc_types, documents, jobs, proposals
+from lcf.services import assessment, doc_types, documents, exports, jobs, proposals
 from lcf.web.forms import parse_block_value, parse_pasted_table
 from lcf.web.presenters import section_panel_context
 
@@ -76,6 +76,7 @@ async def document_overview(request: Request, document_id: UUID):
         # Reads the last full assessment; never starts one. Opening a document
         # must not cost a dozen model calls.
         report = await assessment.report_for(s, document_id)
+        past_exports = await exports.history(s, document_id)
     running = await jobs.latest_for(document_id, "assess")
     return page(
         request,
@@ -84,6 +85,7 @@ async def document_overview(request: Request, document_id: UUID):
         spec=spec,
         states=document_state(view),
         report=report,
+        history=past_exports,
         running_job=running if running is not None and not running.done else None,
     )
 
@@ -108,6 +110,64 @@ async def document_gate(request: Request, document_id: UUID):
     async with session() as s:
         report = await assessment.report_for(s, document_id)
     return page(request, "partials/gate_card.html", report=report, document_id=document_id)
+
+
+@app.post("/documents/{document_id}/export/{fmt}")
+async def export_document(
+    request: Request, document_id: UUID, fmt: str, override_reason: str = Form("")
+):
+    """Produce the deliverable, or refuse and say why."""
+    async with session() as s:
+        try:
+            export, rendered = await exports.create(
+                s, document_id, fmt, override_reason=override_reason
+            )
+        except exports.GateBlocked as blocked:
+            report = await assessment.report_for(s, document_id)
+            return page(
+                request,
+                "partials/export_card.html",
+                document_id=document_id,
+                report=report,
+                history=await exports.history(s, document_id),
+                blocked=blocked,
+                attempted=fmt,
+                status_code=200,
+            )
+    return Response(
+        content=rendered.data,
+        media_type=rendered.content_type,
+        headers={"Content-Disposition": f'attachment; filename="{rendered.filename}"'},
+    )
+
+
+@app.get("/documents/{document_id}/exports", response_class=HTMLResponse)
+async def export_card(request: Request, document_id: UUID):
+    async with session() as s:
+        report = await assessment.report_for(s, document_id)
+        past = await exports.history(s, document_id)
+    return page(
+        request,
+        "partials/export_card.html",
+        document_id=document_id,
+        report=report,
+        history=past,
+    )
+
+
+@app.get("/exports/{export_id}")
+async def download_export(export_id: UUID):
+    """Re-download something already produced, from object storage."""
+    async with session() as s:
+        export = await exports.get(s, export_id)
+    data = exports.fetch(export)
+    if data is None:
+        return HTMLResponse("This export is no longer stored.", status_code=404)
+    return Response(
+        content=data,
+        media_type=exports.CONTENT_TYPES.get(export.format, "application/octet-stream"),
+        headers={"Content-Disposition": f'attachment; filename="{export.filename}"'},
+    )
 
 
 @app.get("/documents/{document_id}/sections/{key}", response_class=HTMLResponse)

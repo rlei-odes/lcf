@@ -544,6 +544,17 @@ the architecture has failed.
 9. Export: JSON, then Markdown, then docx with template linting.
 10. Spec editor UI for the rule builder.
 
+Steps 1–5 and 7–9 are done; drafting and assessment both run as background jobs. What remains is
+evidence intake (step 7's paste-and-distribute), the editor island (step 6) and the spec editor
+(step 10).
+
+**docx has two paths**, because a rule builder should not have to produce a Word template before
+anyone can get a document out, and should be able to when branding matters. `render_plain` builds
+a clean document directly — real heading styles, real Word tables, no setup. `render_with_template`
+merges the same content into the rule builder's `.docx`, where logo, fonts and CI colours already
+live. Template tags are linted against spec keys at upload, including tags in table cells and
+headers, so a template naming a renamed section fails then rather than at export time.
+
 Step 3 is the checkpoint that matters. If a 4D cannot be walked from start to finish with
 hand-typed content and no model involved, something was built in the wrong order — and every later
 step will be debugged through an LLM that makes everything non-deterministic.

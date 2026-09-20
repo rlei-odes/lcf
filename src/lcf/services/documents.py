@@ -88,6 +88,7 @@ async def view(session: AsyncSession, document_id: UUID) -> DocumentView:
     answers: dict[str, dict[str, Any]] = {}
     completed: set[str] = set()
     stale: set[str] = set()
+    provenance: dict[str, dict[str, Any]] = {}
 
     for section in document.sections:
         if section.completed_at is not None:
@@ -98,10 +99,16 @@ async def view(session: AsyncSession, document_id: UUID) -> DocumentView:
             latest = _latest(block)
             if latest is not None:
                 content.setdefault(section.key, {})[block.key] = latest.value["v"]
+                provenance.setdefault(section.key, {})[block.key] = {
+                    "author": latest.author,
+                    "actor": latest.actor,
+                    "at": latest.created_at,
+                    "revisions": len(block.revisions),
+                }
         for answer in section.answers:
             answers.setdefault(section.key, {})[answer.question_key] = answer.value["v"]
 
-    return DocumentView(spec, content, answers, completed, stale)
+    return DocumentView(spec, content, answers, completed, stale, provenance)
 
 
 async def set_answers(

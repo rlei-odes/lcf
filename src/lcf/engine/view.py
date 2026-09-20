@@ -20,6 +20,17 @@ class DocumentView:
     answers: dict[str, dict[str, Any]] = field(default_factory=dict)
     completed: set[str] = field(default_factory=set)
     stale: set[str] = field(default_factory=set)
+    # section_key -> block_key -> {author, actor, at, revisions}. Carried here so
+    # exports can state who wrote each block without the renderers touching a
+    # database.
+    provenance: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    def block_provenance(self, section_key: str, block_key: str) -> dict[str, Any]:
+        return self.provenance.get(section_key, {}).get(block_key, {})
+
+    @property
+    def title(self) -> str:
+        return self.spec.title
 
     def block_value(self, section_key: str, block_key: str) -> Any:
         return self.content.get(section_key, {}).get(block_key)

@@ -1,0 +1,78 @@
+{# Export. The three formats come off one representation, so none is a
+   second-class citizen — JSON is the handover to whatever comes next, Markdown is
+   for reading and diffing, docx is what goes to the customer. #}
+<div class="card" id="exports">
+  <h3>Export</h3>
+
+  {% if blocked %}
+  <div class="notice blocker">
+    <h3>Blocked by the quality gate</h3>
+    <p>
+      {{ blocked.summary }}.
+      {% if blocked.unchecked and not blocked.blockers %}
+      Run the full check above first — a document nobody checked is not a document
+      that passed.
+      {% endif %}
+      Fix it, or export anyway and say why: the reason is recorded against the
+      export permanently.
+    </p>
+    <form hx-post="/documents/{{ document_id }}/export/{{ attempted }}"
+          hx-target="#exports" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <div class="field">
+        <label for="override">Why is this going out with unresolved problems?</label>
+        <input type="text" id="override" name="override_reason" required
+               placeholder="e.g. customer deadline; D6 validation follows next week">
+      </div>
+      <div class="actions">
+        <button class="primary" type="submit">Export anyway</button>
+        <span class="why">This will be attached to the export record.</span>
+      </div>
+    </form>
+  </div>
+  {% else %}
+  <p class="lead">
+    {%- if report.passed -%}
+      Everything checked passes.
+    {%- elif report.blockers -%}
+      {{ report.blockers|length }} blocking problem(s) — exporting will ask you to justify it.
+    {%- elif report.not_evaluated -%}
+      {{ report.not_evaluated|length }} check(s) have not been run — exporting will ask you
+      to justify it.
+    {%- else -%}
+      No blocking problems.
+    {%- endif -%}
+  </p>
+  {% endif %}
+
+  <div class="actions">
+    {% for fmt, label in [('docx', 'Word (.docx)'), ('markdown', 'Markdown'), ('json', 'JSON')] %}
+    <form method="post" action="/documents/{{ document_id }}/export/{{ fmt }}">
+      <button class="{{ 'primary' if fmt == 'docx' }}" type="submit">{{ label }}</button>
+    </form>
+    {% endfor %}
+  </div>
+
+  {% if history %}
+  <details style="margin-top:16px">
+    <summary style="cursor:pointer;color:var(--muted);font-size:13px">
+      Previous exports ({{ history|length }})
+    </summary>
+    <ul class="plain" style="margin-top:12px">
+      {% for e in history %}
+      <li>
+        <span class="dot {{ 's-complete' if e.gate_passed else 's-needs_input' }}">
+          {{ '✓' if e.gate_passed else '!' }}</span>
+        <span>
+          {% if e.uri %}<a href="/exports/{{ e.id }}">{{ e.filename }}</a>
+          {% else %}{{ e.filename }}{% endif %}
+          {% if e.override_reason %}
+          <span class="where">exported past {{ e.blockers }} blocker(s): {{ e.override_reason }}</span>
+          {% endif %}
+        </span>
+        <span class="meta">{{ e.created_at|localtime }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+</div>

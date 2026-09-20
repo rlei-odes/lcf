@@ -33,8 +33,10 @@ Early. Build-order steps 1–3 of [ARCHITECTURE §14](docs/ARCHITECTURE.md) are 
 | ✓ | LLM drafting: schema-constrained proposals, gaps, accept/decline, decision log |
 | ✓ | Background jobs with live progress over SSE — drafting no longer blocks the request |
 | ✓ | The full quality gate: judged checks, quote-backed, run as a job |
+| ✓ | Export: JSON, Markdown and docx, gated and recorded |
+| | Evidence intake — paste a blob of notes, distributed across the sections |
 | | Span-level suggestions and the TipTap editor island |
-| | Evidence intake (paste + images), docx / Markdown / JSON export |
+| | Spec editor UI for the rule builder |
 
 **The milestone that matters:** a 4D report can be driven from empty to a clean quality gate with
 hand-written content and no model involved. If that ever stops working, the deterministic core is
@@ -98,6 +100,10 @@ lcf serve                                    # the web application
 | [4d-report.yaml](docs/examples/4d-report.yaml) | The demo — and a verified prefix of the 8D |
 | [product-specification.yaml](docs/examples/product-specification.yaml) | The generality proof |
 | [8d-report.yaml](docs/examples/8d-report.yaml) | The stress test |
+
+## Licence
+
+MIT — see [LICENSE](LICENSE).
 
 ## Tests
 

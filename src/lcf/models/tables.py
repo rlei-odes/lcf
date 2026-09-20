@@ -215,6 +215,29 @@ class Job(Base):
         return int(100 * self.step / self.total) if self.total else 0
 
 
+class Export(Base):
+    """A document that left the building.
+
+    `override_reason` is the record of someone exporting past a failing gate.
+    People will need to do that — a report goes out on a deadline with a check
+    still red — and the useful thing is to record the decision rather than
+    pretend it will not happen (DESIGN §7).
+    """
+
+    __tablename__ = "export"
+
+    id: Mapped[UUID] = _pk()
+    document_id: Mapped[UUID] = mapped_column(ForeignKey("document.id", ondelete="CASCADE"))
+    format: Mapped[str] = mapped_column(String(20), nullable=False)
+    uri: Mapped[str | None] = mapped_column(Text)
+    filename: Mapped[str] = mapped_column(String(300), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    gate_passed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    blockers: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    override_reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created()
+
+
 class Assessment(Base):
     __tablename__ = "assessment"
 
