@@ -31,7 +31,7 @@
     {% for d in documents %}
     <li>
       <a href="/documents/{{ d.id }}">{{ d.title }}</a>
-      <span class="meta">{{ d.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+      <span class="meta">{{ d.created_at|localtime }}</span>
     </li>
     {% endfor %}
   </ul>

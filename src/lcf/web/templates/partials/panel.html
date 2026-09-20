@@ -130,7 +130,9 @@
     {# A job started here, or still running from an earlier visit. #}
     <div id="drafting-slot">
       {% if running_job %}
-        {% with job = running_job, document_id = document.id, section_key = section.key %}
+        {% with job = running_job,
+                done_url = "/documents/" ~ document.id ~ "/sections/" ~ section.key ~ "/panel?job=" ~ running_job.id,
+                done_target = "#workspace" %}
           {% include "partials/job.html" %}
         {% endwith %}
       {% endif %}
@@ -218,7 +220,7 @@
             </span>
             <span class="meta">
               {{ p.decided_by or 'local' }} ·
-              {{ p.decided_at.strftime('%Y-%m-%d %H:%M') if p.decided_at else '' }}
+              {{ p.decided_at|localtime }}
             </span>
           </li>
           {% endfor %}

@@ -322,9 +322,25 @@ LLM work is slow enough to need progress and cancellation, not slow enough to ne
   rewrite — that is when `SELECT … FOR UPDATE SKIP LOCKED` and `LISTEN/NOTIFY` become worth adding.
 - Each job opens **its own session**. It outlives the request that queued it and must not borrow
   that request's transaction.
-- Progress reaches the browser over **SSE**, consumed by `htmx-ext-sse`, so progress rendering
-  stays server-side HTML like everything else. The stream reads the job row on a short interval:
-  one query against a primary key, and it works identically once the worker is a separate process.
+- Progress reaches the browser by **polling**, once a second, in server-rendered HTML. The card
+  asks for itself again until the job finishes, then returns an element that loads the finished
+  region into place.
+
+**This replaces SSE, which was the original decision and failed in practice.** `htmx-ext-sse`
+wants the element carrying `hx-trigger="sse:done"` to be a *descendant* of the one carrying
+`sse-connect`; with both on one element the listener is registered before the source exists. The
+job completed correctly and the page sat on "Working…" indefinitely — and nothing on the server
+said anything was wrong.
+
+Two reasons polling is the better call here and not merely the working one:
+
+| | |
+|---|---|
+| **Verifiable** | The whole chain can be walked with `curl` — POST, each poll, the completion element, the final region. The SSE version could only be tested by opening a browser, which is how it shipped broken. |
+| **Cheap at this scale** | A 15-second job costs ~15 requests against a primary key. That is nothing, and it removes a vendored extension and a dependency. |
+
+A stuck spinner over finished work is the worst failure mode this feature has: it tells the user
+the opposite of the truth. Worth a duller mechanism.
 
 What this buys, measured: the draft request returns in **54 ms** instead of blocking for the
 length of the generation. The work continues if the browser goes away, and reopening the section

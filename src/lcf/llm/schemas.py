@@ -86,6 +86,66 @@ def block_value_schema(block: Block) -> dict[str, Any]:
     return {"type": "array", "items": {"type": "string"}, "maxItems": _ARRAY_CEILING}
 
 
+def mentions_schema(must_mention: list[str]) -> dict[str, Any]:
+    """A verdict on every required point, with the text that establishes it.
+
+    Deliberately not a bare list of failures. Asked only "what is missing?", the
+    model answers without having to look, and produces confident false negatives
+    against content that plainly contains the point. Requiring a **quotation** for
+    anything it calls established forces it to find the words or admit it cannot —
+    and the quote then goes into the report, so a person can check the judgement
+    instead of trusting it.
+
+    `point` is an `enum` of the requirement's own wording, so the answer maps back
+    onto the spec exactly, with no string matching and no invented points.
+    """
+    return {
+        "type": "object",
+        "properties": {
+            "points": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "point": {"type": "string", "enum": list(must_mention)},
+                        "established": {"type": "boolean"},
+                        "quote": {
+                            "type": "string",
+                            "description": (
+                                "The exact words from the content that establish this"
+                                " point, or an empty string if it is not established"
+                            ),
+                        },
+                    },
+                    "required": ["point", "established", "quote"],
+                    "additionalProperties": False,
+                },
+                "minItems": len(must_mention),
+                "maxItems": len(must_mention),
+                "description": "One entry for every required point, in the order given",
+            },
+            "confidence": {"type": "number"},
+        },
+        "required": ["points", "confidence"],
+        "additionalProperties": False,
+    }
+
+
+JUDGEMENT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "result": {"type": "string", "enum": ["pass", "fail", "not_applicable"]},
+        "reason": {
+            "type": "string",
+            "description": "Why, specifically. Name the part at fault on a failure.",
+        },
+        "confidence": {"type": "number"},
+    },
+    "required": ["result", "reason", "confidence"],
+    "additionalProperties": False,
+}
+
+
 def draft_response_schema(block: Block) -> dict[str, Any]:
     """The full response for a `draft_block` call.
 

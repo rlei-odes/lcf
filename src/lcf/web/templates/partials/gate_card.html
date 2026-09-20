@@ -1,0 +1,36 @@
+<div class="card" id="gate">
+  <div class="block-head">
+    <h3 style="margin:0">Quality gate</h3>
+    <form hx-post="/documents/{{ document_id }}/assess"
+          hx-target="#gate-job" hx-swap="innerHTML"
+          hx-disabled-elt="find button" style="margin-left:auto">
+      <button type="submit">
+        {{ 'Re-run the full check' if report.judged_at else 'Run the full check' }}
+      </button>
+    </form>
+  </div>
+
+  <p class="lead">
+    {%- if report.passed -%}
+      Everything checked passes. This document can be exported.
+    {%- elif report.not_evaluated -%}
+      {{ report.not_evaluated|length }} of {{ report.total }} checks need the assistant
+      and have not been run. Until they are, the gate cannot pass.
+    {%- elif report.blockers -%}
+      {{ report.blockers|length }} blocking problem(s) to resolve before export.
+    {%- else -%}
+      No blocking problems.
+    {%- endif -%}
+  </p>
+
+  <div id="gate-job"></div>
+
+  {% include "partials/gate.html" %}
+
+  {% if report.judged_at %}
+  <p class="hint" style="margin-top:12px">
+    Judged checks last run {{ report.judged_at|localtime }}. They
+    reflect the document as it was then — re-run after editing.
+  </p>
+  {% endif %}
+</div>

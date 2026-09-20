@@ -7,8 +7,7 @@ rather than letting the browser hold a second copy of the truth.
 Routes are a thin skin over `lcf.services`; no business rule lives here.
 """
 
-import asyncio
-from html import escape
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -17,7 +16,6 @@ from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sse_starlette.sse import EventSourceResponse
 
 from lcf.core.db import session
 from lcf.engine.state import Status, document_state, ordered_sections, section_state
@@ -29,6 +27,23 @@ from lcf.web.presenters import section_panel_context
 HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=str(HERE / "templates"))
 templates.env.globals["Status"] = Status
+
+
+def _localtime(value):
+    """Render a stored timestamp in the machine's own timezone.
+
+    Everything is stored timezone-aware in UTC. Printing that verbatim shows a
+    time the user did not experience — "last run 19:16" for something they ran at
+    21:16 — which reads as a bug in the thing being timestamped.
+    """
+    if value is None:
+        return ""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone().strftime("%Y-%m-%d %H:%M")
+
+
+templates.env.filters["localtime"] = _localtime
 
 app = FastAPI(title="Lancy Content Flow")
 app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
@@ -58,7 +73,10 @@ async def document_overview(request: Request, document_id: UUID):
     async with session() as s:
         document, spec = await documents.load(s, document_id)
         view = await documents.view(s, document_id)
-        _, report = await assessment.run(s, document_id)
+        # Reads the last full assessment; never starts one. Opening a document
+        # must not cost a dozen model calls.
+        report = await assessment.report_for(s, document_id)
+    running = await jobs.latest_for(document_id, "assess")
     return page(
         request,
         "document.html",
@@ -66,7 +84,30 @@ async def document_overview(request: Request, document_id: UUID):
         spec=spec,
         states=document_state(view),
         report=report,
+        running_job=running if running is not None and not running.done else None,
     )
+
+
+@app.post("/documents/{document_id}/assess", response_class=HTMLResponse)
+async def assess_document(request: Request, document_id: UUID):
+    """Run the full gate, judged checks included. Queued, like drafting."""
+    job = await jobs.enqueue("assess", document_id, "assess")
+    return page(
+        request,
+        "partials/job.html",
+        job=job,
+        done_url=f"/documents/{document_id}/gate",
+        done_target="#gate",
+        working_title="Checking the document",
+    )
+
+
+@app.get("/documents/{document_id}/gate", response_class=HTMLResponse)
+async def document_gate(request: Request, document_id: UUID):
+    """The gate card on its own, for swapping in when an assessment finishes."""
+    async with session() as s:
+        report = await assessment.report_for(s, document_id)
+    return page(request, "partials/gate_card.html", report=report, document_id=document_id)
 
 
 @app.get("/documents/{document_id}/sections/{key}", response_class=HTMLResponse)
@@ -139,37 +180,48 @@ async def draft_section(request: Request, document_id: UUID, key: str):
     a request open for the length of the generation.
     """
     job = await jobs.enqueue("draft_section", document_id, key)
-    return page(request, "partials/job.html", job=job, document_id=document_id, section_key=key)
+    return page(
+        request,
+        "partials/job.html",
+        job=job,
+        done_url=f"/documents/{document_id}/sections/{key}/panel?job={job.id}",
+        done_target="#workspace",
+    )
 
 
-@app.get("/jobs/{job_id}/events")
-async def job_events(job_id: UUID):
-    """Progress as server-sent events, until the job finishes."""
+@app.get("/jobs/{job_id}/card", response_class=HTMLResponse)
+async def job_card(request: Request, job_id: UUID, next: str = "/", target: str = "#workspace"):
+    """One poll of a running job.
 
-    async def stream():
-        while True:
-            job = await jobs.get(job_id)
-            if job is None:
-                yield {"event": "done", "data": "gone"}
-                return
-            yield {"event": "progress", "data": _progress_line(job)}
-            if job.done:
-                yield {"event": "done", "data": str(job.status)}
-                return
-            await asyncio.sleep(0.4)
+    Returns the progress card, which asks for itself again a second later, or —
+    once the job is done — an element that loads `next` into `target`.
+    """
+    job = await jobs.get(job_id)
+    if job is None:
+        return HTMLResponse("")
+    return page(
+        request,
+        "partials/job.html",
+        job=job,
+        done_url=_safe_path(next, "/"),
+        done_target=_safe_target(target),
+        working_title=_WORKING_TITLES.get(job.kind),
+    )
 
-    return EventSourceResponse(stream())
+
+_WORKING_TITLES = {
+    "assess": "Checking the document",
+    "draft_section": "The assistant is working",
+}
 
 
-def _progress_line(job) -> str:
-    """One line of HTML — SSE data must not carry raw newlines."""
-    if job.status == "failed":
-        return f'<span class="s-needs_input">Failed: {escape(job.error or "unknown")}</span>'
-    if job.status == "succeeded":
-        return '<span class="s-complete">Done</span>'
-    label = escape(job.message or "Working…")
-    counter = f"{job.step}/{job.total}" if job.total else ""
-    return f'<span class="working">{label}</span> <span class="why">{counter}</span>'
+def _safe_path(value: str, fallback: str) -> str:
+    """Only same-origin paths are reflected back into an attribute."""
+    return value if value.startswith("/") and "//" not in value[:2] else fallback
+
+
+def _safe_target(value: str) -> str:
+    return value if value.startswith("#") and value[1:].replace("-", "").isalnum() else "#workspace"
 
 
 @app.get("/documents/{document_id}/sections/{key}/panel", response_class=HTMLResponse)

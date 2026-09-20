@@ -32,8 +32,18 @@
   </ul>
 </div>
 
-<div class="card">
-  <h3>Quality gate</h3>
-  {% include "partials/gate.html" %}
+{% with document_id = document.id %}
+  {% include "partials/gate_card.html" %}
+{% endwith %}
+
+{% if running_job %}
+<div id="gate-running">
+  {% with job = running_job,
+          done_url = "/documents/" ~ document.id ~ "/gate",
+          done_target = "#gate",
+          working_title = "Checking the document" %}
+    {% include "partials/job.html" %}
+  {% endwith %}
 </div>
+{% endif %}
 {% endblock %}

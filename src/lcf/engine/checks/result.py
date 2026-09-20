@@ -8,6 +8,10 @@ class Outcome(StrEnum):
     PASS = "pass"
     FAIL = "fail"
     NOT_APPLICABLE = "not_applicable"
+    # "We could not check" is not "it passed" and not "it failed". Collapsing it
+    # into either would let an unreachable model quietly clear a gate, or condemn
+    # a document for an outage.
+    ERROR = "error"
 
 
 @dataclass(frozen=True)
@@ -30,8 +34,16 @@ class CheckResult:
         return self.outcome is Outcome.FAIL
 
     @property
+    def unevaluated(self) -> bool:
+        return self.outcome is Outcome.ERROR
+
+    @property
     def blocks_export(self) -> bool:
-        return self.failed and self.severity is Severity.BLOCKER
+        """A blocker that failed, or a blocker nobody could check."""
+        return self.severity is Severity.BLOCKER and self.outcome in (
+            Outcome.FAIL,
+            Outcome.ERROR,
+        )
 
 
 def passed(check_id: str, severity: Severity, **kw) -> CheckResult:
@@ -44,3 +56,8 @@ def failed(check_id: str, severity: Severity, reason: str, **kw) -> CheckResult:
 
 def not_applicable(check_id: str, severity: Severity, reason: str, **kw) -> CheckResult:
     return CheckResult(check_id, Outcome.NOT_APPLICABLE, severity, reason=reason, **kw)
+
+
+def errored(check_id: str, severity: Severity, reason: str, **kw) -> CheckResult:
+    """The check could not be run. Never silently treated as a pass."""
+    return CheckResult(check_id, Outcome.ERROR, severity, reason=reason, **kw)

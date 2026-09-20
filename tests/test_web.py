@@ -260,9 +260,9 @@ async def test_draft_hands_back_a_job_watcher(published_4d, client, stub_handler
     response = client.post(f"{url}/draft")
     assert response.status_code == 200
     assert "The assistant is working" in response.text
-    assert "sse-connect=" in response.text, "the browser is handed a stream to watch"
+    assert "/card?next=" in response.text, "the browser is handed something to poll"
 
-    job_id = uuid.UUID(re.search(r"/jobs/([0-9a-f-]+)/events", response.text).group(1))
+    job_id = uuid.UUID(re.search(r"/jobs/([0-9a-f-]+)/card", response.text).group(1))
     job = await _settled(job_id)
     assert job.status == "succeeded"
     assert job.total == 2
@@ -314,7 +314,7 @@ async def test_a_failed_job_surfaces_its_error(published_4d, client, stub_handle
     url = f"{location}/sections/d1_team"
 
     response = client.post(f"{url}/draft")
-    job_id = uuid.UUID(re.search(r"/jobs/([0-9a-f-]+)/events", response.text).group(1))
+    job_id = uuid.UUID(re.search(r"/jobs/([0-9a-f-]+)/card", response.text).group(1))
     job = await _settled(job_id)
     assert job.status == "failed"
 

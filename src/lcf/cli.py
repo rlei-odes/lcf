@@ -151,7 +151,7 @@ async def _walkthrough(spec_path: Path, content_path: Path) -> int:
 
     print("\nquality gate")
     async with session() as s:
-        _, report = await assessment.run(s, document.id)
+        report = await assessment.report_for(s, document.id)
     print("  " + assessment.format_report(report).replace("\n", "\n  "))
 
     # Editing a completed section names what was built on it and asks — it does not

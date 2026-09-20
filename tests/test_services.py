@@ -11,7 +11,7 @@ from sqlalchemy import delete, select
 
 from lcf.core.db import session
 from lcf.engine.state import Status, section_state
-from lcf.models.tables import DocType, DocTypeVersion, Document, Revision
+from lcf.models.tables import Assessment, DocType, DocTypeVersion, Document, Revision
 from lcf.services import assessment, doc_types, documents
 from lcf.spec.linter import SpecInvalid
 
@@ -192,25 +192,29 @@ async def test_full_walkthrough_reaches_a_clean_gate(published, sample_4d):
             await documents.mark_complete(s, document.id, key)
 
     async with session() as s:
-        record, report = await assessment.run(s, document.id)
+        report = await assessment.report_for(s, document.id)
 
     assert report.blockers == [], [r.reason for r in report.blockers]
     assert report.warnings == []
     assert len(report.passes) == 14
-    assert len(report.not_evaluated) == 11, "5 LLM requirements + 6 quality criteria"
-    assert not report.passed, "unevaluated checks must not count as a pass"
-    assert record.passed is False
+    assert len(report.not_evaluated) == 11, "5 judged requirements + 6 quality criteria"
+    assert not report.passed, "checks nobody has run must not count as passes"
 
 
-async def test_assessment_results_are_appended_not_overwritten(published):
+async def test_reading_the_report_never_starts_an_assessment(published):
+    """Opening a document must be free. Judged checks cost a model call each, so
+    a page view that quietly ran them would be ruinous."""
     async with session() as s:
         document = await documents.create(s, published.id, "Test doc")
-    async with session() as s:
-        first, _ = await assessment.run(s, document.id)
-    async with session() as s:
-        second, _ = await assessment.run(s, document.id)
-    assert first.id != second.id
 
     async with session() as s:
-        rows = (await s.scalars(select(Document).where(Document.id == document.id))).all()
-    assert len(rows) == 1
+        for _ in range(3):
+            report = await assessment.report_for(s, document.id)
+
+    assert report.not_evaluated, "judged checks are reported outstanding, not run"
+
+    async with session() as s:
+        stored = (
+            await s.scalars(select(Assessment).where(Assessment.document_id == document.id))
+        ).all()
+    assert stored == [], "no assessment row was written by merely reading"

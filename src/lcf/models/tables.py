@@ -238,6 +238,10 @@ class CheckResult(Base):
     assessment_id: Mapped[UUID] = mapped_column(ForeignKey("assessment.id", ondelete="CASCADE"))
     check_id: Mapped[str] = mapped_column(String(100), nullable=False)
     section_key: Mapped[str | None] = mapped_column(String(100))
+    # deterministic | judged. Recorded rather than inferred: deterministic results
+    # are recomputed live on every view, so only the judged ones are read back,
+    # and guessing which is which from another column would eventually be wrong.
+    species: Mapped[str] = mapped_column(String(20), nullable=False, default="deterministic")
     result: Mapped[str] = mapped_column(String(20), nullable=False)
     severity: Mapped[str] = mapped_column(String(20), nullable=False)
     reason: Mapped[str | None] = mapped_column(Text)

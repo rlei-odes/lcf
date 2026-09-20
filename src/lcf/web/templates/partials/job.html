@@ -1,21 +1,37 @@
-{# A running job, watched over SSE.
+{# A job, polled until it finishes.
 
-   The element connects to the job's event stream, swaps its own progress line as
-   events arrive, and reloads the whole workspace once the job reports done. The
-   request that started the job returned immediately, so nothing is held open. #}
-<div class="card" id="job-{{ job.id }}"
-     hx-ext="sse"
-     sse-connect="/jobs/{{ job.id }}/events"
-     hx-trigger="sse:done"
-     hx-get="/documents/{{ document_id }}/sections/{{ section_key }}/panel?job={{ job.id }}"
-     hx-target="#workspace"
+   This was server-sent events, and SSE is the better mechanism on paper. In
+   practice it failed silently in the browser: the extension wants the element
+   carrying `hx-trigger="sse:done"` to be a descendant of the one carrying
+   `sse-connect`, and with both on the same element the job completed while the
+   page sat on "Working…" forever. A stuck spinner over finished work is the worst
+   possible failure here, and polling a 15-second job once a second costs nothing.
+
+   When the job finishes this renders a self-firing element instead: it loads
+   `done_url` into `done_target` on `load`, which replaces the region the job was
+   reported in — taking this element with it. #}
+{% if job.done %}
+<div hx-get="{{ done_url }}"
+     hx-target="{{ done_target }}"
+     hx-swap="outerHTML"
+     hx-trigger="load"></div>
+{% else %}
+<div class="card"
+     hx-get="/jobs/{{ job.id }}/card?next={{ done_url|urlencode }}&target={{ done_target|urlencode }}"
+     hx-trigger="load delay:900ms"
      hx-swap="outerHTML">
-  <h3>The assistant is working</h3>
-  <div sse-swap="progress">
-    <span class="working">Starting…</span>
+  <h3>{{ working_title|default('The assistant is working') }}</h3>
+  <div>
+    {%- if job.status == 'failed' -%}
+      <span class="s-needs_input">Failed: {{ job.error or 'unknown error' }}</span>
+    {%- else -%}
+      <span class="working">{{ job.message or 'Starting…' }}</span>
+      {% if job.total %}<span class="why">{{ job.step }}/{{ job.total }}</span>{% endif %}
+    {%- endif -%}
   </div>
   <p class="hint" style="margin-top:10px">
-    This usually takes about 15 seconds. You can leave this page — the work
-    carries on and the result will be here when you come back.
+    You can leave this page — the work carries on and the result will be here
+    when you come back.
   </p>
 </div>
+{% endif %}

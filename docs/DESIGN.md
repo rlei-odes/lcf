@@ -184,18 +184,31 @@ Deterministic assertions and LLM judgements, kept distinct so we never spend a m
 | `rubric` | free pass/fail judgement against written criteria |
 | `consistency` | cross-section: "D5 actions must address the root cause named in D4" |
 
+**A judgement must show its work.** A `mentions` check does not ask "what is
+missing?" — asked that, a model answers without having to look, and produces
+confident false negatives against content that plainly contains the point
+(observed, repeatedly). It is asked instead for a verdict on *every* point with
+the **exact words** that establish it, and a point counts as established only if
+the quote is really in the content. The quote then goes into the report, so a
+person can check the judgement rather than trust it.
+
 Both species return the same envelope:
 
 ```json
 {
   "id": "d5_addresses_root_cause",
-  "result": "pass | fail | not_applicable",
+  "result": "pass | fail | not_applicable | error",
   "severity": "blocker | warning",
   "reason": "human-readable, always populated on fail",
   "evidence": ["d4.causes[1]", "d5.actions[0]"],
   "confidence": 0.82          // LLM checks only
 }
 ```
+
+`error` is its own outcome because **"we could not check" is neither a pass nor a
+failure**. Collapsing it into a pass would let an unreachable model quietly clear a
+gate; collapsing it into a failure would condemn a document for an outage. An
+errored blocker blocks export and says why.
 
 ### 5.5 Quality criteria
 
