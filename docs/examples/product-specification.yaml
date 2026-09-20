@@ -1,0 +1,283 @@
+# Product Specification — document type specification
+#
+# The generality proof. A few chapters, a few boxes to tick, no domain
+# knowledge needed to judge whether the output is good. Deliberately unlike the
+# 4D/8D pair: a linear-ish document with light dependencies, where the hard part
+# is completeness and testability rather than causal traceability.
+#
+# If the engine only works well on this and badly on the 8D, we built a form
+# builder. If it only works on the 8D, we built an 8D tool. It must do both.
+
+id: product-specification
+version: 1
+title: Product Specification
+description: >
+  Specification for a product, component or feature: what it is for, what it
+  must do, what it must not do, and how anyone will know it is finished.
+language: en
+template: product-specification-v1.docx
+
+style: >
+  Plain, direct, unambiguous. Prefer "must" and "must not" over "should" — a
+  specification that hedges cannot be tested against. No marketing language, no
+  superlatives. Where a value matters, state the value and its unit rather than
+  describing it qualitatively.
+
+# ---------------------------------------------------------------------------
+# Sections
+# ---------------------------------------------------------------------------
+sections:
+
+  - key: identification
+    title: "1. Identification"
+    description: "What this document describes and who owns it."
+    required: true
+    depends_on: []
+    questions:
+      - key: product_name
+        prompt: "What is the product, component or feature called?"
+        type: text
+        required: true
+      - key: owner
+        prompt: "Who owns this specification?"
+        type: text
+        required: true
+      - key: status
+        prompt: "What is the status of this document?"
+        type: choice
+        options: [draft, in_review, released]
+        required: true
+    blocks:
+      - key: meta
+        kind: keyvalue
+        label: "Document data"
+        fields:
+          - { key: product,  label: "Product / component", type: string, required: true }
+          - { key: spec_no,  label: "Specification number", type: string, required: true }
+          - { key: revision, label: "Revision",            type: string, required: true }
+          - { key: owner,    label: "Owner",               type: string, required: true }
+          - { key: date,     label: "Date",                type: date,   required: true }
+    requirements:
+      - { id: ident_complete, kind: present, block: meta, severity: blocker }
+      - { id: ident_date,     kind: format,  block: meta, field: date, format: date, severity: blocker }
+
+  - key: purpose
+    title: "2. Purpose and Scope"
+    description: >
+      What problem this product solves, for whom, and where its responsibility
+      ends. The section that stops the specification growing without limit.
+    guidance: >
+      Purpose first, in two or three sentences a non-specialist understands.
+      Then scope: what is included. Then, explicitly, what is not — an
+      unstated exclusion is not an exclusion.
+    required: true
+    depends_on: [identification]
+    questions:
+      - key: problem
+        prompt: "What problem does this solve, and for whom?"
+        type: text
+        required: true
+      - key: in_scope
+        prompt: "What is included in this specification?"
+        type: text
+        required: true
+      - key: out_of_scope
+        prompt: "What is explicitly NOT included, that a reader might otherwise assume is?"
+        type: text
+        required: true
+        hint: "The exclusions that prevent arguments later."
+    blocks:
+      - key: purpose_text
+        kind: prose
+        label: "Purpose"
+      - key: in_scope_list
+        kind: list
+        label: "In scope"
+      - key: out_of_scope_list
+        kind: list
+        label: "Out of scope"
+    requirements:
+      - { id: purpose_present,   kind: present, block: purpose_text,      severity: blocker }
+      - { id: purpose_concise,   kind: length,  block: purpose_text,      max_words: 150, severity: warning }
+      - { id: in_scope_present,  kind: present, block: in_scope_list,     severity: blocker }
+      - { id: out_scope_present, kind: present, block: out_of_scope_list, severity: blocker }
+      - id: purpose_plain
+        kind: rubric
+        block: purpose_text
+        rubric: >
+          The purpose is understandable to someone outside the team, without
+          specialist vocabulary or internal project names used unexplained.
+        severity: warning
+
+  - key: requirements
+    title: "3. Requirements"
+    description: >
+      What the product must do, stated so that each item can be verified
+      independently.
+    guidance: >
+      One requirement per row. Each must be testable: a reader has to be able to
+      say how they would check it. Convert vague inputs into specific ones, and
+      where a value is missing, ask rather than inventing a plausible number.
+    required: true
+    depends_on: [purpose]
+    uses_images: true
+    questions:
+      - key: must_do
+        prompt: "What must the product do? List everything you can think of."
+        type: text
+        required: true
+      - key: must_not_do
+        prompt: "Are there things it must explicitly not do, or limits it must not exceed?"
+        type: text
+        required: false
+      - key: standards
+        prompt: "Are there standards, regulations or internal norms it must comply with?"
+        type: text
+        required: false
+    blocks:
+      - key: functional
+        kind: table
+        label: "Functional requirements"
+        columns:
+          - { key: id,       label: "ID",          type: string }
+          - { key: text,     label: "Requirement", type: string }
+          - { key: priority, label: "Priority",    type: enum, values: [must, should, may] }
+          - { key: verify,   label: "Verified by", type: string }
+        min_rows: 3
+      - key: constraints
+        kind: table
+        label: "Technical data and constraints"
+        columns:
+          - { key: parameter, label: "Parameter", type: string }
+          - { key: value,     label: "Value",     type: string }
+          - { key: unit,      label: "Unit",      type: string }
+          - { key: tolerance, label: "Tolerance", type: string }
+        min_rows: 1
+      - key: diagrams
+        kind: image_ref
+        label: "Diagrams and sketches"
+        multiple: true
+        required: false
+      - key: compliance
+        kind: list
+        label: "Applicable standards"
+        required: false
+    requirements:
+      - { id: req_min,      kind: rows,          block: functional,   min: 3, severity: blocker }
+      - { id: req_complete, kind: fields_filled, block: functional,   fields: [id, text, priority, verify], severity: blocker }
+      - { id: constraints_present, kind: rows,   block: constraints,  min: 1, severity: warning }
+      - id: req_testable
+        kind: rubric
+        block: functional
+        rubric: >
+          Every requirement states an observable outcome and names how it will be
+          verified. Requirements phrased as intentions ("the system should be
+          fast", "handles errors gracefully") fail this check.
+        severity: blocker
+      - id: req_no_weasel
+        kind: rubric
+        block: functional
+        rubric: >
+          No requirement relies on unquantified qualifiers — "sufficient",
+          "adequate", "reasonable", "user-friendly", "as fast as possible" —
+          where a number, range or defined condition is needed.
+        severity: warning
+
+  - key: acceptance
+    title: "4. Acceptance Criteria"
+    description: "How anyone determines the product is finished and correct."
+    guidance: >
+      Each criterion maps to one or more requirement IDs from section 3. A
+      criterion that tests nothing in section 3 means either the requirement is
+      missing or the criterion does not belong.
+    required: true
+    depends_on: [requirements]
+    questions:
+      - key: done_means
+        prompt: "How will you know this is finished and working?"
+        type: text
+        required: true
+      - key: who_accepts
+        prompt: "Who signs off on acceptance?"
+        type: text
+        required: true
+    blocks:
+      - key: criteria
+        kind: table
+        label: "Acceptance criteria"
+        columns:
+          - { key: id,      label: "ID",            type: string }
+          - { key: req_id,  label: "Verifies",      type: string }
+          - { key: method,  label: "Method",        type: enum, values: [test, inspection, demonstration, analysis] }
+          - { key: pass_if, label: "Passes if",     type: string }
+        min_rows: 2
+      - key: signoff
+        kind: keyvalue
+        label: "Acceptance"
+        fields:
+          - { key: accepted_by, label: "Accepted by", type: string, required: true }
+          - { key: role,        label: "Role",        type: string, required: true }
+    requirements:
+      - { id: acc_min,        kind: rows,          block: criteria, min: 2, severity: blocker }
+      - { id: acc_complete,   kind: fields_filled, block: criteria, fields: [id, req_id, method, pass_if], severity: blocker }
+      - id: acc_traces
+        kind: cross_ref
+        block: criteria
+        field: req_id
+        references: requirements.functional.id
+        severity: blocker
+      - { id: signoff_present, kind: present, block: signoff, severity: warning }
+
+# ---------------------------------------------------------------------------
+# Document-level quality criteria
+# ---------------------------------------------------------------------------
+quality_criteria:
+
+  - id: every_must_is_verified
+    title: "Every mandatory requirement has an acceptance criterion"
+    severity: blocker
+    kind: consistency
+    scope: [requirements, acceptance]
+    rubric: >
+      Every functional requirement with priority "must" is referenced by at least
+      one acceptance criterion. A mandatory requirement nobody will check is not
+      a requirement.
+
+  - id: scope_respected
+    title: "Requirements stay inside the declared scope"
+    severity: blocker
+    kind: consistency
+    scope: [purpose, requirements]
+    rubric: >
+      No requirement in section 3 describes behaviour that section 2 declared
+      out of scope, and none extends materially beyond what section 2 declared
+      in scope.
+
+  - id: internally_consistent
+    title: "No contradictions"
+    severity: blocker
+    kind: rubric
+    scope: document
+    rubric: >
+      No two statements in the document contradict each other — in particular
+      between the technical data table and the requirement texts, where the same
+      value often appears twice.
+
+  - id: no_unsupported_claims
+    title: "No invented values"
+    severity: blocker
+    kind: rubric
+    scope: document
+    rubric: >
+      Every number, tolerance, standard reference and deadline traces to
+      something the creator supplied. No plausible-looking value appears that
+      nobody actually stated.
+
+  - id: unambiguous
+    title: "Unambiguous language"
+    severity: warning
+    kind: rubric
+    scope: document
+    rubric: >
+      The document consistently distinguishes mandatory from optional, and does
+      not use "should" where "must" is meant.

@@ -1,0 +1,354 @@
+# 4D Report — document type specification
+#
+# The demo target. A 4D is the interim problem report sent to a customer within
+# days of a complaint: who is on it, what is wrong, what protects the customer
+# right now, and why it happened. It is escalated to a full 8D once the root
+# cause is confirmed and permanent action is agreed.
+#
+# Structurally this spec is a prefix of 8d-report.yaml, which makes the
+# escalation a live demonstration of spec versioning rather than a slide.
+
+id: 4d-report
+version: 1
+title: 4D Report
+description: >
+  Interim problem-solving report for a customer complaint or internal
+  nonconformity. Covers team, problem description, interim containment and
+  verified root cause.
+language: en
+template: 4d-report-v1.docx
+
+style: >
+  Formal register, customer-facing. Past tense for what happened, present tense
+  for what is in place now. Explain internal abbreviations, machine names and
+  system names on first use — the reader is a quality engineer at the customer
+  with no knowledge of our plant. Never speculate: if something is suspected
+  rather than established, say so explicitly or leave it out.
+
+# ---------------------------------------------------------------------------
+# Sections
+# ---------------------------------------------------------------------------
+sections:
+
+  - key: header
+    title: "Report Header"
+    description: "Identifying data for the report and the complaint it answers."
+    guidance: >
+      Extract from the complaint, claim document or nonconformity record. Never
+      guess part or claim numbers — if they are not in the evidence, ask.
+    required: true
+    depends_on: []
+    questions:
+      - key: complaint_source
+        prompt: "Where did this complaint come from?"
+        type: choice
+        options: [customer_claim, internal_nonconformity, field_return, audit_finding]
+        required: true
+    blocks:
+      - key: meta
+        kind: keyvalue
+        label: "Report data"
+        fields:
+          - { key: report_no, label: "Report number",     type: string, required: true }
+          - { key: customer,  label: "Customer",          type: string, required: true }
+          - { key: claim_no,  label: "Claim number",      type: string, required: false }
+          - { key: part_no,   label: "Part number",       type: string, required: true }
+          - { key: part_name, label: "Part name",         type: string, required: true }
+          - { key: quantity,  label: "Quantity affected", type: number, required: true }
+          - { key: opened_at, label: "Date opened",       type: date,   required: true }
+    requirements:
+      - { id: header_complete,   kind: present, block: meta, severity: blocker }
+      - { id: header_date_valid, kind: format,  block: meta, field: opened_at, format: date, severity: blocker }
+
+  - key: d1_team
+    title: "D1 — Establish the Team"
+    description: "The cross-functional team responsible for this report, with roles."
+    guidance: >
+      A team needs a champion and members covering the affected process, quality,
+      and — where the defect reached the customer — the customer interface.
+      Propose the roles that are missing; ask for the names.
+    required: true
+    depends_on: [header]
+    questions:
+      - key: members_raw
+        prompt: "Who is on the team? Name, role and function for each person."
+        type: text
+        required: true
+        hint: "One per line is fine. Mark the champion."
+    blocks:
+      - key: members
+        kind: table
+        label: "Team members"
+        columns:
+          - { key: name,        label: "Name",     type: string }
+          - { key: role,        label: "Role",     type: string }
+          - { key: function,    label: "Function", type: string }
+          - { key: is_champion, label: "Champion", type: boolean }
+        min_rows: 2
+    requirements:
+      - { id: team_min_size,      kind: rows,          block: members, min: 2, severity: blocker }
+      - { id: team_fields_filled, kind: fields_filled, block: members, fields: [name, role, function], severity: blocker }
+      - id: team_has_champion
+        kind: rubric
+        block: members
+        rubric: "Exactly one team member is marked as champion."
+        severity: blocker
+
+  - key: d2_problem
+    title: "D2 — Describe the Problem"
+    description: >
+      The problem in measurable terms: what, where, when, how many, and how it
+      was detected. Every later section refers back to this one.
+    guidance: >
+      Aim for a description a reader outside the plant can act on. Quantify.
+      Keep observation and suspicion apart — what is suspected belongs in D4.
+    style: >
+      Strictly factual. Describe only what was observed or measured.
+    required: true
+    depends_on: [header]
+    uses_images: true
+    questions:
+      - key: what_is_wrong
+        prompt: "What is wrong with the part, stated as objectively as you can?"
+        type: text
+        required: true
+      - key: first_observed
+        prompt: "When was the problem first observed?"
+        type: date
+        required: true
+      - key: quantity_affected
+        prompt: "How many parts are affected, and out of what total?"
+        type: text
+        required: true
+      - key: where_occurred
+        prompt: "Where did it occur — which process step, line, or in the field?"
+        type: text
+        required: true
+      - key: how_detected
+        prompt: "How was it detected, and by whom?"
+        type: text
+        required: true
+    blocks:
+      - key: description
+        kind: prose
+        label: "Problem description"
+        hint: "What is wrong, stated objectively and measurably."
+      - key: is_is_not
+        kind: table
+        label: "Is / Is not analysis"
+        columns:
+          - { key: dimension, label: "Dimension", type: string }
+          - { key: is,        label: "Is",        type: string }
+          - { key: is_not,    label: "Is not",    type: string }
+        min_rows: 3
+      - key: detection
+        kind: prose
+        label: "How the problem was detected"
+      - key: photos
+        kind: image_ref
+        label: "Defect photographs"
+        multiple: true
+        required: false
+    requirements:
+      - { id: problem_present,     kind: present, block: description, severity: blocker }
+      - { id: problem_substantial, kind: length,  block: description, min_words: 40, severity: warning }
+      - id: problem_quantified
+        kind: mentions
+        block: description
+        must_mention:
+          - "the quantity or rate of affected parts"
+          - "when the problem was first observed"
+          - "where in the process or field it occurred"
+        severity: blocker
+      - { id: is_is_not_filled, kind: rows,    block: is_is_not, min: 3, severity: warning }
+      - { id: detection_present, kind: present, block: detection, severity: blocker }
+
+  - key: d3_containment
+    title: "D3 — Interim Containment Actions"
+    description: >
+      Immediate actions protecting the customer until a permanent fix is
+      verified — sorting, blocking stock, 100% inspection, notification.
+    guidance: >
+      Containment protects; it does not correct. Every action needs an owner, a
+      date and a statement of verified effectiveness. An action without a date is
+      not containment.
+    required: true
+    depends_on: [d2_problem]
+    questions:
+      - key: actions_taken
+        prompt: "What has been done to protect the customer? Include owner and date for each."
+        type: text
+        required: true
+      - key: stock_disposition
+        prompt: "What happened to stock already at the customer or in transit?"
+        type: text
+        required: true
+        hint: "Sorted, blocked, recalled, or accepted with concession."
+      - key: customer_informed
+        prompt: "Was the customer formally notified?"
+        type: boolean
+        required: true
+      - key: containment_effective
+        prompt: "How do you know the containment is working?"
+        type: text
+        required: true
+    blocks:
+      - key: actions
+        kind: table
+        label: "Containment actions"
+        columns:
+          - { key: action,         label: "Action",                 type: string }
+          - { key: owner,          label: "Owner",                  type: string }
+          - { key: implemented_at, label: "Implemented",            type: date }
+          - { key: effectiveness,  label: "Effectiveness verified", type: string }
+        min_rows: 1
+      - key: scope
+        kind: prose
+        label: "Scope of containment"
+        hint: "Stock in transit, customer stock, finished goods, WIP, field units."
+    requirements:
+      - { id: containment_present,          kind: rows,          block: actions, min: 1, severity: blocker }
+      - { id: containment_owned_and_dated,  kind: fields_filled, block: actions, fields: [action, owner, implemented_at], severity: blocker }
+      - { id: containment_dates_valid,      kind: format,        block: actions, field: implemented_at, format: date, severity: blocker }
+      - id: containment_covers_stock
+        kind: mentions
+        block: scope
+        must_mention:
+          - "what happens to stock already at the customer or in transit"
+        severity: blocker
+
+  - key: d4_root_cause
+    title: "D4 — Root Cause Analysis"
+    description: >
+      The verified root cause of occurrence and the root cause of non-detection.
+      Both are required: something made the defect, and something let it escape.
+    guidance: >
+      Drive each cause to a systemic level. A 5-Why ending at "operator error"
+      has stopped too early — ask what allowed the error. Never state a root
+      cause the evidence does not support: emit a gap instead.
+    required: true
+    depends_on: [d2_problem]
+    questions:
+      - key: suspected_cause
+        prompt: "What do you believe caused the defect, and what evidence supports that?"
+        type: text
+        required: true
+      - key: cause_verified
+        prompt: "Has the cause been verified — reproduced, measured, or confirmed?"
+        type: boolean
+        required: true
+      - key: escape_cause
+        prompt: "Why did existing controls not catch it before it reached the customer?"
+        type: text
+        required: true
+      - key: ruled_out
+        prompt: "What else did you consider and rule out?"
+        type: text
+        required: false
+    blocks:
+      - key: causes
+        kind: table
+        label: "Identified causes"
+        columns:
+          - { key: id,       label: "ID",                  type: string }
+          - { key: cause,    label: "Cause",               type: string }
+          - { key: type,     label: "Type",                type: enum, values: [occurrence, detection] }
+          - { key: verified, label: "Verification method", type: string }
+        min_rows: 2
+      - key: five_why
+        kind: table
+        label: "5-Why chain"
+        columns:
+          - { key: level,  label: "Level",   type: number }
+          - { key: why,    label: "Why?",    type: string }
+          - { key: answer, label: "Because", type: string }
+        min_rows: 3
+      - key: rejected
+        kind: list
+        label: "Causes considered and ruled out"
+        required: false
+    requirements:
+      - { id: root_cause_present,  kind: rows,          block: causes, min: 2, severity: blocker }
+      - { id: root_cause_verified, kind: fields_filled, block: causes, fields: [cause, type, verified], severity: blocker }
+      - id: both_cause_types
+        kind: rubric
+        block: causes
+        rubric: >
+          At least one cause of type "occurrence" and at least one of type
+          "detection" are present.
+        severity: blocker
+      - { id: five_why_depth, kind: rows, block: five_why, min: 3, severity: warning }
+      - id: five_why_systemic
+        kind: rubric
+        block: five_why
+        rubric: >
+          The final level of the chain identifies a systemic cause — a process,
+          specification or control failure — rather than terminating at
+          individual human error.
+        severity: warning
+
+# ---------------------------------------------------------------------------
+# Document-level quality criteria — evaluated at the final gate
+# ---------------------------------------------------------------------------
+quality_criteria:
+
+  - id: containment_matches_problem
+    title: "Containment covers everything the problem description implies"
+    severity: blocker
+    kind: consistency
+    scope: [d2_problem, d3_containment]
+    rubric: >
+      Every population of parts implicated in D2 — by quantity, date range or
+      process step — is addressed by a containment action in D3. Nothing
+      described as affected is left unprotected.
+
+  - id: cause_explains_problem
+    title: "The root cause explains the observed problem"
+    severity: blocker
+    kind: consistency
+    scope: [d2_problem, d4_root_cause]
+    rubric: >
+      The occurrence cause in D4 plausibly produces the defect described in D2,
+      and is consistent with its timing and quantity. A cause that would have
+      produced a different defect, or affected a different population, does not
+      pass.
+
+  - id: escape_addressed
+    title: "The escape is identified, not only the defect"
+    severity: blocker
+    kind: consistency
+    scope: [d2_problem, d4_root_cause]
+    rubric: >
+      D4 identifies why existing controls did not detect the defect described in
+      D2, and that explanation refers to a real control rather than asserting
+      that none existed.
+
+  - id: no_unsupported_claims
+    title: "No unsupported assertions"
+    severity: blocker
+    kind: rubric
+    scope: document
+    rubric: >
+      The report contains no factual claim — quantity, date, measurement or
+      verification result — that is not supported by supplied evidence or by an
+      explicit statement from the creator.
+
+  - id: interim_is_interim
+    title: "The report is honest about being interim"
+    severity: warning
+    kind: rubric
+    scope: document
+    rubric: >
+      The report does not present containment as a permanent fix, and does not
+      imply the case is closed. Permanent corrective action belongs to the 8D
+      escalation.
+
+  - id: customer_readable
+    title: "Readable by the customer"
+    severity: warning
+    kind: rubric
+    scope: document
+    rubric: >
+      Understandable to a quality engineer at the customer with no knowledge of
+      internal plant shorthand. Internal abbreviations, machine nicknames and
+      system names are explained on first use.
