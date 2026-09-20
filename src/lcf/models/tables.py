@@ -182,6 +182,39 @@ class Proposal(Base):
     block: Mapped[Block] = relationship(back_populates="proposals")
 
 
+class Job(Base):
+    """Slow work, tracked in a row.
+
+    LLM work is slow enough to need progress and cancellation, not slow enough to
+    need a broker. v1 runs the worker in-process; because the state lives here and
+    not in memory, moving it to its own process later is a deployment change
+    rather than a rewrite.
+    """
+
+    __tablename__ = "job"
+
+    id: Mapped[UUID] = _pk()
+    document_id: Mapped[UUID | None] = mapped_column(ForeignKey("document.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(50), nullable=False)
+    scope: Mapped[str | None] = mapped_column(String(100))  # e.g. the section key
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued")
+    step: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    message: Mapped[str | None] = mapped_column(Text)
+    result: Mapped[dict | None] = mapped_column(JSONB)
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created()
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    @property
+    def done(self) -> bool:
+        return self.status in ("succeeded", "failed")
+
+    @property
+    def percent(self) -> int:
+        return int(100 * self.step / self.total) if self.total else 0
+
+
 class Assessment(Base):
     __tablename__ = "assessment"
 

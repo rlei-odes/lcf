@@ -17,9 +17,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lcf.core.config import settings
+from lcf.core.db import session as db_session
 from lcf.llm.calls import draft_block, resolve_style
 from lcf.llm.provider import LLMMalformed, LLMUnavailable
 from lcf.models.tables import Block, Proposal, Section
+from lcf.services import jobs
 from lcf.services.doc_types import NotFound
 from lcf.services.documents import Author, set_block
 from lcf.services.documents import view as load_view
@@ -43,8 +45,24 @@ class DraftOutcome:
         return not self.errors
 
 
+@jobs.handler("draft_section")
+async def draft_section_job(document_id: UUID, section_key: str | None, progress) -> dict:
+    """Job entry point. Gets its own session — it outlives the request that queued it."""
+    async with db_session() as s:
+        outcome = await draft_section(s, document_id, str(section_key), progress=progress)
+    return {
+        "proposals": len(outcome.created),
+        "gaps": outcome.gaps,
+        "errors": outcome.errors,
+    }
+
+
 async def draft_section(
-    session: AsyncSession, document_id: UUID, section_key: str, only_empty: bool = True
+    session: AsyncSession,
+    document_id: UUID,
+    section_key: str,
+    only_empty: bool = True,
+    progress=None,
 ) -> DraftOutcome:
     """Draft a section, one narrow call per block.
 
@@ -74,10 +92,16 @@ async def draft_section(
     # One call per block, run together: they are independent, and doing them in
     # sequence makes a section take as long as the sum of its blocks.
     limit = asyncio.Semaphore(settings().llm_concurrency)
+    if progress is not None:
+        await progress.start(len(wanted), "Reading what you supplied…")
 
     async def one(spec_block):
         async with limit:
-            return await draft_block(view, spec_section, spec_block, style)
+            try:
+                return await draft_block(view, spec_section, spec_block, style)
+            finally:
+                if progress is not None:
+                    await progress.step(f"Drafted {spec_block.label}")
 
     results = await asyncio.gather(*(one(b) for b in wanted), return_exceptions=True)
 

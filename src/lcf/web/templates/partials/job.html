@@ -1,0 +1,21 @@
+{# A running job, watched over SSE.
+
+   The element connects to the job's event stream, swaps its own progress line as
+   events arrive, and reloads the whole workspace once the job reports done. The
+   request that started the job returned immediately, so nothing is held open. #}
+<div class="card" id="job-{{ job.id }}"
+     hx-ext="sse"
+     sse-connect="/jobs/{{ job.id }}/events"
+     hx-trigger="sse:done"
+     hx-get="/documents/{{ document_id }}/sections/{{ section_key }}/panel?job={{ job.id }}"
+     hx-target="#workspace"
+     hx-swap="outerHTML">
+  <h3>The assistant is working</h3>
+  <div sse-swap="progress">
+    <span class="working">Starting…</span>
+  </div>
+  <p class="hint" style="margin-top:10px">
+    This usually takes about 15 seconds. You can leave this page — the work
+    carries on and the result will be here when you come back.
+  </p>
+</div>

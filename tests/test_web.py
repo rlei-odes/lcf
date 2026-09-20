@@ -5,6 +5,7 @@ templates are covered, not just the services underneath them. Skips when the
 database from .env is unreachable.
 """
 
+import asyncio
 import re
 import uuid
 
@@ -229,3 +230,107 @@ def _complete_button(html: str) -> str:
         return ""
     start = html.rfind("<button", 0, match.end())
     return html[start : html.find(">", start) + 1]
+
+
+async def test_draft_hands_back_a_job_watcher(published_4d, client, stub_handler):
+    """The POST returns a stream to watch, not the finished work."""
+
+    async def quick(document_id, scope, progress):
+        await progress.start(2, "thinking")
+        await progress.step("drafted one")
+        gap = {"block": "Problem description", "question": "Which part?", "why": "not supplied"}
+        return {"proposals": 0, "gaps": [gap], "errors": []}
+
+    stub_handler("draft_section", quick)
+
+    location = _new_document(client, published_4d)
+    _complete_header(client, location)
+    url = f"{location}/sections/d2_problem"
+    client.post(
+        f"{url}/answers",
+        data={
+            "q.what_is_wrong": "Cracks",
+            "q.first_observed": "2026-09-05",
+            "q.quantity_affected": "31 of 1450",
+            "q.where_occurred": "Cell 3",
+            "q.how_detected": "Incoming inspection",
+        },
+    )
+
+    response = client.post(f"{url}/draft")
+    assert response.status_code == 200
+    assert "The assistant is working" in response.text
+    assert "sse-connect=" in response.text, "the browser is handed a stream to watch"
+
+    job_id = uuid.UUID(re.search(r"/jobs/([0-9a-f-]+)/events", response.text).group(1))
+    job = await _settled(job_id)
+    assert job.status == "succeeded"
+    assert job.total == 2
+
+    # The panel the browser loads once the stream says done carries the gaps.
+    panel = client.get(f"{url}/panel", params={"job": str(job_id)})
+    assert "The assistant needs 1 thing(s) from you" in panel.text
+    assert "Which part?" in panel.text
+
+
+async def test_a_running_job_is_picked_back_up_on_reload(published_4d, client):
+    """Navigating away and back must rejoin the job, not offer a second one."""
+    from lcf.models.tables import Job
+
+    location = _new_document(client, published_4d)
+    document_id = uuid.UUID(location.rsplit("/", 1)[1])
+
+    async with session() as s:
+        job = Job(
+            document_id=document_id,
+            kind="draft_section",
+            scope="d2_problem",
+            status="running",
+            step=1,
+            total=3,
+            message="Drafting…",
+        )
+        s.add(job)
+        await s.flush()
+        job_id = job.id
+
+    page = client.get(f"{location}/sections/d2_problem")
+    assert str(job_id) in page.text, "the page rejoins the running job"
+    assert "The assistant is working" in page.text
+
+    i = page.text.find("Draft the empty blocks")
+    button = page.text.rfind("<button", 0, i)
+    assert "disabled" in page.text[button:i], "no second draft while one is running"
+
+
+async def test_a_failed_job_surfaces_its_error(published_4d, client, stub_handler):
+    async def explode(document_id, scope, progress):
+        raise RuntimeError("vLLM refused the request")
+
+    stub_handler("draft_section", explode)
+
+    location = _new_document(client, published_4d)
+    _complete_header(client, location)
+    url = f"{location}/sections/d1_team"
+
+    response = client.post(f"{url}/draft")
+    job_id = uuid.UUID(re.search(r"/jobs/([0-9a-f-]+)/events", response.text).group(1))
+    job = await _settled(job_id)
+    assert job.status == "failed"
+
+    panel = client.get(f"{url}/panel", params={"job": str(job_id)})
+    assert "could not be reached" in panel.text
+    assert "vLLM refused the request" in panel.text
+
+
+async def _settled(job_id, timeout=10.0):
+    from lcf.services import jobs as jobs_service
+
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while loop.time() < deadline:
+        job = await jobs_service.get(job_id)
+        if job is not None and job.done:
+            return job
+        await asyncio.sleep(0.05)
+    raise AssertionError("job did not finish in time")

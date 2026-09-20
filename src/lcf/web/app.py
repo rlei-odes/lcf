@@ -7,6 +7,8 @@ rather than letting the browser hold a second copy of the truth.
 Routes are a thin skin over `lcf.services`; no business rule lives here.
 """
 
+import asyncio
+from html import escape
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -15,11 +17,12 @@ from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from sse_starlette.sse import EventSourceResponse
 
 from lcf.core.db import session
 from lcf.engine.state import Status, document_state, ordered_sections, section_state
 from lcf.models.tables import Document
-from lcf.services import assessment, doc_types, documents, proposals
+from lcf.services import assessment, doc_types, documents, jobs, proposals
 from lcf.web.forms import parse_block_value, parse_pasted_table
 from lcf.web.presenters import section_panel_context
 
@@ -129,14 +132,60 @@ async def mark_affected(request: Request, document_id: UUID):
 
 @app.post("/documents/{document_id}/sections/{key}/draft", response_class=HTMLResponse)
 async def draft_section(request: Request, document_id: UUID, key: str):
-    """Run the assistant over this section.
+    """Queue the assistant over this section and return at once.
 
-    Produces proposals and gaps. Writes no content — every proposal waits for a
-    person (DESIGN invariant I).
+    Produces proposals and gaps, and writes no content — every proposal waits for
+    a person (DESIGN invariant I). The browser watches the job rather than holding
+    a request open for the length of the generation.
     """
-    async with session() as s:
-        outcome = await proposals.draft_section(s, document_id, key)
-    return await _panel(request, document_id, key, gaps=outcome.gaps, errors=outcome.errors)
+    job = await jobs.enqueue("draft_section", document_id, key)
+    return page(request, "partials/job.html", job=job, document_id=document_id, section_key=key)
+
+
+@app.get("/jobs/{job_id}/events")
+async def job_events(job_id: UUID):
+    """Progress as server-sent events, until the job finishes."""
+
+    async def stream():
+        while True:
+            job = await jobs.get(job_id)
+            if job is None:
+                yield {"event": "done", "data": "gone"}
+                return
+            yield {"event": "progress", "data": _progress_line(job)}
+            if job.done:
+                yield {"event": "done", "data": str(job.status)}
+                return
+            await asyncio.sleep(0.4)
+
+    return EventSourceResponse(stream())
+
+
+def _progress_line(job) -> str:
+    """One line of HTML — SSE data must not carry raw newlines."""
+    if job.status == "failed":
+        return f'<span class="s-needs_input">Failed: {escape(job.error or "unknown")}</span>'
+    if job.status == "succeeded":
+        return '<span class="s-complete">Done</span>'
+    label = escape(job.message or "Working…")
+    counter = f"{job.step}/{job.total}" if job.total else ""
+    return f'<span class="working">{label}</span> <span class="why">{counter}</span>'
+
+
+@app.get("/documents/{document_id}/sections/{key}/panel", response_class=HTMLResponse)
+async def section_panel(request: Request, document_id: UUID, key: str, job: UUID | None = None):
+    """Re-render the workspace, folding in a finished job's gaps and errors."""
+    gaps: list[dict[str, str]] = []
+    errors: list[str] = []
+    if job is not None:
+        finished = await jobs.get(job)
+        if finished is not None:
+            if finished.result:
+                gaps = finished.result.get("gaps") or []
+                errors = list(finished.result.get("errors") or [])
+            if finished.error:
+                errors.append(finished.error)
+    return await _panel(request, document_id, key, gaps=gaps, errors=errors)
 
 
 @app.post("/proposals/{proposal_id}/accept", response_class=HTMLResponse)
@@ -169,9 +218,14 @@ async def _panel_context(
         view = await documents.view(s, document_id)
         pending = await proposals.pending_for(s, document_id, key)
         decided = await proposals.decided_for(s, document_id, key)
-    return section_panel_context(
+    # A job may still be running from an earlier visit — pick it back up rather
+    # than offering a second one.
+    latest = await jobs.latest_for(document_id, key)
+    context = section_panel_context(
         document, spec, view, key, dependents or [], pending, decided, gaps, errors
     )
+    context["running_job"] = latest if latest is not None and not latest.done else None
+    return context
 
 
 async def _panel(

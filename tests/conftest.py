@@ -113,3 +113,22 @@ async def db():
     """Skip rather than fail when the database from .env is unreachable."""
     if not await _database_available():
         pytest.skip("database from .env not reachable")
+
+
+@pytest.fixture
+def stub_handler():
+    """Register a job handler for one test, then restore what was there."""
+    from lcf.services import jobs
+
+    saved: dict[str, object] = {}
+
+    def register(kind, fn):
+        saved.setdefault(kind, jobs._handlers.get(kind))
+        jobs._handlers[kind] = fn
+
+    yield register
+    for kind, original in saved.items():
+        if original is None:
+            jobs._handlers.pop(kind, None)
+        else:
+            jobs._handlers[kind] = original

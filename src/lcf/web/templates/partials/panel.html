@@ -127,16 +127,24 @@
     </div>
     {% endif %}
 
+    {# A job started here, or still running from an earlier visit. #}
+    <div id="drafting-slot">
+      {% if running_job %}
+        {% with job = running_job, document_id = document.id, section_key = section.key %}
+          {% include "partials/job.html" %}
+        {% endwith %}
+      {% endif %}
+    </div>
+
     <div class="card">
       <div class="block-head">
         <h3 style="margin:0">Content</h3>
         <form hx-post="/documents/{{ document.id }}/sections/{{ section.key }}/draft"
-              hx-target="#workspace" hx-swap="outerHTML"
+              hx-target="#drafting-slot" hx-swap="innerHTML"
               hx-disabled-elt="find button" style="margin-left:auto">
-          <button type="submit" {{ 'disabled' if not state.can_draft }}>
+          <button type="submit" {{ 'disabled' if not state.can_draft or running_job }}>
             Draft the empty blocks
           </button>
-          <span class="htmx-indicator working">Asking the assistant, about 15 seconds…</span>
         </form>
       </div>
       {% if not state.can_draft %}

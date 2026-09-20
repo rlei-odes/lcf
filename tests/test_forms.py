@@ -42,9 +42,15 @@ ACTIONS = Block.model_validate(
 def test_blank_rows_with_a_boolean_are_dropped():
     """The defect: a blank row still submits is_champion=false, which is not content."""
     form = {
-        "r0.name": "Sabine Vogt", "r0.role": "Champion", "r0.is_champion": "true",
-        "r1.name": "", "r1.role": "", "r1.is_champion": "false",
-        "r2.name": "", "r2.role": "", "r2.is_champion": "false",
+        "r0.name": "Sabine Vogt",
+        "r0.role": "Champion",
+        "r0.is_champion": "true",
+        "r1.name": "",
+        "r1.role": "",
+        "r1.is_champion": "false",
+        "r2.name": "",
+        "r2.role": "",
+        "r2.is_champion": "false",
     }
     rows = parse_block_value(TEAM, form)
     assert len(rows) == 1
@@ -56,10 +62,15 @@ def test_saving_twice_does_not_accumulate_rows():
     first = parse_block_value(
         TEAM,
         {
-            "r0.name": "Sabine Vogt", "r0.role": "Champion", "r0.is_champion": "true",
-            "r1.name": "", "r1.role": "", "r1.is_champion": "false",
+            "r0.name": "Sabine Vogt",
+            "r0.role": "Champion",
+            "r0.is_champion": "true",
+            "r1.name": "",
+            "r1.role": "",
+            "r1.is_champion": "false",
         },
     )
+
     # The page re-renders those rows plus two fresh blanks; the user saves again.
     def as_field(value):
         return {True: "true", False: "false"}.get(value, value)
@@ -76,8 +87,12 @@ def test_saving_twice_does_not_accumulate_rows():
 
 def test_clearing_a_row_deletes_it():
     form = {
-        "r0.name": "Sabine Vogt", "r0.role": "Champion", "r0.is_champion": "true",
-        "r1.name": "Tomas Reiner", "r1.role": "Process", "r1.is_champion": "false",
+        "r0.name": "Sabine Vogt",
+        "r0.role": "Champion",
+        "r0.is_champion": "true",
+        "r1.name": "Tomas Reiner",
+        "r1.role": "Process",
+        "r1.is_champion": "false",
     }
     assert len(parse_block_value(TEAM, form)) == 2
 
@@ -95,8 +110,12 @@ def test_boolean_values_are_preserved_on_real_rows():
     rows = parse_block_value(
         TEAM,
         {
-            "r0.name": "Sabine", "r0.role": "Champion", "r0.is_champion": "true",
-            "r1.name": "Tomas", "r1.role": "Process", "r1.is_champion": "false",
+            "r0.name": "Sabine",
+            "r0.role": "Champion",
+            "r0.is_champion": "true",
+            "r1.name": "Tomas",
+            "r1.role": "Process",
+            "r1.is_champion": "false",
         },
     )
     assert [r["is_champion"] for r in rows] == [True, False]
@@ -105,6 +124,7 @@ def test_boolean_values_are_preserved_on_real_rows():
 # --------------------------------------------------------------------------- #
 # normalisation
 # --------------------------------------------------------------------------- #
+
 
 @pytest.mark.parametrize(
     "raw,expected",
@@ -137,6 +157,7 @@ def test_enum_tolerates_case_from_a_spreadsheet():
 # pasting
 # --------------------------------------------------------------------------- #
 
+
 def test_paste_matches_a_header_by_label():
     pasted = "Action\tOwner\tDue\nBlocked stock\tSabine\t08.09.2026\n"
     rows = parse_pasted_table(ACTIONS, pasted)
@@ -164,6 +185,7 @@ def test_paste_ignores_blank_lines():
 # --------------------------------------------------------------------------- #
 # other block kinds
 # --------------------------------------------------------------------------- #
+
 
 def test_prose_is_trimmed():
     block = Block.model_validate({"key": "t", "kind": "prose", "label": "T"})

@@ -31,7 +31,7 @@ Early. Build-order steps 1–3 of [ARCHITECTURE §14](docs/ARCHITECTURE.md) are 
 | ✓ | Object storage bucket provisioning |
 | ✓ | Web UI (FastAPI + Jinja + HTMX), paste-from-spreadsheet tables |
 | ✓ | LLM drafting: schema-constrained proposals, gaps, accept/decline, decision log |
-| | Background jobs and progress streaming — drafting currently blocks the request |
+| ✓ | Background jobs with live progress over SSE — drafting no longer blocks the request |
 | | Span-level suggestions and the TipTap editor island |
 | | Evidence intake (paste + images), docx / Markdown / JSON export |
 
