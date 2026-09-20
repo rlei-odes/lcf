@@ -71,7 +71,7 @@
       <h3>Questions{% if state.missing_answers %} · {{ state.missing_answers|length }} open{% endif %}</h3>
       <p class="lead">Answered here, these become the material the draft is written from.</p>
       <form hx-post="/documents/{{ document.id }}/sections/{{ section.key }}/answers"
-            hx-target="#workspace" hx-swap="outerHTML">
+            hx-target="#workspace" hx-swap="outerHTML" hx-disabled-elt="find button">
         {% for q in questions %}
         <div class="field">
           <label for="q-{{ q.question.key }}">
@@ -103,6 +103,7 @@
         </div>
         {% endfor %}
         <button type="submit">Save answers</button>
+        <span class="htmx-indicator working">Saving…</span>
       </form>
     </div>
     {% endif %}
@@ -131,10 +132,11 @@
         <h3 style="margin:0">Content</h3>
         <form hx-post="/documents/{{ document.id }}/sections/{{ section.key }}/draft"
               hx-target="#workspace" hx-swap="outerHTML"
-              hx-indicator="#drafting" style="margin-left:auto">
+              hx-disabled-elt="find button" style="margin-left:auto">
           <button type="submit" {{ 'disabled' if not state.can_draft }}>
             Draft the empty blocks
           </button>
+          <span class="htmx-indicator working">Asking the assistant, about 15 seconds…</span>
         </form>
       </div>
       {% if not state.can_draft %}
@@ -142,8 +144,6 @@
         {%- if state.blocked_by %}Drafting needs the sections above completed first.
         {%- else %}Answer the required questions first — the draft is written from them.{% endif -%}
       </p>
-      {% else %}
-      <p class="hint" id="drafting" style="display:none">Asking the assistant…</p>
       {% endif %}
 
       {% for b in blocks %}
@@ -170,7 +170,7 @@
         {% endfor %}
 
         <form hx-post="/documents/{{ document.id }}/sections/{{ section.key }}/blocks/{{ b.block.key }}"
-              hx-target="#workspace" hx-swap="outerHTML">
+              hx-target="#workspace" hx-swap="outerHTML" hx-disabled-elt="find button">
           <div class="block-head">
             <label>{{ b.block.label }}</label>
             <span class="kind">{{ b.block.kind }}</span>
@@ -184,7 +184,10 @@
           </div>
           {% endfor %}
 
-          <div class="actions"><button type="submit">Save {{ b.block.label|lower }}</button></div>
+          <div class="actions">
+            <button type="submit">Save {{ b.block.label|lower }}</button>
+            <span class="htmx-indicator working">Saving…</span>
+          </div>
         </form>
       </div>
       {% endfor %}
@@ -241,8 +244,15 @@
                 {{ 'disabled' if not state.can_complete }}>Mark complete</button>
         {% if not state.can_complete %}
         <span class="why">
-          {%- if state.blockers %}{{ state.blockers|length }} blocking check(s) still failing.
-          {%- else %}Nothing supplied yet.{% endif -%}
+          {%- if state.blocked_by -%}
+            Complete
+            {% for key in state.blocked_by %}<strong>{{ spec.section(key).title }}</strong>
+            {%- if not loop.last %} and {% endif %}{% endfor %} first.
+          {%- elif state.blockers -%}
+            {{ state.blockers|length }} blocking check(s) still failing.
+          {%- else -%}
+            Nothing supplied yet.
+          {%- endif -%}
         </span>
         {% endif %}
         {% endif %}

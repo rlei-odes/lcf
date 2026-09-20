@@ -12,7 +12,7 @@ import re
 from datetime import date
 from typing import Any
 
-from lcf.spec.models import Block, BlockKind, Column
+from lcf.spec.models import Block, BlockKind, Column, ValueType
 
 _DMY = re.compile(r"^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})$")
 
@@ -46,9 +46,26 @@ def _rows_from_form(block: Block, form: dict[str, Any]) -> list[dict[str, Any]]:
         for column in block.columns:
             raw = str(form.get(f"r{i}.{column.key}", "")).strip()
             row[column.key] = _normalise(raw, column.type, column.values)
-        if any(str(v).strip() for v in row.values()):
+        if _row_has_content(block, row):
             rows.append(row)  # a wholly empty row is a deleted row
     return rows
+
+
+def _row_has_content(block: Block, row: dict[str, Any]) -> bool:
+    """Does this row hold anything a person actually entered?
+
+    Booleans do not count. A checkbox or yes/no select always submits a value, so
+    `str(False)` — which is the truthy string "False" — would make every blank row
+    look filled: spare rows would persist on every save, clearing a row could
+    never delete it, and any `fields_filled` requirement would fail forever
+    against rows nobody typed.
+    """
+    for column in block.columns:
+        if column.type is ValueType.BOOLEAN:
+            continue
+        if str(row.get(column.key, "")).strip():
+            return True
+    return False
 
 
 def parse_pasted_table(block: Block, text: str) -> list[dict[str, Any]]:
@@ -78,7 +95,7 @@ def parse_pasted_table(block: Block, text: str) -> list[dict[str, Any]]:
         for index, column in mapping.items():
             if index < len(raw):
                 row[column.key] = _normalise(raw[index].strip(), column.type, column.values)
-        if any(str(v).strip() for v in row.values()):
+        if _row_has_content(block, row):
             rows.append(row)
     return rows
 

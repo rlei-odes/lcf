@@ -170,5 +170,15 @@ ul.plain .meta { color: var(--muted); font-size: 12.5px; margin-left: auto; }
 .notice.proposal { border-color: var(--accent); background: var(--accent-soft); }
 .notice.proposal h3 { color: var(--accent); }
 .notice.proposal .actions form { display: inline; }
+/* htmx adds .htmx-request to the element that triggered the request, so an
+   indicator inside that element shows for exactly as long as it is in flight.
+   Never give one an inline display:none — that wins over these rules. */
 .htmx-indicator { display: none; }
-.htmx-request .htmx-indicator, .htmx-request.htmx-indicator { display: block; }
+.htmx-request .htmx-indicator, .htmx-request.htmx-indicator { display: inline-block; }
+.working {
+  font-size: 13px; color: var(--accent); margin-left: 12px;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse { 0%, 100% { opacity: 1 } 50% { opacity: .45 } }
+/* A form mid-request shouldn't look dead, only busy. */
+form.htmx-request { opacity: 1; }
