@@ -128,6 +128,11 @@ def section_panel_context(
         "gaps": gaps or [],
         "llm_errors": llm_errors or [],
         "pending_count": sum(len(v) for v in proposals.values()),
+        # Whether asking for a draft would do anything at all. Drafting only
+        # touches empty blocks and never touches image references, so a section
+        # that is full — or has no blocks — has nothing to ask for, and a button
+        # that runs a job producing nothing reads as a broken button.
+        "draftable": any(b.empty for b in blocks if b.block.kind != "image_ref"),
         "nav": _nav(spec, view),
     }
 

@@ -67,6 +67,36 @@ class DocTypeVersion(Base):
     doc_type: Mapped[DocType] = relationship(back_populates="versions")
 
 
+class DocTypeDraft(Base):
+    """A document type being built, before it is a version.
+
+    `spec` is raw JSON, not a validated spec, and that is the point. A structured
+    editor is a sequence of small edits and the states in between are legitimately
+    broken — a section exists before its blocks do, a check before the column it
+    checks. Storing a `DocTypeSpec` here would make the editor unable to save the
+    very states it exists to pass through (ARCHITECTURE §15.2).
+
+    Server-held rather than client-held for the same reason as everything else:
+    the server stays the only authority, and a closed tab costs nothing.
+    `updated_at` doubles as the optimistic-concurrency token — an edit submits the
+    value it was rendered from, and a stale one is refused rather than allowed to
+    overwrite work in silence.
+    """
+
+    __tablename__ = "doc_type_draft"
+
+    id: Mapped[UUID] = _pk()
+    # Null while the type is new: it has no published versions to belong to yet.
+    doc_type_key: Mapped[str | None] = mapped_column(String(100), index=True)
+    title: Mapped[str] = mapped_column(String(300), nullable=False, default="")
+    spec: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    based_on: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = _created()
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
 class Document(Base):
     __tablename__ = "document"
 

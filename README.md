@@ -34,6 +34,7 @@ Early. Most of the build order in [ARCHITECTURE §14](docs/ARCHITECTURE.md) is d
 | ✓ | Export: JSON, Markdown and docx, gated and recorded |
 | ✓ | Evidence intake: paste a blob of notes, distributed across the sections, answers proposed from it |
 | ✓ | Spec editor for the rule builder: check, publish as a new version, import/export YAML |
+| ✓ | A structured builder for the same specs — sections, questions, blocks and checks as forms, for someone who has never read YAML |
 | | Image evidence: upload and captioning |
 | | Span-level suggestions and the TipTap editor island |
 

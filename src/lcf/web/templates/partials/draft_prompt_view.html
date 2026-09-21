@@ -1,0 +1,55 @@
+{# Pick a block, read what the assistant will be told about it.
+
+   Both selects reload this whole fragment, so choosing a section repopulates the
+   blocks under it. Two selects where the second does not follow the first is
+   worse than one, because it silently shows you the wrong thing. #}
+<div id="prompt-view">
+  <div class="card">
+    <form class="row picker" id="prompt-picker">
+      <div class="field">
+        <label for="p-section">Section</label>
+        <select id="p-section" name="section"
+                hx-get="/doc-types/drafts/{{ draft.id }}/prompt"
+                hx-target="#prompt-view" hx-swap="outerHTML" hx-include="#prompt-picker">
+          {% for s in spec.sections %}
+          <option value="{{ s.key }}" {% if section and s.key == section.key %}selected{% endif %}>{{ s.title }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="p-block">What is being written</label>
+        <select id="p-block" name="block"
+                hx-get="/doc-types/drafts/{{ draft.id }}/prompt"
+                hx-target="#prompt-view" hx-swap="outerHTML" hx-include="#prompt-picker">
+          {% for b in (section.blocks if section else []) %}
+          <option value="{{ b.key }}" {% if block and b.key == block.key %}selected{% endif %}>{{ b.label }}</option>
+          {% else %}
+          <option value="">This section has nothing to write in it</option>
+          {% endfor %}
+        </select>
+      </div>
+      <span class="htmx-indicator working">Assembling…</span>
+    </form>
+  </div>
+
+  <div class="card">
+    {% if message %}
+    <h3>
+      {{ section.title }}
+      {%- if block.label|lower != section.title|lower %} → {{ block.label }}{% endif %}
+    </h3>
+    <pre class="prompt">{{ message }}</pre>
+    <p class="hint">
+      Read-only, and deliberately. The way to change what it says is to change the
+      section's description, its guidance, or its checks — there is no box here to
+      write instructions into, because a document type that grows one stops being a
+      standard and becomes prompt engineering (DESIGN §5.8).
+    </p>
+    {% else %}
+    <p class="hint">
+      Nothing to assemble — this section has nothing to write in it yet. Give it a
+      block in the builder and the assistant will have something to be told about.
+    </p>
+    {% endif %}
+  </div>
+</div>

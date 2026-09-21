@@ -18,9 +18,26 @@ _yaml.width = 100
 _yaml.indent(mapping=2, sequence=4, offset=2)
 
 
+def to_data(text: str) -> Any:
+    """YAML text to plain Python, with no opinion about whether it is a spec.
+
+    Split out from `parse` so a caller can tell "that is not YAML" apart from
+    "that is YAML but not a spec" — two different things to say to whoever is
+    editing it.
+    """
+    return _to_plain(_yaml.load(text))
+
+
 def parse(text: str) -> DocTypeSpec:
     """Parse YAML text into a spec. Raises pydantic.ValidationError on bad shape."""
-    return DocTypeSpec.model_validate(_to_plain(_yaml.load(text)))
+    return DocTypeSpec.model_validate(to_data(text))
+
+
+def dump_data(data: Any) -> str:
+    """Serialise raw spec data — a draft, which need not be valid yet."""
+    buf = io.StringIO()
+    _yaml.dump(data, buf)
+    return buf.getvalue()
 
 
 def load(path: str | Path) -> DocTypeSpec:
@@ -34,9 +51,7 @@ def dump(spec: DocTypeSpec) -> str:
     never parsed cannot be recovered. Equality of the reloaded model is the
     property we guarantee, and the one the tests assert.
     """
-    buf = io.StringIO()
-    _yaml.dump(spec.to_dict(), buf)
-    return buf.getvalue()
+    return dump_data(spec.to_dict())
 
 
 def _to_plain(data: Any) -> Any:

@@ -85,7 +85,11 @@
     {% if questions %}
     <div class="card">
       <h3>Questions{% if state.missing_answers %} · {{ state.missing_answers|length }} open{% endif %}</h3>
-      <p class="lead">Answered here, these become the material the draft is written from.</p>
+      <p class="lead">
+        Answer these and the assistant can draft the section for you. What you
+        write here is the material it works from — it is never copied into the
+        document as it stands.
+      </p>
       {% if questions|selectattr('proposed')|list %}
       <div class="notice">
         <strong>Some answers were filled in from your material.</strong>
@@ -96,7 +100,8 @@
       </div>
       {% endif %}
       <form hx-post="/documents/{{ document.id }}/sections/{{ section.key }}/answers"
-            hx-target="#workspace" hx-swap="outerHTML" hx-disabled-elt="find button">
+            hx-target="#workspace" hx-swap="outerHTML" hx-disabled-elt="find button"
+            data-dirty="your answers">
         {% for q in questions %}
         <div class="field{{ ' proposed' if q.proposed }}">
           <label for="q-{{ q.question.key }}">
@@ -131,8 +136,11 @@
           {% endif %}
         </div>
         {% endfor %}
-        <button type="submit">Save answers</button>
-        <span class="htmx-indicator working">Saving…</span>
+        <div class="actions">
+          <button type="submit" data-save>Save answers</button>
+          <span class="saved-note">Saved</span>
+          <span class="htmx-indicator working">Saving…</span>
+        </div>
       </form>
     </div>
     {% endif %}
@@ -144,10 +152,15 @@
     </div>
     {% endif %}
 
-    {% if gaps %}
+    {# Kept until another run replaces them, not just for the one response that
+       followed the job — these vanished half-read when a proposal was accepted. #}
+    {% if gaps and state.status != Status.COMPLETE %}
     <div class="notice">
       <h3>The assistant needs {{ gaps|length }} thing(s) from you</h3>
-      <p>It would not write these without being told. Answer above, then draft again.</p>
+      <p>
+        It would not write these without being told. Answer above, then ask for a
+        draft again. They stay here until you do.
+      </p>
       {% for g in gaps %}
       <div class="check"><span class="mark">?</span>
         <span>{{ g.question }}<span class="where">{{ g.block }} — {{ g.why }}</span></span>
@@ -169,23 +182,32 @@
 
     <div class="card">
       <div class="block-head">
-        <h3 style="margin:0">Content</h3>
+        <h3 style="margin:0">What gets written</h3>
         <form hx-post="/documents/{{ document.id }}/sections/{{ section.key }}/draft"
               hx-target="#drafting-slot" hx-swap="innerHTML"
               hx-disabled-elt="find button" style="margin-left:auto">
-          <button type="submit" {{ 'disabled' if not state.can_draft or running_job }}>
-            Draft the empty blocks
+          <button type="submit"
+                  {{ 'disabled' if not state.can_draft or running_job or not draftable }}>
+            Ask the assistant for a draft
           </button>
         </form>
       </div>
-      {% if not state.can_draft %}
       <p class="hint">
-        {%- if state.blocked_by %}Drafting needs the sections above completed first.
+        {%- if not blocks %}
+          This section has nothing to write in it. That is a fault in the document
+          type, not in anything you did — it cannot be filled in or exported as it
+          stands.
+        {%- elif state.blocked_by %}Drafting needs the sections above completed first.
         {%- elif questions|selectattr('proposed')|list %}Confirm the answers filled in from your
           material — read them, then save. Drafting waits for that, not for the assistant.
-        {%- else %}Answer the required questions first — the draft is written from them.{% endif -%}
+        {%- elif state.missing_answers %}Answer the required questions first — the draft is
+          written from them.
+        {%- elif not draftable %}Everything here is written already. Clear a box below to have
+          the assistant try it again.
+        {%- else %}The assistant writes from your answers and the material you pasted, and
+          proposes it below. Nothing is written into the document until you accept it.
+        {%- endif -%}
       </p>
-      {% endif %}
 
       {% for b in blocks %}
       <div class="block">
@@ -211,7 +233,8 @@
         {% endfor %}
 
         <form hx-post="/documents/{{ document.id }}/sections/{{ section.key }}/blocks/{{ b.block.key }}"
-              hx-target="#workspace" hx-swap="outerHTML" hx-disabled-elt="find button">
+              hx-target="#workspace" hx-swap="outerHTML" hx-disabled-elt="find button"
+              data-dirty="{{ b.block.label }}">
           <div class="block-head">
             <label>{{ b.block.label }}</label>
             <span class="kind">{{ b.block.kind }}</span>
@@ -226,7 +249,8 @@
           {% endfor %}
 
           <div class="actions">
-            <button type="submit">Save {{ b.block.label|lower }}</button>
+            <button type="submit" data-save>Save {{ b.block.label|lower }}</button>
+            <span class="saved-note">Saved</span>
             <span class="htmx-indicator working">Saving…</span>
           </div>
         </form>
@@ -279,10 +303,14 @@
                 hx-target="#workspace" hx-swap="outerHTML">Reopen</button>
         <span class="why">Completed. Revisions are kept either way.</span>
         {% else %}
-        <button class="primary"
+        {# data-needs-saved: this sits outside the block forms, so without it an
+           edited-but-unsaved table is thrown away by a click here. #}
+        <button class="primary" data-needs-saved
+                {% if not state.can_complete %}data-blocked{% endif %}
                 hx-post="/documents/{{ document.id }}/sections/{{ section.key }}/complete"
                 hx-target="#workspace" hx-swap="outerHTML"
                 {{ 'disabled' if not state.can_complete }}>Mark complete</button>
+        <span class="why blocker" data-unsaved-note hidden></span>
         {% if not state.can_complete %}
         <span class="why">
           {%- if state.blocked_by -%}
@@ -292,7 +320,7 @@
           {%- elif state.blockers -%}
             {{ state.blockers|length }} blocking check(s) still failing.
           {%- else -%}
-            Nothing supplied yet.
+            Nothing written here yet.
           {%- endif -%}
         </span>
         {% endif %}

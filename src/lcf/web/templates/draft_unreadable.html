@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Not readable yet{% endblock %}
+{% block subtitle %}<a href="/doc-types/drafts/{{ draft.id }}">back to the builder</a>{% endblock %}
+
+{# A draft mid-edit legitimately does not parse — that is the whole reason it is
+   stored as raw JSON. Saying so, with the reasons, beats pretending the preview
+   is empty. #}
+{% block content %}
+<div class="card">
+  <h2>There is not enough here to read back yet</h2>
+  <p class="lead">
+    This view renders the draft the way a published type reads. It needs a draft
+    that holds together, and this one does not — yet.
+  </p>
+  {% for p in review.problems %}
+  <div class="check blocker"><span class="mark">✗</span><span>{{ p }}</span></div>
+  {% endfor %}
+  <div class="actions">
+    <a href="/doc-types/drafts/{{ draft.id }}"><button class="primary" type="button">Back to the builder</button></a>
+  </div>
+</div>
+{% endblock %}

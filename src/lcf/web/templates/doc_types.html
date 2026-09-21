@@ -35,8 +35,14 @@
   <p class="lead">Nothing published yet.</p>
   {% endif %}
 
-  <div class="actions" style="margin-top:18px">
-    <a href="/doc-types/new"><button class="primary" type="button">New type</button></a>
+  <form method="post" action="/doc-types/drafts" class="add-row" style="margin-top:18px">
+    <input type="text" name="title" required placeholder="Build a new type — what is it called?"
+           aria-label="What the new document type is called">
+    <button class="primary" type="submit">Start building</button>
+  </form>
+
+  <div class="actions">
+    <a href="/doc-types/new"><button type="button">Write one as YAML</button></a>
     <form method="post" action="/doc-types/import" enctype="multipart/form-data"
           style="display:flex;gap:10px;align-items:center;margin-left:auto">
       <input type="file" name="file" accept=".yaml,.yml,text/yaml" required
@@ -45,7 +51,32 @@
     </form>
   </div>
   <p class="hint">
-    An imported file opens in the editor. Nothing is published until you say so.
+    Building walks you through it, question by question. YAML is the same thing as
+    a file, for when that is faster. Either way nothing is published until you say
+    so.
   </p>
 </div>
+
+{# Drafts survive a closed tab, which is half the reason they are held on the
+   server at all (ARCHITECTURE §15.2). Showing them is the other half. #}
+{% if draft_rows %}
+<div class="card">
+  <h3>Being worked on</h3>
+  <p class="lead">Unpublished. Nobody can start a document from these yet.</p>
+  <ul class="plain">
+    {% for d in draft_rows %}
+    <li>
+      <span class="dot s-drafted">·</span>
+      <span>
+        <a href="/doc-types/drafts/{{ d.id }}">{{ d.title or "Untitled" }}</a>
+        <span class="where">
+          {% if d.based_on %}will publish over v{{ d.based_on }}{% else %}new type{% endif %}
+        </span>
+      </span>
+      <span class="meta">saved {{ d.updated_at|localtime }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
 {% endblock %}

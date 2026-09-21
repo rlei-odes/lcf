@@ -5,7 +5,7 @@ rather than quietly overwritten — documents pin versions, and mutating one und
 them would invalidate work already done (DESIGN decision 1).
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from pydantic import ValidationError
 from ruamel.yaml.error import MarkedYAMLError
@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from lcf.models.tables import DocType, DocTypeVersion, Document
 from lcf.spec import loader
-from lcf.spec.linter import lint, validate
+from lcf.spec.linter import Path, lint, validate
 from lcf.spec.models import DocTypeSpec
 
 
@@ -73,6 +73,25 @@ def spec_of(version: DocTypeVersion) -> DocTypeSpec:
     return DocTypeSpec.model_validate(version.spec)
 
 
+@dataclass(frozen=True)
+class Problem:
+    """One thing wrong with a draft, locatable two ways.
+
+    `where` reads in a list; `path` points at the field. The structured editor
+    needs the second to show an error beside the input that caused it, and a
+    problem without a usable path would silently become a problem the form
+    editor cannot display — so both are always populated, even if `path` only
+    narrows as far as the section.
+    """
+
+    where: str
+    message: str
+    path: Path = field(default=())
+
+    def __str__(self) -> str:
+        return f"{self.where}: {self.message}"
+
+
 @dataclass
 class Review:
     """What the editor learns about a draft without publishing it.
@@ -83,38 +102,77 @@ class Review:
     """
 
     spec: DocTypeSpec | None
-    errors: list[str]
+    problems: list[Problem]
+
+    @property
+    def errors(self) -> list[str]:
+        """The problems as lines. What the YAML editor and the CLI print."""
+        return [str(p) for p in self.problems]
 
     @property
     def ok(self) -> bool:
-        return self.spec is not None and not self.errors
+        return self.spec is not None and not self.problems
+
+    def at(self, path: Path) -> list[Problem]:
+        """Problems anchored exactly here."""
+        return [p for p in self.problems if p.path == tuple(path)]
+
+    def under(self, path: Path) -> list[Problem]:
+        """Problems anchored here or anywhere below — what a collapsed row shows."""
+        prefix = tuple(path)
+        return [p for p in self.problems if p.path[: len(prefix)] == prefix]
+
+    def outside(self, *prefixes: str) -> list[Problem]:
+        """Everything not under these branches — the type's own fields.
+
+        Without it a problem in `id` or `version` would belong to no part of the
+        editor and be reported nowhere, which is the failure mode an anchored
+        error list exists to prevent.
+        """
+        return [p for p in self.problems if not p.path or p.path[0] not in prefixes]
 
 
 def review(text: str) -> Review:
     """Parse and lint a draft spec. Never raises — errors are the answer."""
     try:
-        spec = loader.parse(text)
-    except ValidationError as exc:
-        return Review(None, [_pydantic_error(e) for e in exc.errors()])
+        data = loader.to_data(text)
     except MarkedYAMLError as exc:
         line = getattr(exc.problem_mark, "line", None)
         where = f"line {line + 1}" if line is not None else "YAML"
-        return Review(None, [f"{where}: {exc.problem or exc}"])
+        return Review(None, [Problem(where, exc.problem or str(exc))])
     except Exception as exc:  # ruamel raises a family of these
-        return Review(None, [f"YAML: {exc}"])
-
-    errors = [str(e) for e in lint(spec)]
-    return Review(spec if not errors else None, errors)
+        return Review(None, [Problem("YAML", str(exc))])
+    return review_data(data)
 
 
-def _pydantic_error(error: dict) -> str:
+def review_data(data: object) -> Review:
+    """The half of `review` that starts from parsed data rather than text.
+
+    The structured editor holds its draft as JSON and never has YAML to parse, but
+    must be judged by exactly the same model and the same linter — otherwise the
+    two editors would disagree about what publishes, which is the one thing they
+    must never do.
+    """
+    if not isinstance(data, dict):
+        return Review(None, [Problem("spec", "a spec must be a mapping of fields")])
+    try:
+        spec = DocTypeSpec.model_validate(data)
+    except ValidationError as exc:
+        return Review(None, [_pydantic_problem(e) for e in exc.errors()])
+
+    problems = [Problem(e.where, e.message, e.path) for e in lint(spec)]
+    return Review(spec if not problems else None, problems)
+
+
+def _pydantic_problem(error: dict) -> Problem:
     """One Pydantic error as a line a person can act on."""
-    location = ".".join(str(part) for part in error.get("loc", ()) if part != "__root__")
+    path = tuple(part for part in error.get("loc", ()) if part != "__root__")
+    location = ".".join(str(part) for part in path)
     message = error.get("msg", "invalid")
     # Pydantic prefixes validator failures with 'Value error, '; the rule
     # builder wrote the rule, not the validator.
     message = message.removeprefix("Value error, ")
-    return f"{location or 'spec'}: {message}"
+    return Problem(location or "spec", message, path)
 
 
 async def list_types(session: AsyncSession) -> list[DocType]:

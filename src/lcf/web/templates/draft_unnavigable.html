@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{{ draft.title or "Draft" }} — cannot be shown as forms{% endblock %}
+{% block subtitle %}<a href="/doc-types">document types</a>{% endblock %}
+
+{# Every invalid state the forms themselves produce is still a draft the builder
+   can lay out and report on. This page is for the other kind: YAML pasted in that
+   is not shaped like a spec at all, where there is no form to show. The YAML
+   editor is where it can be fixed, so that is where this points. #}
+{% block content %}
+<div class="card">
+  <h2>This draft cannot be shown as forms</h2>
+  <p class="lead">
+    It was edited as YAML into a shape the builder has no fields for — a list
+    where it expects sections, or something that is not a list at all. Nothing is
+    lost; it is all still in the text.
+  </p>
+  {% for p in review.problems %}
+  <div class="check blocker"><span class="mark">✗</span><span>{{ p }}</span></div>
+  {% endfor %}
+  <div class="actions">
+    <a href="/doc-types/drafts/{{ draft.id }}/yaml">
+      <button class="primary" type="button">Fix it as YAML</button></a>
+    <form method="post" action="/doc-types/drafts/{{ draft.id }}/discard"
+          onsubmit="return confirm('Discard this draft? Everything unpublished in it is lost.')">
+      <button type="submit" class="quiet">Discard the draft</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

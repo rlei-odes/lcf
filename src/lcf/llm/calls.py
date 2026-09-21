@@ -42,9 +42,16 @@ class BlockDraft:
         return bool(self.value)
 
 
-async def draft_block(view: DocumentView, section: Section, block: Block, style: str) -> BlockDraft:
-    """Draft one block from the confirmed answers and surrounding content."""
-    system = "\n\n".join(
+def draft_system_message(section: Section, block: Block, style: str) -> str:
+    """Everything the assistant is told about a block before it sees a document.
+
+    Split out from `draft_block` so the rule builder can read it (DESIGN §5.8
+    promises exactly this) without a second function assembling a second, subtly
+    different version of it. What is missing here is only the runtime half — the
+    author's answers and the content so far — which does not exist until there is
+    a document.
+    """
+    return "\n\n".join(
         [
             prompt("draft_block"),  # 1. task frame — ours, fixed
             "## How to write\n\n" + style,  # 2. resolved style
@@ -54,6 +61,11 @@ async def draft_block(view: DocumentView, section: Section, block: Block, style:
             prompt("never_invent"),  # 8. composed last, so nothing softens it
         ]
     )
+
+
+async def draft_block(view: DocumentView, section: Section, block: Block, style: str) -> BlockDraft:
+    """Draft one block from the confirmed answers and surrounding content."""
+    system = draft_system_message(section, block, style)
     user = _runtime_data(view, section, block)  # 6. answers and current content
 
     completion = await complete_json(

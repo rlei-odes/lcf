@@ -1,0 +1,86 @@
+{% import "partials/draft_macros.html" as m %}
+{# A table's columns, or a labelled-field block's fields. The same editing problem
+   with two names, so it is one template and the difference is `part`. #}
+
+{% set part = 'columns' if block.get('kind') == 'table' else 'fields' %}
+{% set items = block.get(part) or [] %}
+{% set url = '/doc-types/drafts/' ~ draft.id %}
+
+<div class="sub">
+  <h4>{{ 'Columns' if part == 'columns' else 'The fields' }}</h4>
+  <p class="hint">
+    {% if part == 'columns' %}
+      What each row of this table records. Checks below can name these, so give
+      them the names a reader would use.
+    {% else %}
+      A label and a value each — like the header of a form.
+    {% endif %}
+  </p>
+
+  <div class="scroll">
+  <table class="col-editor">
+    <tr>
+      <th>Heading</th>
+      <th>What goes in it</th>
+      {% if part == 'fields' %}<th>Needed</th>{% endif %}
+      <th></th>
+    </tr>
+    {% for c in items %}
+    {% set cat = block_at + [part, loop.index0] %}
+    <tr>
+      <td colspan="{{ 4 if part == 'fields' else 3 }}">
+        <form class="col-row" hx-post="{{ url }}/column" hx-target="#draft-body" hx-swap="outerHTML">
+          {{ m.state(token, focus, 'block:' ~ block.key) }}
+          <input type="hidden" name="section" value="{{ sec.key }}">
+          <input type="hidden" name="block" value="{{ block.key }}">
+          <input type="hidden" name="part" value="{{ part }}">
+          <input type="hidden" name="key" value="{{ c.key }}">
+
+          <input type="text" name="label" maxlength="80" value="{{ c.label or '' }}" aria-label="Heading">
+          <select name="type" aria-label="What goes in it">
+            {% for value, label in builder.VALUE_TYPES %}
+            <option value="{{ value }}" {% if c.get('type', 'string') == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          {% if part == 'fields' %}
+          <label class="inline-check" title="Must be filled in">
+            <input type="checkbox" name="required" {% if c.get('required') %}checked{% endif %}>
+          </label>
+          {% endif %}
+          <button type="submit" class="tool" title="Save this column">✓</button>
+
+          {% if c.get('type') == 'enum' %}
+          <div class="col-values">
+            <label>The values it may take — one per line</label>
+            <textarea name="values" rows="3">{{ (c.get('values') or []) | join('\n') }}</textarea>
+            {{ m.problems(review, cat + ['values']) }}
+          </div>
+          {% endif %}
+        </form>
+        <div class="col-tools">
+          {{ m.rename(url ~ '/column', token, focus, 'block:' ~ block.key, c.key,
+                      'column' if part == 'columns' else 'field', false,
+                      {'section': sec.key, 'block': block.key, 'part': part, 'key': c.key}) }}
+          {{ m.rowtools(url ~ '/column', token, focus, 'block:' ~ block.key,
+                        {'section': sec.key, 'block': block.key, 'part': part, 'key': c.key},
+                        'the ' ~ ('column' if part == 'columns' else 'field') ~ ' “' ~ (c.label or c.key) ~ '”') }}
+        </div>
+        {{ m.problems(review, cat) }}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+
+  <form class="add-row" hx-post="{{ url }}/column" hx-target="#draft-body" hx-swap="outerHTML">
+    {{ m.state(token, focus, 'block:' ~ block.key) }}
+    <input type="hidden" name="op" value="add">
+    <input type="hidden" name="section" value="{{ sec.key }}">
+    <input type="hidden" name="block" value="{{ block.key }}">
+    <input type="hidden" name="part" value="{{ part }}">
+    <input type="text" name="label" required
+           placeholder="Add {{ 'a column' if part == 'columns' else 'a field' }}…"
+           aria-label="Heading of the new {{ 'column' if part == 'columns' else 'field' }}">
+    <button type="submit">Add</button>
+  </form>
+</div>

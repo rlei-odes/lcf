@@ -1,0 +1,176 @@
+{% import "partials/draft_macros.html" as m %}
+{# What a check is, and what it takes — re-rendered whenever either changes.
+
+   This is the cascade ARCHITECTURE §15.1 calls the bulk of the work. The kinds on
+   offer are the ones this block can actually satisfy; a column is chosen from
+   *that block's* columns; a cross-reference is chosen from every table in the
+   whole spec. Nothing here is a text field where a key could be typed — which is
+   what makes most of the linter's reports about checks unreachable rather than
+   merely reported.
+
+   `params_id` distinguishes the check being edited from the one being added, so
+   two of these can be on the page without fighting over one element id. #}
+
+{% set kinds = builder.kinds_for(drafts.block_kind(spec, section_key, block_key)) %}
+{% set kind = kind if kind in (kinds | map(attribute=0) | list) else (kinds[0][0] if kinds else '') %}
+{% set columns = drafts.columns_of(spec, section_key, block_key) %}
+{% set url = '/doc-types/drafts/' ~ draft.id %}
+
+<div id="params-{{ params_id }}" class="cascade">
+  <div class="field">
+    <label>What has to be true about it?</label>
+    <select name="kind"
+            hx-get="{{ url }}/check-form" hx-target="#params-{{ params_id }}"
+            hx-swap="outerHTML" hx-include="#check-{{ params_id }}">
+      {% for value, label, blurb in kinds %}
+      <option value="{{ value }}" {% if kind == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <p class="hint">
+      {% for value, label, blurb in kinds %}{% if kind == value %}{{ blurb }}{% endif %}{% endfor %}
+    </p>
+    {% if path %}{{ m.problems(review, path + ['kind']) }}{% endif %}
+  </div>
+
+  {% if kind == 'present' %}
+  <p class="hint">Nothing more to set. It simply may not be left empty.</p>
+
+  {% elif kind == 'length' %}
+  <div class="row">
+    <div class="field">
+      <label>At least this many words</label>
+      <input type="number" name="min_words" min="0" value="{{ req.get('min_words') or '' }}">
+    </div>
+    <div class="field">
+      <label>At most this many words</label>
+      <input type="number" name="max_words" min="0" value="{{ req.get('max_words') or '' }}">
+    </div>
+  </div>
+  <details class="quiet-details">
+    <summary>Count characters instead</summary>
+    <div class="row">
+      <div class="field">
+        <label>At least this many characters</label>
+        <input type="number" name="min_chars" min="0" value="{{ req.get('min_chars') or '' }}">
+      </div>
+      <div class="field">
+        <label>At most this many characters</label>
+        <input type="number" name="max_chars" min="0" value="{{ req.get('max_chars') or '' }}">
+      </div>
+    </div>
+  </details>
+  <p class="hint">Leave a box empty for "no limit". At least one has to be set.</p>
+
+  {% elif kind == 'rows' %}
+  <div class="row">
+    <div class="field">
+      <label>At least this many rows</label>
+      <input type="number" name="min" min="0" value="{{ req.get('min') if req.get('min') is not none else '' }}">
+    </div>
+    <div class="field">
+      <label>At most this many rows</label>
+      <input type="number" name="max" min="0" value="{{ req.get('max') if req.get('max') is not none else '' }}">
+    </div>
+  </div>
+
+  {% elif kind == 'fields_filled' %}
+  <fieldset class="choices">
+    <legend>Which columns must be filled in on every row</legend>
+    {% for c in columns %}
+    <label class="option">
+      <input type="checkbox" name="fields" value="{{ c.key }}"
+             {% if c.key in (req.get('fields') or []) %}checked{% endif %}>
+      <span>{{ c.label or c.key }}</span>
+    </label>
+    {% else %}
+    <p class="hint">This table has no columns yet.</p>
+    {% endfor %}
+    {% if path %}{{ m.problems(review, path + ['fields']) }}{% endif %}
+  </fieldset>
+
+  {% elif kind == 'format' %}
+  <div class="row">
+    <div class="field">
+      <label>Which {{ 'column' if columns and drafts.block_kind(spec, section_key, block_key) == 'table' else 'field' }}</label>
+      <select name="field">
+        {% for c in columns %}
+        <option value="{{ c.key }}" {% if req.get('field') == c.key %}selected{% endif %}>{{ c.label or c.key }}</option>
+        {% endfor %}
+      </select>
+      {% if path %}{{ m.problems(review, path + ['field']) }}{% endif %}
+    </div>
+    <div class="field">
+      <label>Has to be</label>
+      <select name="format">
+        {% for value, label in [('date', 'A date, written as YYYY-MM-DD'), ('number', 'A number'), ('enum', 'One of the values that column allows')] %}
+        <option value="{{ value }}" {% if req.get('format') == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  {% elif kind == 'cross_ref' %}
+  {% set targets = drafts.table_targets(spec, (section_key, block_key)) %}
+  <div class="field">
+    <label>Which column here</label>
+    <select name="field">
+      {% for c in columns %}
+      <option value="{{ c.key }}" {% if req.get('field') == c.key %}selected{% endif %}>{{ c.label or c.key }}</option>
+      {% endfor %}
+    </select>
+    {% if path %}{{ m.problems(review, path + ['field']) }}{% endif %}
+  </div>
+  <div class="field">
+    <label>Must match a value already in</label>
+    <p class="hint">
+      Any table column in this document type — that is what a cross-reference is
+      for: tying one section's rows to another's.
+    </p>
+    <select name="references">
+      {% for value, label in targets %}
+      <option value="{{ value }}" {% if req.get('references') == value %}selected{% endif %}>{{ label }}</option>
+      {% else %}
+      <option value="">No other table to point at yet</option>
+      {% endfor %}
+    </select>
+    {% if path %}{{ m.problems(review, path + ['references']) }}{% endif %}
+  </div>
+
+  {% elif kind == 'mentions' %}
+  <div class="field">
+    <label>Things it has to mention</label>
+    <p class="hint">
+      One per line, in your words. The assistant is given these as targets before
+      it writes, and graded on them afterwards.
+    </p>
+    <textarea name="must_mention" placeholder="the quantity or rate of affected parts&#10;when the problem was first observed"
+    >{{ (req.get('must_mention') or []) | join('\n') }}</textarea>
+    {% if path %}{{ m.problems(review, path + ['must_mention']) }}{% endif %}
+  </div>
+
+  {% elif kind in ('rubric', 'consistency') %}
+  <div class="field">
+    <label>
+      {% if kind == 'consistency' %}What must stay consistent{% else %}What a good one looks like{% endif %}
+    </label>
+    <p class="hint">
+      The only free text in a document type, and it is a check — written once,
+      shown to the assistant as a target, and used to grade what comes back.
+    </p>
+    <textarea name="rubric" placeholder="{% if kind == 'consistency' %}The parts named here must be the same parts named in the problem description.{% else %}Names a specific mechanism, not a category. “Seal lip inverted during press-fit” rather than “assembly error”.{% endif %}"
+    >{{ req.get('rubric') or '' }}</textarea>
+    {% if path %}{{ m.problems(review, path + ['rubric']) }}{% endif %}
+  </div>
+  {% endif %}
+
+  {# The sentence this check will produce, as it is written. The same function
+     composes it into the drafting prompt, so this is literally what the
+     assistant will read (DESIGN §5.8). #}
+  {% set preview = drafts.sentence_for(req, kind) %}
+  {% if preview %}
+  <div class="told">
+    <span class="told-label">The assistant is told</span>
+    <p>{{ preview }}</p>
+  </div>
+  {% endif %}
+</div>

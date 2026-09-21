@@ -26,7 +26,17 @@ from lcf.models.tables import (
     Section,
 )
 from lcf.services.doc_types import NotFound, get_version, spec_of
+from lcf.spec.linter import lint
 from lcf.spec.models import DocTypeSpec
+
+
+class Unusable(Exception):
+    """A published version that cannot be built on.
+
+    Versions are immutable, so one published before a linter rule existed keeps
+    whatever made it unusable. Saying so beats letting the author find out as a
+    500 on INSERT, or as a section they can never finish.
+    """
 
 
 class Author:
@@ -63,6 +73,19 @@ async def create(
     """
     doc_type_version = await get_version(session, doc_type_key, version)
     spec = spec_of(doc_type_version)
+
+    # A published version is immutable, so one that was published before a linter
+    # rule existed stays as it is forever. Checking here turns "the author got a
+    # 500 on a key too long for its column" — and "the author got a section they
+    # could never finish" — into a refusal that names the type and the reason,
+    # before any rows exist. Publishing already runs the same lint; this is the
+    # second line, for versions that predate the rule.
+    problems = lint(spec)
+    if problems:
+        raise Unusable(
+            f"{spec.title} v{spec.version} cannot be used to start a document: "
+            + "; ".join(str(p) for p in problems)
+        )
 
     document = Document(doc_type_version_id=doc_type_version.id, title=title)
     session.add(document)

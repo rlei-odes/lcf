@@ -1,0 +1,94 @@
+{% import "partials/draft_macros.html" as m %}
+{# The type itself. Everything here is flat — the hard part of this editor is the
+   checks, not this. #}
+
+<div class="card">
+  <h3>The document type</h3>
+  <form hx-post="/doc-types/drafts/{{ draft.id }}/meta" hx-target="#draft-body"
+        hx-swap="outerHTML" data-dirty="the document type">
+    {{ m.state(token, 'type', opened) }}
+
+    <div class="field">
+      <label for="type-title">What is this document called?</label>
+      <p class="hint">The name a creator picks from when starting one.</p>
+      <input type="text" id="type-title" name="title" maxlength="80" value="{{ spec.title or '' }}"
+             placeholder="8D Report">
+      {{ m.problems(review, ['title']) }}
+    </div>
+
+    <div class="field">
+      <label for="type-description">What is it for?</label>
+      <p class="hint">One line. Shown to the creator, and to the assistant as context.</p>
+      <input type="text" id="type-description" name="description"
+             value="{{ spec.description or '' }}"
+             placeholder="A structured record of a customer complaint and its resolution.">
+      {{ m.problems(review, ['description']) }}
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label for="type-language">Written in</label>
+        <select id="type-language" name="language">
+          <option value="en" {% if (spec.language or 'en') == 'en' %}selected{% endif %}>English</option>
+          <option value="de" {% if spec.language == 'de' %}selected{% endif %}>German</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="type-version">Version</label>
+        <p class="hint">
+          {% if draft.based_on %}Bumped from v{{ draft.based_on }}, which stays as it is.
+          {% else %}The first one.{% endif %}
+        </p>
+        <input type="number" id="type-version" name="version" min="1"
+               value="{{ spec.version or 1 }}">
+        {{ m.problems(review, ['version']) }}
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="type-style">How the writing should read</label>
+      <p class="hint">
+        Tone and voice across the whole type — never what a document should say.
+        A section can narrow it further.
+      </p>
+      <textarea id="type-style" name="style"
+                placeholder="Write plainly, in the past tense, for a reader outside the team."
+      >{{ spec.style or '' }}</textarea>
+    </div>
+
+    {{ m.save() }}
+  </form>
+
+  <div class="under-form">
+    {{ m.rename('/doc-types/drafts/' ~ draft.id ~ '/meta', token, 'type', opened,
+                spec.id or '', 'type', true, {}) }}
+    {{ m.problems(review, ['id']) }}
+  </div>
+</div>
+
+{% set stray = review.outside('sections', 'quality_criteria', 'id', 'title', 'version', 'description') %}
+{% if stray %}
+<div class="card">
+  <h3>Also wrong</h3>
+  <p class="hint">
+    Problems that belong to the type as a whole rather than to one field. These
+    come up when a draft has been edited as YAML.
+  </p>
+  {% for p in stray %}
+  <div class="check blocker"><span class="mark">✗</span><span>{{ p }}</span></div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h3>What happens when you publish</h3>
+  <p class="lead">
+    A version is added. Documents already under way keep the version they started
+    on, wording and checks included — so publishing can never change a report
+    someone is halfway through writing.
+  </p>
+  <p class="hint">
+    That is also why a published version cannot be edited: opening one for editing
+    opens the <em>next</em> one.
+  </p>
+</div>

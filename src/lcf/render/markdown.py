@@ -20,14 +20,21 @@ def render(view: DocumentView, *, title: str, include_empty: bool = False) -> st
     for section in view.spec.sections:
         rendered = []
         for block in section.blocks:
+            # One block named after its section: the `##` above has already said
+            # it, and repeating it as `###` reads as a stutter.
+            only = (
+                len(section.blocks) == 1
+                and block.label.strip().lower() == section.title.strip().lower()
+            )
+            head = "" if only else f"### {block.label}\n\n"
             value = view.block_value(section.key, block.key)
             if _blank(value):
                 if include_empty:
-                    rendered.append(f"### {block.label}\n\n*(not filled in)*")
+                    rendered.append(f"{head}*(not filled in)*")
                 continue
             body = _block(block, value)
             if body:
-                rendered.append(f"### {block.label}\n\n{body}")
+                rendered.append(f"{head}{body}")
 
         if not rendered and not include_empty:
             continue

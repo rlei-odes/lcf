@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}{{ draft.title }} as YAML{% endblock %}
+{% block subtitle %}<a href="/doc-types/drafts/{{ draft.id }}">back to the builder</a>{% endblock %}
+
+{# The same draft, as the file it will become.
+
+   The form and the YAML are two views of one model. Keeping this one open is not
+   a convenience — specs are meant to be git-tracked and reviewed by people, and
+   an editor that could only be used through forms would lose that
+   (ARCHITECTURE §15.4). #}
+{% block content %}
+<div class="card">
+  <h2>{{ draft.title or "Untitled" }} as YAML</h2>
+  <p class="lead">
+    What this draft would be written to a file as. Edit it here and it goes back
+    into the builder — the two are the same draft.
+  </p>
+
+  {% if yaml_error %}
+  <div class="notice blocker">
+    <h3>Not applied</h3>
+    <p>{{ yaml_error }}</p>
+  </div>
+  {% endif %}
+
+  <form method="post" action="/doc-types/drafts/{{ draft.id }}/yaml">
+    <input type="hidden" name="token" value="{{ token }}">
+    <div class="field">
+      <textarea name="yaml" rows="30" spellcheck="false" class="code">{{ yaml }}</textarea>
+    </div>
+    <div class="actions">
+      <button class="primary" type="submit">Put this back into the draft</button>
+      <a href="/doc-types/drafts/{{ draft.id }}"><button type="button">Back without changing it</button></a>
+      <span class="why">Still a draft either way. Nothing is published here.</span>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h3>{% if review.ok %}It checks out{% else %}{{ review.problems|length }} problem(s){% endif %}</h3>
+  {% if review.ok %}
+  <div class="check pass">
+    <span class="mark">✓</span>
+    <span>
+      <strong>{{ review.spec.title }}</strong>, v{{ review.spec.version }},
+      {{ review.spec.sections|length }} section(s).
+      <span class="where">Publish from the builder when you are ready.</span>
+    </span>
+  </div>
+  {% else %}
+  <p class="hint">
+    A draft is allowed to be unfinished — this is what still stands between it and
+    publishing.
+  </p>
+  {% for p in review.problems %}
+  <div class="check blocker"><span class="mark">✗</span><span>{{ p }}</span></div>
+  {% endfor %}
+  {% endif %}
+</div>
+{% endblock %}

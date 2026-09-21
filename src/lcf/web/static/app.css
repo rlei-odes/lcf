@@ -215,3 +215,237 @@ form.htmx-request { opacity: 1; }
 /* Rendering a docx is not instant; the buttons say so while it happens. */
 form.busy { cursor: progress; }
 form.busy button { animation: pulse 1.4s ease-in-out infinite; }
+
+/* --------------------------------------------------------------------------
+   The structured spec editor (ARCHITECTURE §15).
+
+   The rule builder's side is a form over a nested document, and the danger of
+   that is a wall of boxes. So: one thing open at a time, every row readable
+   collapsed, and a problem shown beside the field that caused it rather than in
+   a list at the bottom of the page.
+   -------------------------------------------------------------------------- */
+
+nav.builder-nav .nav-heading {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--muted); margin: 16px 0 4px; padding: 0 10px;
+}
+nav.builder-nav .nav-empty { padding: 0 10px; }
+nav.builder-nav a { justify-content: flex-start; }
+nav.builder-nav .nav-add { margin: 6px 0 14px; }
+nav.builder-nav .nav-add input { font-size: 13px; padding: 7px 10px; }
+
+/* How many things are wrong below this point. Never a colour alone — it carries
+   the number, so it reads the same to anyone. */
+.problem-count {
+  margin-left: auto; flex: none;
+  font-size: 11px; font-family: var(--mono); font-weight: 600;
+  min-width: 18px; text-align: center; padding: 1px 5px; border-radius: 10px;
+  background: var(--blocker-soft); color: var(--blocker);
+}
+.field-problem {
+  margin: 5px 0 0; font-size: 12.5px; color: var(--blocker);
+}
+.field-problem::before { content: "✗ "; font-family: var(--mono); }
+
+/* A row that opens into its own editor. Collapsed, it has to say enough that you
+   do not have to open it to know what it is. */
+details.item { border-top: 1px solid var(--line); }
+details.item:first-of-type { border-top: 0; }
+details.item > summary {
+  display: flex; gap: 10px; align-items: baseline;
+  padding: 10px 2px; cursor: pointer; list-style: none;
+}
+details.item > summary::-webkit-details-marker { display: none; }
+details.item > summary::before {
+  content: "▸"; font-family: var(--mono); color: var(--muted); flex: none;
+}
+details.item[open] > summary::before { content: "▾"; }
+details.item[open] > summary { font-weight: 600; }
+details.item .item-name { flex: none; }
+details.item .item-meta {
+  color: var(--muted); font-size: 12.5px; font-weight: 400;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+details.item .item-body {
+  padding: 4px 2px 20px 22px;
+  border-left: 2px solid var(--accent-soft); margin-left: 5px;
+}
+details.check-item > summary .mark { font-family: var(--mono); flex: none; }
+details.check-item.blocker > summary .mark { color: var(--blocker); }
+details.check-item.warning > summary .mark { color: var(--warning); }
+details.add-check > summary::before { content: none; }
+details.add-check > summary .item-name { color: var(--accent); }
+
+/* Two fields side by side, where they are read as a pair. */
+.row { display: flex; gap: 14px; }
+.row > .field { flex: 1; min-width: 0; }
+@media (max-width: 620px) { .row { flex-direction: column; gap: 0; } }
+
+/* A choice, with the consequence spelled out next to it rather than in a
+   tooltip — severity is the case that matters (ARCHITECTURE §15.4). */
+fieldset.choices {
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 10px 14px 12px; margin: 0 0 14px;
+}
+fieldset.choices legend {
+  font-size: 13px; font-weight: 600; padding: 0 6px;
+}
+label.option {
+  display: flex; gap: 9px; align-items: baseline;
+  font-weight: 400; font-size: 14px; margin: 5px 0;
+}
+label.option input { width: auto; flex: none; }
+fieldset.choices .indent { padding-left: 24px; }
+label.inline-check { margin: 0; display: flex; justify-content: center; }
+label.inline-check input { width: auto; }
+
+/* Add-one-more, at the foot of every list. Deliberately the same shape
+   everywhere, so it is recognisable rather than read each time. */
+form.add-row {
+  display: flex; gap: 8px; align-items: center;
+  margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line);
+}
+form.add-row input[type=text] { flex: 1; }
+form.add-row select { width: auto; }
+
+/* Move and delete. Quiet until wanted — they sit beside things people are
+   reading, not things they are about to press. */
+.rowtools { display: inline-flex; gap: 4px; align-items: center; }
+.rowtools form { display: inline; }
+.rowtools-right { margin-left: auto; }
+button.tool {
+  padding: 3px 9px; font-size: 13px; line-height: 1.4;
+  color: var(--muted); border-color: transparent; background: transparent;
+}
+button.tool:hover { color: var(--ink); border-color: var(--line); }
+button.tool.danger:hover { color: var(--blocker); border-color: var(--blocker); }
+button.quiet { color: var(--muted); border-color: transparent; }
+button.quiet:hover { color: var(--blocker); border-color: var(--blocker); }
+
+/* The key, and the only way to change it. Folded away because it is identity,
+   not a label — and renaming it is a refactor (ARCHITECTURE §15.2). */
+.under-form { margin-top: 14px; }
+details.rename > summary {
+  font-family: var(--mono); font-size: 12px; color: var(--muted);
+  cursor: pointer; list-style: none;
+}
+details.rename > summary::-webkit-details-marker { display: none; }
+details.rename > summary::after { content: "  ✎"; }
+details.rename > summary:hover { color: var(--accent); }
+details.rename form { margin-top: 8px; max-width: 460px; }
+details.rename .row { align-items: center; }
+details.rename .row input { flex: 1; }
+details.rename .row button { flex: none; }
+
+details.quiet-details > summary {
+  font-size: 13px; color: var(--muted); cursor: pointer; margin-bottom: 8px;
+}
+
+/* Columns of a table, edited in place. */
+.sub {
+  margin-top: 18px; padding-top: 4px;
+  border-top: 1px solid var(--line);
+}
+.sub h4 { margin-top: 14px; }
+table.col-editor td { padding: 6px 0; border-top: 1px solid var(--line); }
+table.col-editor tr:first-child td { border-top: 0; }
+form.col-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+form.col-row input[type=text] { flex: 2; min-width: 140px; }
+form.col-row select { flex: 1; width: auto; min-width: 120px; }
+form.col-row .col-values { flex-basis: 100%; margin-top: 6px; }
+form.col-row .col-values textarea { font-size: 13px; min-height: 60px; }
+.col-tools {
+  display: flex; gap: 10px; align-items: center;
+  margin-top: 4px; font-size: 12px; color: var(--muted);
+}
+.col-tools code { font-family: var(--mono); }
+
+/* The sentence this check will produce, shown as it is built. It is the same
+   string `draft_block` composes into the prompt, which is the whole point:
+   the check is the instruction (DESIGN §5.8). */
+.told {
+  margin: 14px 0 4px; padding: 10px 14px;
+  border-left: 3px solid var(--accent); background: var(--accent-soft);
+  border-radius: 0 6px 6px 0;
+}
+.told .told-label {
+  display: block; font-size: 11px; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--accent); font-weight: 600;
+}
+.told p { margin: 4px 0 0; }
+
+/* The assembled prompt, read-only. Long, and meant to be read as a document. */
+pre.prompt {
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.6;
+  white-space: pre-wrap; word-wrap: break-word;
+  background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 16px 18px; max-height: 70vh; overflow-y: auto;
+}
+
+/* A form that matches what the server rendered has nothing to save, and says so
+   rather than offering a button that would do nothing. See static/dirty.js. */
+.saved-note { font-size: 12px; color: var(--muted); }
+form.is-dirty .saved-note { display: none; }
+.why.blocker { color: var(--blocker); }
+
+/* An "i" that answers the one question these forms keep raising: does what I
+   type here reach the assistant? Hover or keyboard focus, no JS. */
+.info {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px; margin-left: 5px; vertical-align: middle;
+  border: 1px solid var(--line); border-radius: 50%;
+  font-size: 10px; font-weight: 700; font-style: italic; font-family: Georgia, serif;
+  color: var(--muted); cursor: help; position: relative; flex: none;
+}
+.info:hover, .info:focus { color: var(--accent); border-color: var(--accent); outline: none; }
+.info::after {
+  content: attr(data-info);
+  position: absolute; bottom: calc(100% + 8px); left: -8px;
+  width: 300px; max-width: 78vw; padding: 9px 12px; z-index: 20;
+  background: var(--ink); color: var(--bg);
+  border-radius: 6px; font: 400 12.5px/1.5 system-ui, sans-serif; font-style: normal;
+  text-transform: none; letter-spacing: 0; text-align: left;
+  opacity: 0; visibility: hidden; transition: opacity .12s;
+  box-shadow: 0 4px 14px rgba(0,0,0,.18);
+}
+.info:hover::after, .info:focus::after { opacity: 1; visibility: visible; }
+/* Near the top of a card the tooltip would be clipped; drop it below instead. */
+.card > form > .field:first-of-type .info::after,
+.item-body > form > .field:first-of-type .info::after { bottom: auto; top: calc(100% + 8px); }
+
+/* Delete now carries its word: it is the only tool on a row, so an unlabelled
+   glyph would be a guess. */
+.rowtools button.tool.danger { font-size: 12px; padding: 4px 10px; }
+
+/* The picker above a read-only prompt: two selects that reload the view. */
+form.picker { align-items: flex-end; gap: 14px; }
+form.picker .field { margin-bottom: 0; }
+nav.builder-nav .nav-add { display: flex; gap: 6px; }
+nav.builder-nav .nav-add input { flex: 1; min-width: 0; }
+nav.builder-nav .nav-add button { flex: none; padding: 7px 11px; font-size: 13px; }
+
+/* The list of what is wrong, each line a way to get to it. A count with no route
+   to the cause is just an accusation. */
+.problem-link {
+  display: flex; gap: 9px; padding: 8px 0; font-size: 13.5px;
+  border-top: 1px solid var(--blocker); border-color: color-mix(in srgb, var(--blocker) 30%, transparent);
+  text-decoration: none; color: inherit;
+}
+.problem-link:first-of-type { border-top: 0; }
+.problem-link:hover { color: var(--blocker); }
+.problem-link .mark { font-family: var(--mono); color: var(--blocker); flex: none; }
+.problem-link .where {
+  display: block; color: var(--muted); font-size: 12px; margin-top: 2px;
+}
+.problem-link:hover .where { color: var(--blocker); }
+a.pill.needs_input { text-decoration: none; }
+a.pill.needs_input:hover { background: var(--blocker-soft); }
+
+/* An anchored problem is an error, and has to look like one beside a field that
+   otherwise looks fine. */
+.field-problem {
+  display: block; margin: 6px 0 0; padding: 6px 10px;
+  font-size: 12.5px; font-weight: 600; color: var(--blocker);
+  background: var(--blocker-soft); border-left: 3px solid var(--blocker);
+  border-radius: 0 4px 4px 0;
+}

@@ -1,29 +1,45 @@
 {% extends "base.html" %}
 {% block title %}{{ spec.title }} v{{ spec.version }}{% endblock %}
-{% block subtitle %}<a href="/doc-types">document types</a>{% endblock %}
+{% block subtitle %}
+  {%- if draft %}<a href="/doc-types/drafts/{{ draft.id }}">back to the builder</a>
+  {%- else %}<a href="/doc-types">document types</a>{% endif %}
+{% endblock %}
 
 {# What this type demands, read back in the words the assistant is given. Every
    check below is rendered by `spec/describe.py` — the same function that composes
    it into the drafting prompt, so this page cannot drift from what the model is
-   actually told (DESIGN §5.8). #}
+   actually told (DESIGN §5.8).
+
+   The builder renders an unpublished draft through this same template, because
+   "what does this type actually demand?" is a question filling in forms never
+   answers and this page already answers it (ARCHITECTURE §15.3). #}
 {% block content %}
 <div class="card">
   <div class="block-head">
     <h2>{{ spec.title }}</h2>
-    <span class="pill">v{{ spec.version }}</span>
+    <span class="pill">{% if draft %}draft{% else %}v{{ spec.version }}{% endif %}</span>
   </div>
   {% if spec.description %}<p class="lead">{{ spec.description }}</p>{% endif %}
   <p class="hint">
     <code>{{ spec.id }}</code> · language {{ spec.language }} ·
     {{ spec.sections|length }} section(s) ·
-    published {{ row.published_at|localtime }}
-    {%- set used = usage.get(spec.version, 0) %}
-    {%- if used %} · {{ used }} document(s) built on it{% endif %}
+    {% if draft %}would publish as v{{ spec.version }}, saved {{ draft.updated_at|localtime }}
+    {%- else %}published {{ row.published_at|localtime }}
+      {%- set used = usage.get(spec.version, 0) %}
+      {%- if used %} · {{ used }} document(s) built on it{% endif %}
+    {%- endif %}
   </p>
 
   <div class="actions">
-    <a href="/doc-types/{{ key }}/edit">
-      <button class="primary" type="button">Edit as v{{ versions[0].version + 1 }}</button></a>
+    {% if draft %}
+    <a href="/doc-types/drafts/{{ draft.id }}">
+      <button class="primary" type="button">Back to the builder</button></a>
+    <span class="why">Nothing here is published. This is the draft, read back.</span>
+    {% else %}
+    <form method="post" action="/doc-types/{{ key }}/build">
+      <button class="primary" type="submit">Edit as v{{ versions[0].version + 1 }}</button>
+    </form>
+    <a href="/doc-types/{{ key }}/edit"><button type="button">Edit as YAML</button></a>
     <a href="/doc-types/{{ key }}/versions/{{ spec.version }}.yaml">
       <button type="button">Download YAML</button></a>
     {% if versions|length > 1 %}
@@ -35,6 +51,7 @@
         {%- endif %}{% if not loop.last %} · {% endif %}
       {%- endfor %}
     </span>
+    {% endif %}
     {% endif %}
   </div>
 </div>

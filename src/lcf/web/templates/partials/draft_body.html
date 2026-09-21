@@ -1,0 +1,132 @@
+{% import "partials/draft_macros.html" as m %}
+{# The whole editor, and the whole thing that swaps.
+
+   Every edit re-renders this rather than patching a fragment. The draft is small
+   and the server is the only authority on what it currently is (ARCHITECTURE §1),
+   so re-reading it costs a template render and removes the entire class of bugs
+   where the page and the draft quietly disagree. #}
+<div id="draft-body">
+
+{% if conflict %}
+<div class="notice blocker">
+  <h3>That edit was not applied</h3>
+  <p>{{ conflict }}</p>
+  <p class="hint">What you see below is the draft as it actually is now.</p>
+</div>
+{% endif %}
+
+{# A count of what is wrong is only useful if you can get to it. Every problem
+   carries a structural path, so each line here is a link that opens the section
+   it belongs to with the right editor already expanded — which is the return on
+   anchoring errors in the first place (ARCHITECTURE §15.2). #}
+{% if not review.ok %}
+<div class="notice blocker" id="problems">
+  <h3>{{ review.problems|length }} thing(s) to fix before this can be published</h3>
+  <p class="hint">Each one takes you to where it is.</p>
+  {% for p in review.problems %}
+  {% set spot = builder.locate(spec, p) %}
+  <a class="problem-link"
+     href="/doc-types/drafts/{{ draft.id }}?focus={{ spot.focus }}&opened={{ spot.opened }}">
+    <span class="mark">✗</span>
+    <span>
+      {{ p.message }}
+      <span class="where">{{ spot.where }}</span>
+    </span>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="block-head">
+    <h2>{{ spec.title or "Untitled document type" }}</h2>
+    <span class="pill">draft</span>
+    {% if review.ok %}
+    <span class="pill complete">ready to publish</span>
+    {% else %}
+    <a href="#problems" class="pill needs_input">{{ review.problems|length }} to fix ↓</a>
+    {% endif %}
+  </div>
+  <p class="hint">
+    {% if draft.based_on %}
+      Will publish as v{{ spec.version }}. v{{ draft.based_on }} stays exactly as it is.
+    {% else %}
+      A new document type. Nothing is published until you say so.
+    {% endif %}
+    · saved {{ draft.updated_at|localtime }}
+  </p>
+
+  <div class="actions">
+    <form hx-post="/doc-types/drafts/{{ draft.id }}/publish" hx-target="#draft-body"
+          hx-swap="outerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="focus" value="{{ focus }}">
+      <button class="primary" type="submit" {% if not review.ok %}disabled{% endif %}>
+        {% if draft.based_on %}Publish as v{{ spec.version }}{% else %}Publish it{% endif %}
+      </button>
+    </form>
+    <a href="/doc-types/drafts/{{ draft.id }}/preview"><button type="button">Read it back</button></a>
+    <a href="/doc-types/drafts/{{ draft.id }}/prompt"><button type="button">What the assistant is told</button></a>
+    <a href="/doc-types/drafts/{{ draft.id }}/yaml"><button type="button">As YAML</button></a>
+    <form hx-post="/doc-types/drafts/{{ draft.id }}/discard"
+          hx-confirm="Discard this draft? Everything unpublished in it is lost.">
+      <button type="submit" class="quiet">Discard</button>
+    </form>
+    <span class="why">
+      {% if review.ok %}
+        Publishing adds a version. It never changes one that documents are already built on.
+      {% else %}
+        A draft is allowed to be unfinished. It just cannot be published yet.
+      {% endif %}
+    </span>
+  </div>
+</div>
+
+<div class="layout">
+  <nav class="sections builder-nav">
+    <a href="/doc-types/drafts/{{ draft.id }}?focus=type"
+       class="{{ 'active' if focus == 'type' }}">
+      <span class="dot">§</span><span>The document type</span>
+      {{ m.count(review, ['id']) }}{{ m.count(review, ['title']) }}{{ m.count(review, ['version']) }}
+    </a>
+
+    <p class="nav-heading">Sections</p>
+    {% for s in spec.sections or [] %}
+    <a href="/doc-types/drafts/{{ draft.id }}?focus={{ s.key }}"
+       class="{{ 'active' if focus == s.key }}">
+      <span class="dot">{{ loop.index }}</span>
+      <span>{{ s.title or s.key }}</span>
+      {{ m.count(review, ['sections', loop.index0]) }}
+    </a>
+    {% else %}
+    <p class="hint nav-empty">None yet.</p>
+    {% endfor %}
+
+    {# A bare text input that only responds to Enter looks like a search box that
+       is not working. The button is the affordance. #}
+    <form hx-post="/doc-types/drafts/{{ draft.id }}/section" hx-target="#draft-body"
+          hx-swap="outerHTML" class="nav-add">
+      {{ m.state(token, focus, '') }}
+      <input type="hidden" name="op" value="add">
+      <input type="text" name="title" placeholder="New section…" required maxlength="80"
+             aria-label="Title of the new section">
+      <button type="submit" title="Add this section">Add</button>
+    </form>
+
+    <a href="/doc-types/drafts/{{ draft.id }}?focus=quality"
+       class="{{ 'active' if focus == 'quality' }}">
+      <span class="dot">✓</span><span>Quality criteria</span>
+      {{ m.count(review, ['quality_criteria']) }}
+    </a>
+  </nav>
+
+  <div>
+    {% if focus == 'type' %}
+      {% include "partials/draft_meta.html" %}
+    {% elif focus == 'quality' %}
+      {% include "partials/draft_quality.html" %}
+    {% else %}
+      {% include "partials/draft_section.html" %}
+    {% endif %}
+  </div>
+</div>
+</div>

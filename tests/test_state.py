@@ -116,3 +116,23 @@ def test_filled_sample_is_complete_throughout(filled_4d):
 def test_document_state_is_in_dependency_order(spec_4d):
     keys = [s.key for s in document_state(DocumentView(spec_4d))]
     assert keys == ordered_sections(spec_4d)
+
+
+def test_a_section_that_can_be_filled_in_can_be_finished():
+    """A section with no blocks and no questions could never leave `empty`, and
+    `can_complete` refuses `empty` — so it was a permanent dead end, discovered by
+    an author halfway through a report. The linter now refuses that spec; this
+    pins the property it was protecting."""
+    from lcf.services import drafts
+    from lcf.services.doc_types import review_data
+
+    spec = {**drafts.NEW_SPEC, "id": "t", "title": "T", "sections": [], "quality_criteria": []}
+    drafts.add_section(spec, "Business requirements")
+    parsed = review_data(spec).spec
+    assert parsed is not None
+
+    empty = DocumentView(parsed, {}, {})
+    assert not section_state(empty, "business_requirements").can_complete
+
+    filled = DocumentView(parsed, {"business_requirements": {"text": "Auditable."}}, {})
+    assert section_state(filled, "business_requirements").can_complete

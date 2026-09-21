@@ -45,12 +45,24 @@ def render_plain(view: DocumentView, *, title: str) -> bytes:
 
         doc.add_heading(section.title, level=1)
         for block, value in filled:
-            doc.add_heading(block.label, level=2)
+            if not _repeats_heading(section, block):
+                doc.add_heading(block.label, level=2)
             _write_block(doc, block, value)
 
     buffer = io.BytesIO()
     doc.save(buffer)
     return buffer.getvalue()
+
+
+def _repeats_heading(section, block) -> bool:
+    """Whether this block's label would only say the section heading again.
+
+    The common shape of a section is one paragraph, and the natural name for that
+    paragraph is the section's own — which reads well in the editor and as a
+    stuttering pair of headings in the export. One block, same name: the section
+    heading has already said it.
+    """
+    return len(section.blocks) == 1 and block.label.strip().lower() == section.title.strip().lower()
 
 
 def render_with_template(view: DocumentView, template: bytes, *, title: str) -> bytes:

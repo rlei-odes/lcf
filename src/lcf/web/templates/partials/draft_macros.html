@@ -1,0 +1,111 @@
+{# Pieces the builder repeats. Kept here so a problem looks the same wherever it
+   is shown, and so the hidden fields every edit needs cannot be forgotten on one
+   form and present on the rest. #}
+
+{# Problems anchored exactly at a field. Shown beside the input that caused them,
+   which is the whole reason LintError carries a structural path. #}
+{% macro problems(review, path) %}
+  {% for p in review.at(path) %}
+  <p class="field-problem">{{ p.message }}</p>
+  {% endfor %}
+{% endmacro %}
+
+{# Everything wrong at or below a point — what a collapsed row shows. It has to
+   read as an error rather than as a tally, because in a sidebar a bare number is
+   as likely to mean "3 questions" as "3 problems". #}
+{% macro count(review, path) %}
+  {%- set found = review.under(path) %}
+  {%- if found %}<span class="problem-count" title="{{ found|join('; ') }}">✗ {{ found|length }}</span>{% endif %}
+{% endmacro %}
+
+{# The fields every edit carries: which draft revision it was rendered from, and
+   where the editor should be looking afterwards. #}
+{% macro state(token, focus, opened) %}
+  <input type="hidden" name="token" value="{{ token }}">
+  <input type="hidden" name="focus" value="{{ focus }}">
+  <input type="hidden" name="opened" value="{{ opened }}">
+{% endmacro %}
+
+{# A key, shown small, and changed only by asking for it.
+
+   In YAML renaming a key is visibly a refactor. In a text input beside "Title" it
+   looks like fixing a typo — so the input is not offered, and Rename is an action
+   that rewrites every reference in the spec (ARCHITECTURE §15.2). #}
+{# `fields` is what identifies the thing being renamed — the section it is in, its
+   own key, and for a column which list it belongs to. Without them the route has
+   a new name and no idea what to apply it to, which is how every rename here
+   except the document type's silently did nothing. #}
+{% macro rename(url, token, focus, opened, key, kind, warn, fields) %}
+<details class="rename">
+  <summary><code>{{ key }}</code></summary>
+  <form hx-post="{{ url }}" hx-target="#draft-body" hx-swap="outerHTML">
+    {{ state(token, focus, opened) }}
+    <input type="hidden" name="op" value="rename">
+    {% for name, value in (fields or {}).items() %}
+    <input type="hidden" name="{{ name }}" value="{{ value }}">
+    {% endfor %}
+    <p class="hint">
+      This is the {{ kind }}'s name in the spec. Renaming it rewrites everywhere
+      the spec refers to it.
+      {%- if warn %} A Word template naming the old one will fail its next check.{% endif %}
+    </p>
+    <div class="row">
+      <input type="text" name="new_key" value="{{ key }}" maxlength="80" aria-label="New name">
+      <button type="submit">Rename</button>
+    </div>
+  </form>
+</details>
+{% endmacro %}
+
+{# Delete, and only delete.
+
+   There were up/down arrows here too, one pair inside every question, block and
+   column — which put three buttons on every row of a page that is already mostly
+   buttons, and read as clutter rather than as an ordering control. Reordering is
+   a real need and wants a real answer (drag, or a reorder mode that shows the
+   whole list at once); the `move_*` operations behind it are built and tested and
+   waiting for that. Offering a bad one in the meantime costs more than offering
+   none. #}
+{% macro rowtools(url, token, focus, opened, fields, what) %}
+<span class="rowtools">
+  <form hx-post="{{ url }}" hx-target="#draft-body" hx-swap="outerHTML"
+        hx-confirm="Delete {{ what }}? This cannot be undone.">
+    {{ state(token, focus, opened) }}
+    <input type="hidden" name="op" value="delete">
+    {% for name, value in fields.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+    <button type="submit" class="tool danger" title="Delete">✕ Delete</button>
+  </form>
+</span>
+{% endmacro %}
+
+{# A field whose purpose is not obvious from its label — above all, whether what
+   is typed into it reaches the assistant. The answer is almost always yes, and
+   that is the point worth making: a rule builder authors artifacts, and the
+   artifacts happen to be useful to a model (DESIGN §5.8). Every one of these is
+   checked against `llm/calls.py`; a help note that guesses is worse than none. #}
+{% macro info(text) %}<span class="info" tabindex="0" role="note" aria-label="{{ text }}" data-info="{{ text }}">i</span>{% endmacro %}
+
+{# Save, and whether there is anything to save. The button disables itself when
+   the form matches what was rendered — see static/dirty.js. #}
+{% macro save(word) %}
+<div class="actions">
+  <button class="primary" type="submit" data-save>{{ word or 'Save' }}</button>
+  <span class="saved-note">Saved</span>
+  <span class="htmx-indicator working">Saving…</span>
+</div>
+{% endmacro %}
+
+{# How severe, said in full. "blocker" and "warning" mean something specific and
+   neither word says it (ARCHITECTURE §15.4). #}
+{% macro severity(current) %}
+<fieldset class="choices">
+  <legend>If this is not met</legend>
+  {% for value, explanation in builder.SEVERITIES %}
+  <label class="option">
+    <input type="radio" name="severity" value="{{ value }}"
+           {% if (current or 'blocker') == value %}checked{% endif %}>
+    <span>{{ explanation }}</span>
+  </label>
+  {% endfor %}
+</fieldset>
+{% endmacro %}

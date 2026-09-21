@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}That type cannot be used yet{% endblock %}
+{% block subtitle %}<a href="/doc-types">document types</a>{% endblock %}
+
+{# A published version is immutable, so one published before a rule existed keeps
+   whatever makes it unusable. The person hitting this did nothing wrong — they
+   picked a type from a list — so it names the fault and sends them to where it
+   gets fixed, instead of failing in the middle of their document. #}
+{% block content %}
+<div class="card">
+  <h2>That document type cannot be used yet</h2>
+  <p class="lead">
+    Nothing has been created. The type itself has a problem that has to be fixed
+    before a document can be built on it.
+  </p>
+  <div class="check blocker"><span class="mark">✗</span><span>{{ message }}</span></div>
+  <p class="hint">
+    Published versions never change, so the fix is to open the type, correct it,
+    and publish the next version. Documents already under way are unaffected.
+  </p>
+  <div class="actions">
+    <a href="/doc-types"><button class="primary" type="button">Go to document types</button></a>
+    <a href="/"><button type="button">All documents</button></a>
+  </div>
+</div>
+{% endblock %}

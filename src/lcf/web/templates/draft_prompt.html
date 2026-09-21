@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}What the assistant is told{% endblock %}
+{% block subtitle %}<a href="/doc-types/drafts/{{ draft.id }}">back to the builder</a>{% endblock %}
+
+{# DESIGN §5.8 promises the rule builder can read this, and until now it could
+   not. It is assembled by the same function `draft_block` sends — not a second
+   rendering of roughly the same thing — so what is on this page is what the model
+   gets. What is missing is only the runtime half: the author's answers and the
+   content so far, which do not exist until there is a document. #}
+{% block content %}
+<div class="card">
+  <h2>What the assistant is told</h2>
+  <p class="lead">
+    Before it writes anything, this is the whole of what the assistant knows. You
+    did not write most of it — the fixed parts are ours, and the rest is composed
+    from the section, its guidance, and its checks.
+  </p>
+</div>
+
+{% include "partials/draft_prompt_view.html" %}
+{% endblock %}

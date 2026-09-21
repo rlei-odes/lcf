@@ -1,0 +1,121 @@
+{% import "partials/draft_macros.html" as m %}
+{% set url = '/doc-types/drafts/' ~ draft.id %}
+
+<div class="card">
+  <h3>Quality criteria</h3>
+  <p class="lead">
+    Judged across sections at the final gate, once there is a whole document to
+    read. A check on one block belongs in that section instead — these are for
+    what only becomes visible when the parts are put together.
+  </p>
+
+  {% for c in spec.quality_criteria or [] %}
+  {% set cat = ['quality_criteria', loop.index0] %}
+  <details class="item check-item {{ c.get('severity', 'blocker') }}"
+           {% if opened == 'criterion:' ~ c.id %}open{% endif %}>
+    <summary>
+      <span class="mark">{{ '!' if c.get('severity', 'blocker') == 'blocker' else '·' }}</span>
+      <span class="item-name">{{ c.title or c.id }}</span>
+      <span class="item-meta">
+        {% if c.get('scope') == 'document' %}over the whole document
+        {%- else %}over {{ (c.get('scope') or []) | join(', ') }}{% endif %}
+      </span>
+      {{ m.count(review, cat) }}
+    </summary>
+    <div class="item-body">
+      <form hx-post="{{ url }}/criterion" hx-target="#draft-body" hx-swap="outerHTML"
+            id="criterion-{{ c.id }}" data-dirty="this criterion">
+        {{ m.state(token, 'quality', 'criterion:' ~ c.id) }}
+        <input type="hidden" name="id" value="{{ c.id }}">
+
+        <div class="field">
+          <label>What this is called</label>
+          <input type="text" name="title" value="{{ c.title or '' }}">
+          {{ m.problems(review, cat + ['title']) }}
+        </div>
+
+        <div class="field">
+          <label>What is being judged</label>
+          <select name="kind">
+            {% for value, label, blurb in builder.CRITERION_KINDS %}
+            <option value="{{ value }}" {% if c.get('kind') == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          <p class="hint">Read and judged by the assistant, quoting what it based the answer on.</p>
+          {{ m.problems(review, cat + ['kind']) }}
+        </div>
+
+        {% if c.get('kind') == 'mentions' %}
+        <div class="field">
+          <label>Things the document has to mention</label>
+          <p class="hint">One per line.</p>
+          <textarea name="must_mention">{{ (c.get('must_mention') or []) | join('\n') }}</textarea>
+          {{ m.problems(review, cat + ['must_mention']) }}
+        </div>
+        {% else %}
+        <div class="field">
+          <label>What a good document does here</label>
+          <p class="hint">
+            In your words. The assistant is given this and asked to judge against
+            it, with a quote for its answer.
+          </p>
+          <textarea name="rubric">{{ c.get('rubric') or '' }}</textarea>
+          {{ m.problems(review, cat + ['rubric']) }}
+        </div>
+        {% endif %}
+
+        <fieldset class="choices">
+          <legend>Read over</legend>
+          <label class="option">
+            <input type="radio" name="whole_document" value="yes"
+                   {% if c.get('scope') == 'document' %}checked{% endif %}>
+            <span>The whole document</span>
+          </label>
+          <label class="option">
+            <input type="radio" name="whole_document" value="no"
+                   {% if c.get('scope') != 'document' %}checked{% endif %}>
+            <span>Only these sections:</span>
+          </label>
+          <div class="indent">
+            {% for s in spec.sections or [] %}
+            <label class="option">
+              <input type="checkbox" name="scope" value="{{ s.key }}"
+                     {% if c.get('scope') != 'document' and s.key in (c.get('scope') or []) %}checked{% endif %}>
+              <span>{{ s.title or s.key }}</span>
+            </label>
+            {% endfor %}
+          </div>
+          {{ m.problems(review, cat + ['scope']) }}
+        </fieldset>
+
+        {{ m.severity(c.get('severity')) }}
+
+        {{ m.save() }}
+      </form>
+      <div class="actions">
+        {{ m.rowtools(url ~ '/criterion', token, 'quality', '', {'id': c.id}, 'this criterion') }}
+      </div>
+      <div class="under-form">
+        {{ m.rename(url ~ '/criterion', token, 'quality', 'criterion:' ~ c.id, c.id, 'criterion', false,
+                    {'id': c.id}) }}
+        {{ m.problems(review, cat + ['id']) }}
+      </div>
+    </div>
+  </details>
+  {% else %}
+  <p class="hint">None. A document type is perfectly valid without any.</p>
+  {% endfor %}
+
+  <form class="add-row" hx-post="{{ url }}/criterion" hx-target="#draft-body" hx-swap="outerHTML">
+    {{ m.state(token, 'quality', '') }}
+    <input type="hidden" name="op" value="add">
+    <input type="text" name="title" required placeholder="Add a criterion…"
+           aria-label="What the new criterion is called">
+    <select name="kind" aria-label="What is being judged">
+      {% for value, label, blurb in builder.CRITERION_KINDS %}
+      <option value="{{ value }}">{{ label }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">Add</button>
+  </form>
+</div>

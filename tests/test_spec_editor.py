@@ -67,7 +67,8 @@ def test_a_dangling_reference_is_reported_like_any_other_problem():
     and one question to a rule builder: what is wrong?"""
     reviewed = doc_types.review(
         "id: x\nversion: 1\ntitle: T\nsections:\n"
-        "  - key: a\n    title: A\n    depends_on: [nowhere]\n    blocks: []\n"
+        "  - key: a\n    title: A\n    depends_on: [nowhere]\n"
+        "    blocks:\n      - { key: text, kind: prose, label: Text }\n"
     )
     assert reviewed.errors == ["a: unknown dependency 'nowhere'"]
     assert reviewed.spec is None, "a spec that does not lint is not offered for publishing"

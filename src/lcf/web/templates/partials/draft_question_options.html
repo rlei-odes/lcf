@@ -1,0 +1,13 @@
+{# The list a "one of a list" question offers, and nothing at all for the others.
+
+   Swapped in when the kind of answer changes, rather than shown always and
+   ignored: a box that does nothing is a box someone will fill in. #}
+<div id="q-options-{{ qid }}">
+  {% if question.get('type') == 'choice' %}
+  <div class="field">
+    <label>The answers to choose from</label>
+    <p class="hint">One per line. The author picks exactly one of these.</p>
+    <textarea name="options" rows="4">{{ (question.get('options') or []) | join('\n') }}</textarea>
+  </div>
+  {% endif %}
+</div>
