@@ -1,6 +1,9 @@
 # Lancy Content Flow — Architecture
 
-> Status: **draft v0.2** · 2026-09-20 · companion: [DESIGN.md](DESIGN.md)
+> Status: **draft v0.2** · 2026-09-20 · companions: [DESIGN.md](DESIGN.md) ·
+> [BACKLOG.md](BACKLOG.md)
+>
+> This document describes what is built. What is not is in the backlog.
 
 ## 1. Shape: one service
 
@@ -91,29 +94,30 @@ Full library shortlist with rationale: [§12](#12-library-shortlist).
 ```
 lcf/
 ├── src/lcf/
-│   ├── main.py             # FastAPI app assembly
+│   ├── cli.py              # serve, buckets, walkthrough
 │   ├── core/               # config, db session, logging
 │   ├── models/             # SQLAlchemy
-│   ├── schemas/            # Pydantic
 │   ├── services/           # THE CONTRACT — plain functions, no HTTP
 │   │   ├── doc_types.py    #   publish, validate, import/export
-│   │   ├── documents.py    #   create, intake, section state
+│   │   ├── documents.py    #   create, section state, blocks
 │   │   ├── proposals.py    #   propose, accept, reject, revise
-│   │   └── assessment.py   #   run checks, gate, report
-│   ├── spec/               # spec model, YAML round-trip, linter
+│   │   ├── assessment.py   #   run checks, gate, report
+│   │   ├── intake.py       #   evidence: paste, map, prefill
+│   │   ├── exports.py      #   render, gate, store, record
+│   │   ├── templates.py    #   docx template: starter, lint, attach
+│   │   ├── drafts.py       #   the structured spec editor's draft
+│   │   └── jobs.py         #   queue, worker, progress
+│   ├── spec/               # spec model, YAML round-trip, linter, describe
 │   ├── engine/             # state machine, staleness, composition
-│   │   └── checks/         #   deterministic/  llm/
-│   ├── llm/                # provider, typed calls, prompts/, style resolution
-│   ├── evidence/           # intake, mapping, captioning
-│   ├── markdown/           # subset definition, AST normalisation
-│   ├── render/             # json, markdown, docx + template linter
-│   ├── jobs/               # queue, worker, SSE
+│   │   └── checks/         #   deterministic.py  judged.py
+│   ├── llm/                # provider, typed calls, schemas, quoting
+│   ├── render/             # neutral (json), markdown, docx + template linter
+│   ├── storage/            # S3
 │   └── web/                # routes, templates/, static/
-├── assets/                 # editor island source → built into web/static
 ├── alembic/
 ├── tests/
 ├── docs/
-│   ├── DESIGN.md · ARCHITECTURE.md
+│   ├── DESIGN.md · ARCHITECTURE.md · BACKLOG.md
 │   └── examples/*.yaml
 ├── .env.example
 └── docker-compose.yml
@@ -126,7 +130,8 @@ imports `render/`; `render/` never imports `engine/`. That boundary is the code-
 ## 4. Data model
 
 ```
-doc_type ──┬─< doc_type_version ─┐         (immutable, pinned by document)
+doc_type ──┬─< doc_type_version ─┐         (spec immutable, pinned by document;
+           │                    │          carries the docx template)
            │                    │
            └─< exemplar         │         section_key, block_key, value,
                                 │         harvested_from (revision id)
@@ -376,7 +381,11 @@ GET   /doc-types/{key}/edit               editor, opened as version v+1
 POST  /doc-types/check                    parse + model + lint, publishing nothing
 POST  /doc-types/publish                  publish a new version
 POST  /doc-types/import                   YAML in → opens in the editor
-PUT   /doc-types/{key}/versions/{v}/template
+GET   /doc-types/{key}/versions/{v}/template/starter   generated from the spec
+GET   /doc-types/{key}/versions/{v}/template           what is attached
+POST  /doc-types/{key}/versions/{v}/template           upload; lints, refuses on problems
+POST  /doc-types/{key}/versions/{v}/template/remove
+GET   /doc-types/{key}/versions/{v}/template/card
 
 # Creator
 POST  /documents                          {doc_type_id, version}
@@ -420,7 +429,7 @@ sequenceDiagram
 
     U->>W: POST /sections/d4/draft
     W->>S: request_draft() → job
-    W-->>U: SSE subscribe
+    W-->>U: HTML: job card, polling once a second
 
     J->>D: claim job, load spec + style + answers + evidence
     J->>J: context budget: raw evidence or summary?
@@ -429,8 +438,10 @@ sequenceDiagram
     J->>J: validate · normalise markdown to subset
     J->>D: insert PROPOSAL rows (no content written)
     J->>D: deterministic checks → check_results
-    J-->>U: SSE done
+    J->>D: job status = done
 
+    U->>W: GET /jobs/{id}/card (the poll that sees it finish)
+    W-->>U: element that loads the section back in
     U->>W: GET /sections/d4
     W-->>U: proposals as decorated spans, gaps as a form
     U->>W: POST /proposals/{id}/accept
@@ -495,20 +506,21 @@ Nothing here should be written by hand if a proven library exists.
 
 | Need | Library | Why this one |
 |---|---|---|
-| docx from template | **docxtpl** | Jinja in a real Word file; designers keep control of branding |
-| docx internals | **python-docx** | Underlies docxtpl; direct use for image placement and table styling |
+| docx from template | **docxtpl** | Jinja in a real Word file; designers keep control of branding. `{%tr %}` and `{%p %}` are why: a repeating row is the one thing python-docx cannot do against a designed table |
+| docx internals | **python-docx** | Underlies docxtpl; direct use for the plain renderer and for generating the starter template |
+| Markdown → RichText | **markdown-it-py** | Prose blocks are markdown, and `{{ }}` would print the asterisks. Token stream in, runs out ([§16.3](#163-prose-is-markdown-and-word-is-not)) |
 | Rich markdown → docx | **pypandoc** + `reference.docx` | Only if docxtpl's RichText proves too limited for prose formatting |
 
 ### Infrastructure
 
 | Need | Library | Why this one |
 |---|---|---|
-| Job queue | **procrastinate** | Postgres-backed, mature — the alternative is ~200 lines of `SKIP LOCKED` we'd own |
+| Job queue | In-process asyncio over a `job` row | `SKIP LOCKED` is not needed until the worker is its own process ([§7](#7-jobs-and-streaming)); the job row is needed for progress and audit regardless |
 | S3 | **boto3** | versitygw patterns already exist next door |
 | Migrations | **Alembic** | |
-| SSE | **sse-starlette** + `htmx-ext-sse` | Server-side progress rendering, no custom JS |
+| Job progress | Polling a server-rendered card | Not SSE — [§7](#7-jobs-and-streaming) |
 | Test async | **pytest-asyncio** | |
-| LLM fixtures | **respx** | Record real vLLM responses, replay them in CI |
+| LLM fixtures | Monkeypatched typed calls | `llm/calls.py` is the seam; substituting there tests composition without asserting anything about HTTP |
 
 ### Later, if ever
 
@@ -579,7 +591,8 @@ anyone can get a document out, and should be able to when branding matters. `ren
 a clean document directly — real heading styles, real Word tables, no setup. `render_with_template`
 merges the same content into the rule builder's `.docx`, where logo, fonts and CI colours already
 live. Template tags are linted against spec keys at upload, including tags in table cells and
-headers, so a template naming a renamed section fails then rather than at export time.
+headers, so a template naming a renamed section fails then rather than at export time. How a rule
+builder gets such a template, and how it survives the type changing under it, is [§16](#16-the-docx-template).
 
 Step 3 is the checkpoint that matters. If a 4D cannot be walked from start to finish with
 hand-typed content and no model involved, something was built in the wrong order — and every later
@@ -748,20 +761,94 @@ was most of it. The estimate was right about the payoff too, and it is worth sta
 be named, a column of the wrong table cannot be chosen, a dependency cycle cannot be clicked, and a
 check of a kind the block cannot satisfy is not on the menu.
 
-What is not built, and would be next:
+What is not built is in [BACKLOG §7](BACKLOG.md).
 
-- **A shorter path for the plainest type there is.** Plenty of document types are "a handful of
-  headings, one paragraph under each" — and the builder currently charges the full price for that:
-  five cards per section, most of them about machinery the type does not use. Seeding a prose block
-  ([§15.4](#154-things-to-watch-out-for), point 8) removed the worst of it, but the *page* is still
-  sized for the hardest case. The cheap version is presentational and worth doing first: when a
-  section holds exactly one prose block named after it, collapse "what gets written here" to a
-  single line, and fold questions and checks behind "add rules to this section". The expensive
-  version — a separate simple mode — should wait until the cheap one proves insufficient, because
-  two modes over one model is two things to keep true.
-- **Reordering sections, questions and blocks.** The `move_*` operations exist and are tested; what
-  is missing is a UI worth having. Per-row up/down arrows were built and removed — three buttons on
-  every row of a page that is already mostly buttons, and they read as clutter rather than as an
-  ordering control. Drag, or a reorder mode showing the whole list at once, is the real answer.
-- A scratch document from a draft, and a diff against the version it is based on
-  ([§15.3](#153-what-a-rule-builder-actually-needs-beyond-forms)).
+## 16. The docx template
+
+One template per document type, bound to a version, carried forward when the next one is published.
+
+### 16.1 What a template references
+
+Sections are fixed by the spec, so a template names them: `{{ d2_problem.description }}`. What
+varies at runtime is inside a section — table rows, list items — and those repeat.
+
+Each block is exposed as a `BlockValue`: a `str` subclass whose text is the flattened form, with
+its structure beside it.
+
+| Attribute | On | For |
+|---|---|---|
+| *(the value itself)* | every kind | `{{ d1_team.members }}` — flattened to text |
+| `.rows` / `.columns` | table, keyvalue, image_ref | `{%tr for row in d1_team.members.rows %}` — a real Word table row, repeated, in the designer's table style |
+| `.items` | list | `{%p for item in x.items %}` |
+| `.paragraphs` / `.rich` | prose | docxtpl `RichText`; markdown emphasis becomes Word runs |
+| `.filled` | every kind | `{% if x.filled %}` — drop an empty chapter |
+
+Also in scope: `{{ title }}`, `{{ doc_type }}`, `{{ section.title }}`, and `sections` as an ordered
+list for a template that would rather loop than name each one.
+
+Prose is markdown ([DESIGN §9](DESIGN.md#9-markdown-integrity)), parsed by `markdown-it-py` and
+walked into RichText runs — `{{ }}` alone would print the asterisks.
+
+### 16.2 The starter template
+
+`render.docx.starter(spec, base=…)` generates the template from the spec: every section as a Word
+heading, every block as a correctly spelled tag, tables and lists already wrapped in their repeat
+loops. The rule builder downloads it, brands it in Word, and uploads it back — they never type a
+section key, so most lint errors are unreachable rather than reported.
+
+`base` is the house style from `LCF_DOCX_BASE_TEMPLATE`: a company `.docx` holding header, footer,
+logo, fonts and colours, and no content. The starter is built onto it, so branding is set once per
+installation rather than reapplied to every template. `render_plain` uses it too — a document type
+with no template of its own still exports onto company paper. The body of the base file is emptied
+before content is appended; only its header, footer, styles and section properties are kept.
+
+A test asserts over every example spec that a generated starter lints clean *and* complete against
+the spec it came from.
+
+### 16.3 Linting
+
+`render.docx.lint(spec, template)` returns two lists, at two severities:
+
+| | Meaning | Outcome |
+|---|---|---|
+| `problems` | A tag names a section, block or attribute this version does not have | Refused at upload — it would render as nothing |
+| `missing` | The spec has a section or block the template never mentions | Allowed, and reported — omitting an internal section is legitimate |
+
+It reads tags in paragraphs, table cells, headers and footers. Loop variables are collected from
+statement tags first, so `{{ row.name }}` inside `{%tr for row in … %}` is not read as a section
+reference. Attributes are checked against the block kind: `.rows` on a prose block is an error that
+names what was probably meant.
+
+The card on the doc type page re-lints the attached template on every render, because what
+invalidates a template — a new version with a new section — happens in the spec editor.
+
+### 16.4 Storage and lifecycle
+
+`doc_type_version.template_uri` and `.template_filename`; bytes in the `lcf-templates` bucket, keyed
+by version and timestamp so an upload never overwrites an object an earlier version points at.
+`services/templates.py` holds `starter_for`, `review`, `attach`, `remove`, `fetch` and
+`for_document`; `exports.render` resolves the template from the document's pinned version.
+
+A version's spec is immutable; its template is not. Documents pin a version so the rules cannot
+move under them, while [DESIGN §4](DESIGN.md#4-three-artifacts-kept-apart) requires an approved
+document be re-renderable under new branding. `doc_types.publish` copies the template reference
+from the most recent version that has one.
+
+Routes:
+
+```
+GET   /doc-types/{key}/versions/{v}/template/starter   generated, onto the house style
+GET   /doc-types/{key}/versions/{v}/template           what is attached
+POST  /doc-types/{key}/versions/{v}/template           upload; lints, refuses on problems
+POST  /doc-types/{key}/versions/{v}/template/remove    fall back to render_plain
+GET   /doc-types/{key}/versions/{v}/template/card      the card, lazily loaded
+```
+
+Attaching a template requires object storage: unlike an export, it is the only copy, so a missing
+store raises rather than degrading.
+
+### 16.5 Limits
+
+`image_ref` blocks render captions as text in both paths — placing real images waits on upload and
+captioning ([BACKLOG §1](BACKLOG.md)). The house style is a config path with no UI, and the
+template is the document type's, not the document's.

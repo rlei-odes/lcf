@@ -22,6 +22,7 @@ from lcf.render import docx as docx_render
 from lcf.render import markdown as markdown_render
 from lcf.render import neutral
 from lcf.services import assessment as assessment_service
+from lcf.services import templates as templates_service
 from lcf.services.doc_types import NotFound
 from lcf.services.documents import load
 from lcf.services.documents import view as load_view
@@ -87,10 +88,16 @@ async def render(
     elif fmt == "markdown":
         data = markdown_render.render(view, title=title).encode("utf-8")
     else:
+        # The document's pinned version carries the template, so an export made
+        # today and one made next year through the same version agree. `template`
+        # stays an argument so a caller can render through a candidate without
+        # attaching it.
+        if template is None:
+            template = await templates_service.for_document(session, document_id)
         data = (
             docx_render.render_with_template(view, template, title=title)
             if template
-            else docx_render.render_plain(view, title=title)
+            else docx_render.render_plain(view, title=title, base=templates_service.house_style())
         )
 
     return Rendered(data, _filename(view, title, fmt), CONTENT_TYPES[fmt], fmt)

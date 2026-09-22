@@ -224,6 +224,31 @@ def test_a_table_flattens_for_a_placeholder(filled):
     assert "Name: Sabine Vogt" in context["d1_team"]["members"]
 
 
+def test_a_rich_block_keeps_its_structure(filled):
+    """A flattened table is a string; a branded template needs the rows."""
+    ctx = docx_render.context(filled, title="A 4D")
+    members = ctx["d1_team"]["members"]
+    assert members.rows[0]["name"] == "Sabine Vogt"
+    assert [c["key"] for c in members.columns][:2] == ["name", "role"]
+    # The flat form still works, so a template written before this keeps working.
+    assert "Name: Sabine Vogt" in members
+
+
+def test_prose_becomes_paragraphs_not_asterisks(spec_4d):
+    """Prose is markdown (DESIGN §9). `{{ }}` would print its syntax."""
+    view = DocumentView(spec_4d, {"d2_problem": {"description": "A **bold** claim.\n\nSecond."}})
+    value = docx_render.context(view, title="x")["d2_problem"]["description"]
+    assert len(value.paragraphs) == 2
+    assert "<w:b/>" in value.paragraphs[0].xml
+    assert "**" not in value.paragraphs[0].xml
+
+
+def test_an_empty_block_is_falsy_for_a_template(spec_4d):
+    """`{% if section.block.filled %}` is how a template drops an empty chapter."""
+    value = docx_render.context(DocumentView(spec_4d), title="x")["d2_problem"]["description"]
+    assert not value.filled and value == ""
+
+
 def test_linting_accepts_a_good_template(spec_4d):
     template = _template("{{ d2_problem.description }}", "{{ header.meta }}")
     assert docx_render.lint_template(spec_4d, template) == []
@@ -264,3 +289,134 @@ def test_a_linted_template_actually_renders(spec_4d, filled):
     assert docx_render.lint_template(spec_4d, template) == []
     DocxTemplate(io.BytesIO(template))  # parses
     assert docx_render.render_with_template(filled, template, title="x")[:2] == b"PK"
+
+
+# --------------------------------------------------------------------------- #
+# the generated starter template
+#
+# The loop this has to keep true: a starter generated from a spec must lint clean
+# against that spec and render that spec's content. If generation and linting ever
+# disagree, the rule builder is handed a file the app then refuses.
+# --------------------------------------------------------------------------- #
+
+
+def _house_style() -> bytes:
+    """Stand-in for a company .docx, until there is a UI to upload one.
+
+    Everything a real one carries that the body does not: a header, a footer, a
+    brand colour on a style, and placeholder prose that must not survive.
+    """
+    from docx import Document as NewDocx
+    from docx.shared import RGBColor
+
+    doc = NewDocx()
+    doc.sections[0].header.paragraphs[0].text = "NORDWERK | Supplier Quality"
+    doc.sections[0].footer.paragraphs[0].text = "Confidential"
+    doc.styles["Heading 1"].font.color.rgb = RGBColor(0xC1, 0x00, 0x22)
+    doc.styles["Heading 1"].font.name = "Georgia"
+    doc.add_paragraph("Lorem ipsum from whoever made this template")
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    return buffer.getvalue()
+
+
+def test_a_generated_starter_lints_clean_against_its_own_spec(any_spec):
+    """Over every example spec, not just the 4D: the generator has to be right
+    for whatever a rule builder built, and this is the only test that would
+    notice a block kind nobody wrote a tag for."""
+    lint = docx_render.lint(any_spec, docx_render.starter(any_spec))
+    assert lint.problems == []
+    assert lint.missing == [], "the starter must mention every section and block"
+
+
+def test_a_generated_starter_actually_renders_the_document(filled, spec_4d):
+    out = docx_render.render_with_template(filled, docx_render.starter(spec_4d), title="A 4D")
+    doc = ReadDocx(io.BytesIO(out))
+    text = "\n".join(p.text for p in doc.paragraphs)
+    cells = [c.text for t in doc.tables for r in t.rows for c in r.cells]
+
+    assert "Nordwerk Fahrzeugtechnik reported cracking" in text
+    assert "Sabine Vogt" in cells, "a table row loop must produce real table rows"
+    assert not any("{%" in c or "{{" in c for c in cells), "unrendered tag left in a table"
+    assert "{%" not in text and "{{" not in text, "unrendered tag left in the body"
+
+
+def test_table_rows_repeat_with_the_content(spec_4d, sample_4d):
+    """The whole point of `{%tr %}`: the number of rows is the content's, not the
+    template's. Three team members in, three rows out."""
+    content = {k: v.get("blocks", {}) for k, v in sample_4d["sections"].items()}
+    members = content["d1_team"]["members"]
+    view = DocumentView(spec_4d, content, completed=set(spec_4d.section_keys))
+    out = docx_render.render_with_template(view, docx_render.starter(spec_4d), title="x")
+
+    doc = ReadDocx(io.BytesIO(out))
+    team = next(t for t in doc.tables if t.rows[0].cells[0].text == "Name")
+    assert len(team.rows) == len(members) + 1, "one header row plus one row per member"
+
+
+def test_the_starter_is_built_onto_the_house_style(spec_4d):
+    """Branding a template by hand every time it is regenerated is the tax that
+    gets the feature abandoned."""
+    doc = ReadDocx(io.BytesIO(docx_render.starter(spec_4d, base=_house_style())))
+    assert doc.sections[0].header.paragraphs[0].text == "NORDWERK | Supplier Quality"
+    assert doc.sections[0].footer.paragraphs[0].text == "Confidential"
+    assert str(doc.styles["Heading 1"].font.color.rgb) == "C10022"
+    assert "Lorem ipsum" not in "\n".join(p.text for p in doc.paragraphs)
+
+
+def test_the_house_style_survives_all_the_way_to_the_export(filled, spec_4d):
+    template = docx_render.starter(spec_4d, base=_house_style())
+    doc = ReadDocx(io.BytesIO(docx_render.render_with_template(filled, template, title="A 4D")))
+    assert doc.sections[0].header.paragraphs[0].text == "NORDWERK | Supplier Quality"
+    assert str(doc.styles["Heading 1"].font.color.rgb) == "C10022"
+
+
+def test_plain_render_can_use_the_house_style_too(filled):
+    """A type with no template still goes out on company paper."""
+    out = docx_render.render_plain(filled, title="A 4D", base=_house_style())
+    doc = ReadDocx(io.BytesIO(out))
+    assert doc.sections[0].header.paragraphs[0].text == "NORDWERK | Supplier Quality"
+    assert "Nordwerk Fahrzeugtechnik reported cracking" in "\n".join(
+        p.text for p in doc.paragraphs
+    )
+
+
+# --------------------------------------------------------------------------- #
+# completeness: the check that matters once a type can grow
+# --------------------------------------------------------------------------- #
+
+
+def test_a_template_missing_a_section_is_reported(spec_4d):
+    """The carried-forward case: a template written against v1, a v2 that added a
+    section. It lints clean — every tag it has is real — and is a chapter short."""
+    lint = docx_render.lint(spec_4d, _template("{{ d2_problem.description }}"))
+    assert lint.problems == [], "nothing it names is wrong"
+    assert not lint.complete
+    assert any("D1" in m for m in lint.missing)
+    assert any("Is / Is not" in m for m in lint.missing), "a missing block counts too"
+
+
+def test_a_complete_template_reports_nothing_missing(spec_4d):
+    assert docx_render.lint(spec_4d, docx_render.starter(spec_4d)).complete
+
+
+def test_loop_variables_are_not_mistaken_for_sections(spec_4d):
+    """`{{ row.name }}` inside a loop names a row, not a section. Reading it as
+    one is how a linter ends up refusing its own generated template."""
+    lint = docx_render.lint(
+        spec_4d,
+        _template("{%tr for row in d1_team.members.rows %}", "{{ row.name }}", "{%tr endfor %}"),
+    )
+    assert lint.problems == []
+
+
+def test_a_loop_over_a_block_that_does_not_exist_is_caught(spec_4d):
+    lint = docx_render.lint(spec_4d, _template("{%tr for row in d1_team.ghosts.rows %}"))
+    assert any("has no block 'ghosts'" in p for p in lint.problems)
+
+
+def test_an_attribute_the_block_kind_cannot_have_is_caught(spec_4d):
+    """`.rows` on a prose block renders as nothing. Silently."""
+    lint = docx_render.lint(spec_4d, _template("{%p for row in d2_problem.description.rows %}"))
+    assert any("has no 'rows'" in p for p in lint.problems)
+    assert any("paragraphs" in p for p in lint.problems), "say what it could have meant"

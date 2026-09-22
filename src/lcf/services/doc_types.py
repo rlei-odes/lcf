@@ -46,6 +46,22 @@ async def publish(session: AsyncSession, spec: DocTypeSpec) -> DocTypeVersion:
         )
 
     version = DocTypeVersion(doc_type_id=doc_type.id, version=spec.version, spec=spec.to_dict())
+
+    # Carry the template forward. A new version is nearly always the previous one
+    # plus a change, and making the rule builder re-upload branding every time
+    # they add a question is the kind of tax that gets a feature abandoned. What
+    # it cannot do is stay silently wrong: the new spec may have sections the
+    # template predates, which is what `template_review` exists to say.
+    previous = await session.scalar(
+        select(DocTypeVersion)
+        .where(DocTypeVersion.doc_type_id == doc_type.id, DocTypeVersion.template_uri.is_not(None))
+        .order_by(DocTypeVersion.version.desc())
+        .limit(1)
+    )
+    if previous is not None:
+        version.template_uri = previous.template_uri
+        version.template_filename = previous.template_filename
+
     session.add(version)
     await session.flush()
     return version

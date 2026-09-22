@@ -39,6 +39,12 @@ class Settings(BaseSettings):
 
     worker_in_process: bool = True
 
+    # The house style every generated starter template is built onto — a .docx
+    # holding header, footer, logo, fonts and colours, and no content. A path for
+    # now: there is no UI to upload one, and the seam is here so that adding one
+    # later changes where the bytes come from and nothing else.
+    docx_base_template: str = ""
+
     @property
     def buckets(self) -> list[str]:
         return [self.s3_bucket_uploads, self.s3_bucket_templates, self.s3_bucket_exports]

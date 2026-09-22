@@ -99,3 +99,31 @@ def test_deterministic_flag():
     )
     assert present.is_deterministic
     assert not rubric.is_deterministic
+
+
+# --------------------------------------------------------------------------- #
+# what a fresh installation gets
+# --------------------------------------------------------------------------- #
+
+
+def test_seed_specs_exist_and_lint():
+    """`lcf seed` names files by hand, so a renamed example breaks it silently."""
+    from lcf.cli import EXAMPLES, SEED_SPECS
+
+    for name in SEED_SPECS:
+        path = EXAMPLES / name
+        assert path.is_file(), f"{name} is seeded but not in docs/examples"
+        assert lint(loader.load(path)) == []
+
+
+def test_every_seeded_type_has_intake_notes():
+    """The notes are how the intake feature is demonstrated at all. A seeded type
+    without them is a type nobody can try that feature on."""
+    from lcf.cli import EXAMPLES, SEED_SPECS
+
+    for name in SEED_SPECS:
+        notes = EXAMPLES / f"{name.removesuffix('.yaml')}-intake-notes.md"
+        assert notes.is_file(), f"no intake notes for {name}"
+        # Enough material to distribute; a stub would pass an existence check and
+        # demonstrate nothing.
+        assert len(notes.read_text().split()) > 200

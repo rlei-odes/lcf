@@ -64,6 +64,15 @@ class DocTypeVersion(Base):
     spec: Mapped[dict] = mapped_column(JSONB, nullable=False)
     published_at: Mapped[datetime] = _created()
 
+    # The docx template, bound to this version and carried forward when the next
+    # one is published. The *spec* is what immutability protects: documents pin a
+    # version so the rules cannot move under them. Branding is the opposite case —
+    # DESIGN §4 wants an approved document re-renderable under a new logo without
+    # touching content — so the template is an attachment that may be replaced,
+    # and the lint that guards it runs against this version's frozen spec.
+    template_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
+    template_filename: Mapped[str | None] = mapped_column(String(300), nullable=True)
+
     doc_type: Mapped[DocType] = relationship(back_populates="versions")
 
 

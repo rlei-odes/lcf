@@ -56,6 +56,14 @@
   </div>
 </div>
 
+{# Lazy-loaded: the card re-lints the attached template, which means fetching it
+   from object storage, and that has no business delaying this page when most
+   types have no template at all. #}
+{% if not draft %}
+<div hx-get="/doc-types/{{ key }}/versions/{{ spec.version }}/template/card"
+     hx-trigger="load" hx-swap="outerHTML"></div>
+{% endif %}
+
 {% if spec.style %}
 <div class="card">
   <h3>House style</h3>

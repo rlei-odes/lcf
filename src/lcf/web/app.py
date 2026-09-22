@@ -21,6 +21,7 @@ from lcf.core.db import session
 from lcf.engine.state import Status, document_state, ordered_sections, section_state
 from lcf.models.tables import Document
 from lcf.services import assessment, doc_types, documents, drafts, exports, intake, jobs, proposals
+from lcf.services import templates as templates_service
 from lcf.spec import loader
 from lcf.spec.describe import describe_criterion, describe_requirement, scope_of
 from lcf.web import builder
@@ -886,6 +887,111 @@ async def doc_type_version(request: Request, key: str, version: int):
         key=key,
         versions=versions,
         usage=counts,
+    )
+
+
+# ----------------------------------------------------------------------------- #
+# The docx template
+#
+# A template is bound to a version and carried forward on publish, so the loop a
+# rule builder walks is: download the starter, brand it in Word, upload it back.
+# Every route below refuses at upload rather than at export, because a tag naming
+# a section that no longer exists renders as nothing, and nothing is what nobody
+# notices until the customer has the file.
+# ----------------------------------------------------------------------------- #
+
+
+@app.get("/doc-types/{key}/versions/{version}/template/starter")
+async def template_starter(key: str, version: int):
+    """The template to edit, generated from the spec onto the house style."""
+    async with session() as s:
+        row = await doc_types.get_version(s, key, version)
+        data, filename = templates_service.starter_for(row)
+    return Response(
+        content=data,
+        media_type=templates_service.DOCX_TYPE,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/doc-types/{key}/versions/{version}/template")
+async def template_download(key: str, version: int):
+    """The template as attached, so what is in use can always be read back."""
+    async with session() as s:
+        row = await doc_types.get_version(s, key, version)
+        data = templates_service.fetch(row)
+        filename = row.template_filename or f"{key}-v{version}.docx"
+    if data is None:
+        return HTMLResponse("No template is attached to this version.", status_code=404)
+    return Response(
+        content=data,
+        media_type=templates_service.DOCX_TYPE,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/doc-types/{key}/versions/{version}/template", response_class=HTMLResponse)
+async def template_upload(request: Request, key: str, version: int, file: UploadFile | None = None):
+    """Attach a template, or say what is wrong with it and attach nothing."""
+    async with session() as s:
+        row = await doc_types.get_version(s, key, version)
+        if file is None or not file.filename:
+            return await _template_card(request, s, row, key, error="Choose a .docx file first.")
+        data = await file.read()
+        try:
+            lint = await templates_service.attach(s, row, data, file.filename)
+        except templates_service.TemplateRejected as rejected:
+            return await _template_card(request, s, row, key, lint=rejected.lint)
+        except templates_service.NoStore as exc:
+            return await _template_card(request, s, row, key, error=str(exc))
+        return await _template_card(request, s, row, key, lint=lint, attached=True)
+
+
+@app.post("/doc-types/{key}/versions/{version}/template/remove", response_class=HTMLResponse)
+async def template_remove(request: Request, key: str, version: int):
+    async with session() as s:
+        row = await doc_types.get_version(s, key, version)
+        await templates_service.remove(s, row)
+        return await _template_card(request, s, row, key)
+
+
+@app.get("/doc-types/{key}/versions/{version}/template/card", response_class=HTMLResponse)
+async def template_card(request: Request, key: str, version: int):
+    async with session() as s:
+        row = await doc_types.get_version(s, key, version)
+        return await _template_card(request, s, row, key)
+
+
+async def _template_card(
+    request: Request,
+    s,
+    row,
+    key: str,
+    *,
+    lint=None,
+    attached: bool = False,
+    error: str | None = None,
+) -> HTMLResponse:
+    """The card, and what the spec says about the template currently attached.
+
+    An attached template is re-linted on every render rather than only at upload,
+    because the thing that invalidates it — a new version with a new section —
+    happens somewhere else entirely, and a card that reported only what was true
+    at upload time would go stale exactly when it matters.
+    """
+    if lint is None and row.template_uri:
+        data = templates_service.fetch(row)
+        lint = templates_service.review(row, data) if data else None
+    return page(
+        request,
+        "partials/template_card.html",
+        row=row,
+        key=key,
+        version=row.version,
+        lint=lint,
+        attached=attached,
+        error=error,
+        house=templates_service.house_style() is not None,
     )
 
 

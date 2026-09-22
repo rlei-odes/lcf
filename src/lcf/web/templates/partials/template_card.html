@@ -1,0 +1,98 @@
+{# The docx template for this version.
+
+   The loop this card exists to make obvious: download the starter, brand it in
+   Word, upload it back. The starter already carries every tag the spec implies,
+   so the rule builder never types a section key — which is what makes most of
+   the errors below unreachable rather than merely reported (ARCHITECTURE §15.5).
+
+   Problems and gaps are different severities on purpose. A tag naming a section
+   that does not exist renders as nothing and is refused. A section the template
+   never mentions is allowed, because leaving an internal section out of the
+   customer's copy is a real thing people do — it is said out loud and permitted.
+
+   The card re-lints what is attached every time it renders, because what
+   invalidates a template happens elsewhere: publishing a new version carries the
+   template forward, and a spec that grew a section has a template one chapter
+   short. A card that reported only what was true at upload would go stale
+   exactly when it matters. #}
+<div class="card" id="template-card">
+  <div class="block-head">
+    <h3>Word template</h3>
+    {% if row.template_uri %}<span class="pill">attached</span>{% endif %}
+  </div>
+
+  {% if error %}
+  <div class="notice blocker"><strong>Not attached.</strong> {{ error }}</div>
+  {% elif attached %}
+  <div class="notice"><strong>Template attached.</strong>
+    Every docx export of a document built on v{{ version }} now renders through it.</div>
+  {% endif %}
+
+  {% if row.template_uri %}
+  <p class="lead">
+    Exports of this version render through
+    <a href="/doc-types/{{ key }}/versions/{{ version }}/template">{{ row.template_filename }}</a>.
+  </p>
+  {% else %}
+  <p class="lead">
+    No template. Word exports come out clean and correctly structured
+    {%- if house %}, on the house style{% endif %} — a template is for when the
+    logo, fonts and colours have to be the customer's.
+  </p>
+  {% endif %}
+
+  {% if lint and lint.problems %}
+  <div class="notice blocker">
+    <strong>{{ lint.problems|length }} tag(s) name something this version does not have.</strong>
+    <div class="hint">These render as nothing at export time, which is why they are refused here.</div>
+    <ul class="plain">
+      {% for p in lint.problems %}<li><span class="mark">!</span><code>{{ p }}</code></li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if lint and lint.missing %}
+  <details {% if not lint.problems %}open{% endif %}>
+    <summary style="cursor:pointer;color:var(--muted);font-size:13px">
+      {{ lint.missing|length }} thing(s) in the spec the template never mentions
+    </summary>
+    <div class="hint" style="margin-top:8px">
+      Deliberate if the customer is not meant to see them. If not, this is the
+      chapter that will be silently absent from every export.
+    </div>
+    <ul class="plain" style="margin-top:8px">
+      {% for m in lint.missing %}<li><span class="mark">·</span><span>{{ m }}</span></li>{% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+
+  {% if lint and lint.ok and lint.complete and row.template_uri %}
+  <p class="hint">Every section and block of this version has somewhere to land.</p>
+  {% endif %}
+
+  <form method="post" enctype="multipart/form-data"
+        action="/doc-types/{{ key }}/versions/{{ version }}/template"
+        hx-post="/doc-types/{{ key }}/versions/{{ version }}/template"
+        hx-target="#template-card" hx-swap="outerHTML" hx-encoding="multipart/form-data">
+    <div class="actions">
+      <a href="/doc-types/{{ key }}/versions/{{ version }}/template/starter">
+        <button class="primary" type="button">Download starter template</button></a>
+      <input type="file" name="file" accept=".docx" required>
+      <button type="submit">{{ 'Replace' if row.template_uri else 'Attach' }}</button>
+    </div>
+    <span class="why">
+      The starter is this version's sections and blocks as Word headings and tags,
+      {% if house %}on the house style, {% endif %}ready to brand. Tables and lists
+      repeat with the content, so a four-person team and a nine-person team both fit.
+    </span>
+  </form>
+
+  {% if row.template_uri %}
+  <form method="post" action="/doc-types/{{ key }}/versions/{{ version }}/template/remove"
+        hx-post="/doc-types/{{ key }}/versions/{{ version }}/template/remove"
+        hx-target="#template-card" hx-swap="outerHTML" style="margin-top:10px">
+    <button type="submit">Remove template</button>
+    <span class="why">Exports fall back to the clean built-in layout.</span>
+  </form>
+  {% endif %}
+</div>

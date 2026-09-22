@@ -21,8 +21,14 @@ from lcf.spec import loader
 from lcf.spec.linter import SpecInvalid, lint
 
 REPO = Path(__file__).resolve().parents[2]
-DEFAULT_SPEC = REPO / "docs/examples/4d-report.yaml"
-DEFAULT_CONTENT = REPO / "docs/examples/4d-sample-content.yaml"
+EXAMPLES = REPO / "docs/examples"
+DEFAULT_SPEC = EXAMPLES / "4d-report.yaml"
+DEFAULT_CONTENT = EXAMPLES / "4d-sample-content.yaml"
+
+# What `seed` publishes. The 8D is deliberately not here: it is the stress test
+# for the spec model, and 22 KB of it in a fresh installation's type list is
+# clutter rather than a demonstration. Publish it by hand when that is the point.
+SEED_SPECS = ("4d-report.yaml", "product-specification.yaml")
 
 _ICON = {
     Status.BLOCKED: "⊘",
@@ -93,6 +99,34 @@ def cmd_publish(args) -> int:
             print(f"  ✗ {error}", file=sys.stderr)
         return 1
     return 0
+
+
+async def _seed() -> int:
+    for name in SEED_SPECS:
+        await _publish(EXAMPLES / name)
+
+    print("\nSomething to paste into a new document's intake box:")
+    for name in sorted(p.name for p in EXAMPLES.glob("*-intake-notes.md")):
+        print(f"  {EXAMPLES.relative_to(REPO) / name}")
+    return 0
+
+
+def cmd_seed(args) -> int:
+    """Publish the example document types into an empty database.
+
+    Idempotent, because `_publish` already reuses a version that exists — running
+    it against a database that has them is a no-op, not a second copy.
+
+    A command rather than something startup does: a real installation should not
+    quietly acquire demo document types because it was started.
+    """
+    try:
+        return asyncio.run(_seed())
+    except SpecInvalid as exc:
+        print("spec is invalid:", file=sys.stderr)
+        for error in exc.errors:
+            print(f"  ✗ {error}", file=sys.stderr)
+        return 1
 
 
 def _print_states(states) -> None:
@@ -213,6 +247,9 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("publish", help="publish a spec to the database")
     p.add_argument("path")
     p.set_defaults(func=cmd_publish)
+
+    p = sub.add_parser("seed", help="publish the example document types")
+    p.set_defaults(func=cmd_seed)
 
     p = sub.add_parser("buckets", help="create missing object storage buckets")
     p.set_defaults(func=cmd_buckets)
