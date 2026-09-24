@@ -717,7 +717,7 @@ These were the warnings. They are now the invariants, and each says where it is 
    down why" and "flagged, not blocking" — say that in the form, not in a tooltip. *Held by
    `builder.SEVERITIES`, where the explanation is the option text and the word never appears.*
 
-Two more, learned in the building:
+More, learned in the building:
 
 7. **The menu of checks is derived from what the linter would allow.** Offering a row count on a
    paragraph and then reporting it as an error is a worse editor than not offering it, so
@@ -761,7 +761,7 @@ was most of it. The estimate was right about the payoff too, and it is worth sta
 be named, a column of the wrong table cannot be chosen, a dependency cycle cannot be clicked, and a
 check of a kind the block cannot satisfy is not on the menu.
 
-What is not built is in [BACKLOG §7](BACKLOG.md).
+What is not built is in [BACKLOG §9](BACKLOG.md).
 
 ## 16. The docx template
 
