@@ -8,6 +8,7 @@ family instead (DESIGN §5.4).
 from datetime import date, datetime
 from typing import Any
 
+from lcf.core.text import count as plural
 from lcf.engine.checks.result import CheckResult, failed, not_applicable, passed
 from lcf.engine.view import DocumentView
 from lcf.spec.models import Block, BlockKind, Requirement, Section
@@ -126,7 +127,7 @@ def _rows(view, section, block, value, req) -> CheckResult:
         return failed(
             req.id,
             req.severity,
-            f"{block.label}: {count} row(s), needs at least {req.min}",
+            f"{block.label}: {plural(count, 'row')}, needs at least {req.min}",
             evidence=[where],
             section_key=section.key,
         )
@@ -134,7 +135,7 @@ def _rows(view, section, block, value, req) -> CheckResult:
         return failed(
             req.id,
             req.severity,
-            f"{block.label}: {count} row(s), allowed at most {req.max}",
+            f"{block.label}: {plural(count, 'row')}, allowed at most {req.max}",
             evidence=[where],
             section_key=section.key,
         )

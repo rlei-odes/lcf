@@ -110,7 +110,7 @@ def test_length_counts_table_text():
 def test_rows_min_fails_on_empty_table():
     result = run_on("items", {}, kind="rows", min=2)
     assert result.outcome is Outcome.FAIL
-    assert "0 row(s), needs at least 2" in result.reason
+    assert "0 rows, needs at least 2" in result.reason
 
 
 def test_rows_min_passes():

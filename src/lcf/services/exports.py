@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lcf.core.config import settings
+from lcf.core.text import count
 from lcf.engine.view import DocumentView
 from lcf.models.tables import Document, Export
 from lcf.render import docx as docx_render
@@ -54,9 +55,9 @@ class GateBlocked(Exception):
     def summary(self) -> str:
         parts = []
         if self.blockers:
-            parts.append(f"{self.blockers} blocking problem(s) unresolved")
+            parts.append(f"{count(self.blockers, 'blocking problem')} unresolved")
         if self.unchecked:
-            parts.append(f"{self.unchecked} check(s) never run")
+            parts.append(f"{count(self.unchecked, 'check')} never run")
         return " and ".join(parts) or "the quality gate has not passed"
 
 

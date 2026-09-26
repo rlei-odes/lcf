@@ -6,7 +6,7 @@
 {% set items = block.get(part) or [] %}
 {% set url = '/doc-types/drafts/' ~ draft.id %}
 
-<div class="sub">
+<div class="subform">
   <h4>{{ 'Columns' if part == 'columns' else 'The fields' }}</h4>
   <p class="hint">
     {% if part == 'columns' %}

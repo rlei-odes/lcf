@@ -22,11 +22,11 @@
   {% if spec.description %}<p class="lead">{{ spec.description }}</p>{% endif %}
   <p class="hint">
     <code>{{ spec.id }}</code> · language {{ spec.language }} ·
-    {{ spec.sections|length }} section(s) ·
+    {{ count(spec.sections|length, 'section') }} ·
     {% if draft %}would publish as v{{ spec.version }}, saved {{ draft.updated_at|localtime }}
     {%- else %}published {{ row.published_at|localtime }}
       {%- set used = usage.get(spec.version, 0) %}
-      {%- if used %} · {{ used }} document(s) built on it{% endif %}
+      {%- if used %} · {{ count(used, 'document') }} built on it{% endif %}
     {%- endif %}
   </p>
 

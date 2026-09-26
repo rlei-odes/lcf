@@ -21,7 +21,7 @@
    anchoring errors in the first place (ARCHITECTURE §15.2). #}
 {% if not review.ok %}
 <div class="notice blocker" id="problems">
-  <h3>{{ review.problems|length }} thing(s) to fix before this can be published</h3>
+  <h3>{{ count(review.problems|length, 'thing') }} to fix before this can be published</h3>
   <p class="hint">Each one takes you to where it is.</p>
   {% for p in review.problems %}
   {% set spot = builder.locate(spec, p) %}

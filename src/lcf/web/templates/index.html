@@ -1,43 +1,68 @@
 {% extends "base.html" %}
+{% block subtitle %}documents{% endblock %}
 
 {% block content %}
-<div class="card">
-  <h2>Start a document</h2>
-  <p class="lead">Pick a document type. Its rules, questions and quality criteria come with it.</p>
-  {% if doc_types %}
-  <form method="post" action="/documents">
-    <div class="field">
-      <label for="doc_type">Document type</label>
-      <select id="doc_type" name="doc_type">
-        {% for t in doc_types %}<option value="{{ t.key }}">{{ t.title }}</option>{% endfor %}
-      </select>
-    </div>
-    <div class="field">
-      <label for="title">Title</label>
-      <input type="text" id="title" name="title" required
-             placeholder="What is this document about?">
-    </div>
-    <button class="primary" type="submit">Create</button>
-  </form>
-  {% else %}
-  <p class="lead">No document types published yet. Publish one first:</p>
-  <p><code>lcf publish docs/examples/4d-report.yaml</code></p>
-  {% endif %}
-</div>
+<div class="layout split">
 
-<div class="card">
-  <h3>Documents</h3>
-  {% if documents %}
-  <ul class="plain">
-    {% for d in documents %}
-    <li>
-      <a href="/documents/{{ d.id }}">{{ d.title }}</a>
-      <span class="meta">{{ d.created_at|localtime }}</span>
-    </li>
-    {% endfor %}
-  </ul>
-  {% else %}
-  <p class="lead">Nothing yet.</p>
-  {% endif %}
+  {# Starting one is the whole point of this area, so it leads and stays put. #}
+  <div>
+    <div class="card hero" style="position:sticky;top:calc(56px + var(--s4))">
+      <h2>Start a document</h2>
+      <p class="lead">Pick a type. Its sections, questions and quality criteria come with it.</p>
+      {% if doc_types %}
+      <form method="post" action="/documents">
+        <div class="field">
+          <label for="doc_type">Document type</label>
+          <select id="doc_type" name="doc_type">
+            {% for t in doc_types %}<option value="{{ t.key }}">{{ t.title }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="title">Title</label>
+          <input type="text" id="title" name="title" required
+                 placeholder="What is this document about?">
+        </div>
+        <button class="primary" type="submit">Create</button>
+      </form>
+      {% else %}
+      <p class="lead">No types published yet.</p>
+      <p><a href="/doc-types">Build one in the doctype factory</a>, or publish an example:</p>
+      <p><code>lcf seed</code></p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h3>Documents{% if documents %} · {{ documents|length }}{% endif %}</h3>
+      {% if documents %}
+      <ul class="plain rows">
+        {% for d in documents %}
+        <li>
+          <a class="row-link" href="/documents/{{ d.id }}">
+            <span class="dot {{ 's-complete' if d.done else 's-empty' }}"
+                  title="{{ 'every section complete' if d.done else 'in progress' }}">
+              {{ '✓' if d.done else '·' }}</span>
+            <span class="row-title">{{ d.title }}</span>
+            <span class="row-of">{{ d.type_title }} v{{ d.version }}</span>
+            <span class="meta">
+              <span class="bar" title="{{ d.complete }} of {{ count(d.sections, 'section') }} complete">
+                <span style="width: {{ d.percent }}%"></span></span>
+              {{ d.complete }}/{{ d.sections }}
+              · {{ d.created_at|localtime }}
+            </span>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="empty">
+        <span class="empty-mark">·</span>
+        Nothing yet. The first document you start appears here.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
 </div>
 {% endblock %}

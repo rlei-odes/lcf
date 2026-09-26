@@ -11,6 +11,7 @@ correctly to a model being told what to write, and to a person being told what
 their document type demands.
 """
 
+from lcf.core.text import count
 from lcf.spec.models import QualityCriterion, Requirement
 
 _FORMATS = {
@@ -38,9 +39,9 @@ def describe_requirement(req: Requirement) -> str:
     if kind == "rows":
         parts = []
         if req.min is not None:
-            parts.append(f"at least {req.min} row(s)")
+            parts.append(f"at least {count(req.min, 'row')}")
         if req.max is not None:
-            parts.append(f"at most {req.max} row(s)")
+            parts.append(f"at most {count(req.max, 'row')}")
         return f"Rows: {', '.join(parts)}." if parts else ""
     if kind == "fields_filled":
         return f"Every row must have these filled: {', '.join(req.fields or [])}."

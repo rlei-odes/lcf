@@ -43,7 +43,7 @@
 
   {% if lint and lint.problems %}
   <div class="notice blocker">
-    <strong>{{ lint.problems|length }} tag(s) name something this version does not have.</strong>
+    <strong>{{ count(lint.problems|length, 'tag') }} name something this version does not have.</strong>
     <div class="hint">These render as nothing at export time, which is why they are refused here.</div>
     <ul class="plain">
       {% for p in lint.problems %}<li><span class="mark">!</span><code>{{ p }}</code></li>{% endfor %}
@@ -54,7 +54,7 @@
   {% if lint and lint.missing %}
   <details {% if not lint.problems %}open{% endif %}>
     <summary style="cursor:pointer;color:var(--muted);font-size:13px">
-      {{ lint.missing|length }} thing(s) in the spec the template never mentions
+      {{ count(lint.missing|length, 'thing') }} in the spec the template never mentions
     </summary>
     <div class="hint" style="margin-top:8px">
       Deliberate if the customer is not meant to see them. If not, this is the

@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}Admin · Lancy Content Flow{% endblock %}
+{% block subtitle %}installation{% endblock %}
+
+{# Three dependencies live outside this process, and each one fails somewhere
+   unhelpful: a 500 on save, an export that never arrives, a drafting job that
+   times out. Reaching them on purpose turns three mysteries into three rows. #}
+{% block content %}
+<div class="layout split">
+
+  <div>
+    <nav class="sections card" style="position:sticky;top:calc(56px + var(--s4))">
+      <div class="rail-head">
+        <p class="rail-title">Installation</p>
+        <div class="rail-sub">checked {{ health.checked_at.strftime('%H:%M:%S') }}</div>
+      </div>
+      <a href="#health" class="active"><span class="step-n">1</span>
+        <span class="step-name">Health</span>
+        <span class="step-count {{ 'all-in' if health.probes|selectattr('ok')|list|length == 3 }}">
+          {{ health.probes|selectattr('ok')|list|length }}/{{ health.probes|length }}</span></a>
+      <a href="#contents"><span class="step-n">2</span><span class="step-name">Contents</span></a>
+      <a href="#jobs"><span class="step-n">3</span><span class="step-name">Background work</span></a>
+      <a href="#config"><span class="step-n">4</span><span class="step-name">Configuration</span></a>
+
+      <div class="actions" style="margin-top:var(--s4)">
+        <a href="/admin" style="font-size:13px">check again →</a>
+      </div>
+    </nav>
+  </div>
+
+  <div>
+    <div class="card" id="health">
+      <h3>Health</h3>
+      <p class="lead">
+        Reached just now, in order to draw this page. Nothing here changes
+        anything: missing buckets are reported, never created.
+      </p>
+      {% for p in health.probes %}
+      <div class="probe">
+        <span class="mark {{ 's-complete' if p.ok else 's-needs_input' }}">{{ '✓' if p.ok else '✗' }}</span>
+        <div class="probe-body">
+          <div class="probe-name">{{ p.name }}</div>
+          <div class="probe-target">{{ p.target }}</div>
+          <div class="probe-detail {{ 'bad' if not p.ok }}">{{ p.detail }}</div>
+          {% if p.items %}
+          <div class="probe-items">
+            {% for name, state in p.items %}
+            <span class="chip {{ 'good' if state == 'present' else 'bad' }}">{{ name }} · {{ state }}</span>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+      {% if health.probes|rejectattr('ok')|list %}
+      <div class="notice" style="margin-top:var(--s4)">
+        <strong>Something is not answering.</strong>
+        <div class="hint">
+          Missing buckets: run <code>lcf buckets</code>. A database that refuses:
+          check <code>LCF_DB_URL</code> and that the server is up. An assistant
+          serving a different model: the drafting and quality gate features will
+          fail at the first call, everything else works.
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="card" id="contents">
+      <h3>Contents</h3>
+      <div class="stats">
+        <div class="stat"><span class="n">{{ health.counts.doc_types }}</span><span class="k">document types</span></div>
+        <div class="stat"><span class="n">{{ health.counts.versions }}</span><span class="k">published versions</span></div>
+        <div class="stat"><span class="n">{{ health.counts.drafts }}</span><span class="k">type drafts</span></div>
+        <div class="stat"><span class="n">{{ health.counts.documents }}</span><span class="k">documents</span></div>
+        <div class="stat"><span class="n">{{ health.counts.revisions }}</span><span class="k">revisions</span></div>
+        <div class="stat"><span class="n">{{ health.counts.evidence }}</span><span class="k">pasted items</span></div>
+        <div class="stat"><span class="n">{{ health.counts.exports }}</span><span class="k">exports</span></div>
+      </div>
+    </div>
+
+    <div class="card" id="jobs">
+      <h3>Background work</h3>
+      {% if health.jobs %}
+      <p class="lead">
+        The last {{ health.jobs|length }}. Drafting, intake and the quality gate
+        run as jobs so a slow assistant never holds a request open.
+      </p>
+      <ul class="plain">
+        {% for j in health.jobs %}
+        <li>
+          <span class="dot {{ 's-complete' if j.status == 'succeeded' else ('s-needs_input' if j.status == 'failed' else 's-drafted') }}">
+            {{ '✓' if j.status == 'succeeded' else ('✗' if j.status == 'failed' else '◐') }}</span>
+          <span>
+            <strong>{{ j.kind }}</strong>{% if j.scope %} · {{ j.scope }}{% endif %}
+            {% if j.error %}<span class="where">{{ j.error|truncate(160) }}</span>
+            {% elif j.message %}<span class="where">{{ j.message|truncate(160) }}</span>{% endif %}
+          </span>
+          <span class="meta">
+            {% if not j.done and j.total %}{{ j.percent }}% · {% endif %}
+            {{ j.status }} · {{ j.created_at|localtime }}
+          </span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="empty">
+        <span class="empty-mark">·</span>
+        No jobs yet. Ask for a draft, paste some material, or run the gate.
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="card" id="config">
+      <h3>Configuration</h3>
+      <p class="lead">
+        Read from the environment at startup. Secrets are reported as set or
+        unset and never shown, and the database password is masked.
+      </p>
+      {% set groups = health.config|groupby(0) %}
+      {% for name, rows in groups %}
+      <h4>{{ name }}</h4>
+      <table class="config">
+        {% for _, key, value in rows %}
+        <tr><td class="k">{{ key }}</td><td class="v">{{ value }}</td></tr>
+        {% endfor %}
+      </table>
+      {% endfor %}
+      <p class="hint" style="margin-top:var(--s4)">
+        Changing any of these means editing <code>.env</code> and restarting.
+        There is no setting this page can write: configuration that drifts from
+        the file it came from is worse than configuration you have to restart for.
+      </p>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

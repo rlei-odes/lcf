@@ -97,7 +97,7 @@ def test_draft_response_always_asks_for_value_and_gaps():
     [
         ({"kind": "present"}, "Must not be empty."),
         ({"kind": "length", "min_words": 40}, "at least 40 words"),
-        ({"kind": "rows", "min": 2}, "at least 2 row(s)"),
+        ({"kind": "rows", "min": 2}, "at least 2 rows"),
         ({"kind": "fields_filled", "fields": ["a", "b"]}, "a, b"),
         ({"kind": "format", "field": "when", "format": "date"}, "ISO date"),
         ({"kind": "mentions", "must_mention": ["the quantity"]}, "the quantity"),

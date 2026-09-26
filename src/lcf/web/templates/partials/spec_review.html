@@ -18,8 +18,8 @@
     <span class="mark">✓</span>
     <span>
       This checks out: <strong>{{ review.spec.title }}</strong>, v{{ review.spec.version }},
-      {{ review.spec.sections|length }} section(s),
-      {{ review.spec.sections|map(attribute='requirements')|map('length')|sum }} requirement(s),
+      {{ count(review.spec.sections|length, 'section') }},
+      {{ count(review.spec.sections|map(attribute='requirements')|map('length')|sum, 'requirement') }},
       {{ review.spec.quality_criteria|length }} quality criteria.
       <span class="where">Nothing is published until you press Publish.</span>
     </span>
@@ -27,7 +27,7 @@
 
   {% else %}
   <div class="notice blocker">
-    <h3>{{ review.errors|length }} problem(s)</h3>
+    <h3>{{ count(review.errors|length, 'problem') }}</h3>
     <p class="hint">
       Parsing, shape and references are checked together, so this is everything
       that would stop it publishing, not just the first thing.

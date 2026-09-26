@@ -17,7 +17,7 @@
       {{ report.not_evaluated|length }} of {{ report.total }} checks need the assistant
       and have not been run. Until they are, the gate cannot pass.
     {%- elif report.blockers -%}
-      {{ report.blockers|length }} blocking problem(s) to resolve before export.
+      {{ count(report.blockers|length, 'blocking problem') }} to resolve before export.
     {%- else -%}
       No blocking problems.
     {%- endif -%}

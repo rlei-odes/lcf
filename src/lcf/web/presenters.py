@@ -4,6 +4,7 @@ Templates get finished view models, never raw ORM rows or half-computed state �
 so a change to how status is derived touches one place, not a dozen `{% if %}`s.
 """
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -85,6 +86,7 @@ def section_panel_context(
 ) -> dict[str, Any]:
     section: Section = spec.section(key)
     state: SectionState = section_state(view, key)
+    nav = document_nav(spec, view)
 
     by_block: dict[str, list[CheckResult]] = {}
     for result in state.failures:
@@ -133,11 +135,108 @@ def section_panel_context(
         # that is full — or has no blocks — has nothing to ask for, and a button
         # that runs a job producing nothing reads as a broken button.
         "draftable": any(b.empty for b in blocks if b.block.kind != "image_ref"),
-        "nav": _nav(spec, view),
+        "nav": nav,
+        "progress": progress_of(nav, view.completed),
     }
 
 
-def _nav(spec: DocTypeSpec, view: DocumentView) -> list[SectionState]:
+@dataclass
+class NavStep:
+    """One rung of the orientation rail.
+
+    Carries the section's state and how far through its questions the author is,
+    because "blocked" alone does not tell anyone how much work a section is. The
+    count is over every question, not only the required ones: it answers "how
+    much of this have I done", and an optional question left blank is still a
+    question nobody has looked at.
+    """
+
+    n: int
+    key: str
+    title: str
+    state: SectionState
+    answered: int
+    total: int
+    unconfirmed: int
+
+    @property
+    def status(self):
+        return self.state.status
+
+    @property
+    def all_in(self) -> bool:
+        return self.total > 0 and self.answered == self.total and not self.unconfirmed
+
+    @property
+    def display_title(self) -> str:
+        """The title without a leading step number the rail already shows.
+
+        Plenty of real document types number their own sections — "1.
+        Identification", "3) Scope" — and the rail puts the same number in a
+        badge beside it. Showing both reads as a mistake, so the one in the text
+        goes, and only when it is the number this step actually is.
+        """
+        return re.sub(rf"^\s*{self.n}\s*[.):]\s+", "", self.title)
+
+
+@dataclass
+class Progress:
+    """The document in two numbers, for the rail's header."""
+
+    answered: int
+    questions: int
+    complete: int
+    sections: int
+
+    @property
+    def percent(self) -> int:
+        if not self.questions:
+            return 100 if self.complete == self.sections else 0
+        return round(100 * self.answered / self.questions)
+
+    @property
+    def done(self) -> bool:
+        return self.sections > 0 and self.complete == self.sections
+
+
+def _answered(view: DocumentView, section: Section) -> tuple[int, int]:
+    """Confirmed answers, and answers still waiting to be confirmed."""
+    given = view.answers.get(section.key, {})
+    proposed = view.proposed_answers.get(section.key, {})
+    filled = [
+        q.key
+        for q in section.questions
+        if given.get(q.key) not in ("", None) and given.get(q.key) != []
+    ]
+    unconfirmed = [k for k in filled if k in proposed]
+    return len(filled) - len(unconfirmed), len(unconfirmed)
+
+
+def document_nav(spec: DocTypeSpec, view: DocumentView) -> list[NavStep]:
     from lcf.engine.state import document_state
 
-    return document_state(view)
+    steps = []
+    for i, state in enumerate(document_state(view), start=1):
+        section = spec.section(state.key)
+        answered, unconfirmed = _answered(view, section)
+        steps.append(
+            NavStep(
+                n=i,
+                key=state.key,
+                title=section.title,
+                state=state,
+                answered=answered,
+                total=len(section.questions),
+                unconfirmed=unconfirmed,
+            )
+        )
+    return steps
+
+
+def progress_of(steps: list[NavStep], completed: set[str]) -> Progress:
+    return Progress(
+        answered=sum(s.answered for s in steps),
+        questions=sum(s.total for s in steps),
+        complete=sum(1 for s in steps if s.key in completed),
+        sections=len(steps),
+    )

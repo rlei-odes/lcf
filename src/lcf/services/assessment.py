@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from lcf.core.config import settings
 from lcf.core.db import session as db_session
+from lcf.core.text import count
 from lcf.engine.checks.deterministic import evaluate_document
 from lcf.engine.checks.judged import evaluate_criterion, evaluate_requirement, pending_checks
 from lcf.engine.checks.result import CheckResult, Outcome
@@ -200,9 +201,9 @@ def format_report(report: Report) -> str:
     for result in report.warnings:
         lines.append(f"WARNING  ✗  {result.check_id}: {result.reason}")
     if report.passes:
-        lines.append(f"PASS     ✓  {len(report.passes)} check(s)")
+        lines.append(f"PASS     ✓  {count(len(report.passes), 'check')}")
     if report.not_evaluated:
-        lines.append(f"PENDING  ·  {len(report.not_evaluated)} judged check(s) not run yet")
+        lines.append(f"PENDING  ·  {count(len(report.not_evaluated), 'judged check')} not run yet")
     if not lines:
         lines.append("no checks defined")
     return "\n".join(lines)

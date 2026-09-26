@@ -3,55 +3,86 @@
 {% block subtitle %}{{ spec.title }} v{{ spec.version }}{% endblock %}
 
 {% block content %}
-<div class="card">
-  <h2>{{ document.title }}</h2>
-  <p class="lead">{{ spec.description }}</p>
+<div class="layout">
 
-  <ul class="plain">
-    {% for s in states %}
-    {% set section = spec.section(s.key) %}
-    <li>
+  {# The same orientation lane the section workspace uses, so moving between the
+     two never changes where you look to find out where you are. #}
+  <nav class="sections card">
+    <div class="rail-head">
+      <p class="rail-title">{{ document.title }}</p>
+      <div class="rail-sub">{{ spec.title }} v{{ spec.version }}</div>
+      <div class="meter {{ 'done' if progress.done }}">
+        <span style="width: {{ progress.percent }}%"></span>
+      </div>
+      <div class="meter-note">
+        {{ progress.answered }} of {{ count(progress.questions, 'question') }} answered ·
+        {{ progress.complete }}/{{ progress.sections }} sections complete
+      </div>
+    </div>
+
+    {% for s in nav %}
+    <a href="/documents/{{ document.id }}/sections/{{ s.key }}"
+       class="{{ 'blocked' if s.status == Status.BLOCKED }}"
+       title="{{ s.title }}{% if s.state.blocked_by %} · waiting on {{ s.state.blocked_by|join(', ') }}{% endif %}">
+      <span class="step-n">{{ s.n }}</span>
       <span class="dot s-{{ s.status }}">
         {%- if s.status == Status.COMPLETE %}✓{% elif s.status == Status.BLOCKED %}⊘
         {%- elif s.status == Status.NEEDS_INPUT %}!{% elif s.status == Status.STALE %}~
         {%- elif s.status == Status.DRAFTED %}◐{% else %}·{% endif -%}
       </span>
-      {% if s.status == Status.BLOCKED %}
-        <span>{{ section.title }}</span>
-      {% else %}
-        <a href="/documents/{{ document.id }}/sections/{{ s.key }}">{{ section.title }}</a>
-      {% endif %}
-      <span class="meta">
-        {%- if s.blocked_by %}waiting on {{ s.blocked_by|join(', ') }}
-        {%- elif s.missing_answers %}{{ s.missing_answers|length }} question(s) open
-        {%- elif s.blockers %}{{ s.blockers|length }} check(s) failing
-        {%- else %}{{ s.status }}{% endif -%}
+      <span class="step-name">{{ s.display_title }}</span>
+      {% if s.total %}
+      <span class="step-count {{ 'all-in' if s.all_in }}"
+            title="{{ s.answered }} of {{ count(s.total, 'question') }} answered{% if s.unconfirmed %}, {{ s.unconfirmed }} unconfirmed{% endif %}">
+        {{ s.answered }}/{{ s.total }}{% if s.unconfirmed %}<span class="s-drafted">•</span>{% endif %}
       </span>
-    </li>
+      {% endif %}
+    </a>
     {% endfor %}
-  </ul>
+  </nav>
+
+  <div>
+    <div class="card step-head">
+      <div class="block-head">
+        <span class="step-of">{{ progress.percent }}% answered</span>
+        {% if next_up %}
+        <span class="pill {{ next_up.status }}">{{ next_up.status|replace('_', ' ') }}</span>
+        {% endif %}
+      </div>
+      <h2>{{ document.title }}</h2>
+      <p class="lead">{{ spec.description }}</p>
+      {% if next_up %}
+      <nav class="stepper">
+        <span style="color:var(--muted)">Next up</span>
+        <a href="/documents/{{ document.id }}/sections/{{ next_up.key }}" class="step-next">
+          {{ next_up.n }}. {{ next_up.display_title }} →</a>
+      </nav>
+      {% endif %}
+    </div>
+
+    {% with document_id = document.id %}
+      {% include "partials/intake_card.html" %}
+    {% endwith %}
+
+    {% with document_id = document.id %}
+      {% include "partials/gate_card.html" %}
+    {% endwith %}
+
+    {% with document_id = document.id %}
+      {% include "partials/export_card.html" %}
+    {% endwith %}
+
+    {% if running_job %}
+    <div id="gate-running">
+      {% with job = running_job,
+              done_url = "/documents/" ~ document.id ~ "/gate",
+              done_target = "#gate",
+              working_title = "Checking the document" %}
+        {% include "partials/job.html" %}
+      {% endwith %}
+    </div>
+    {% endif %}
+  </div>
+
 </div>
-
-{% with document_id = document.id %}
-  {% include "partials/intake_card.html" %}
-{% endwith %}
-
-{% with document_id = document.id %}
-  {% include "partials/gate_card.html" %}
-{% endwith %}
-
-{% with document_id = document.id %}
-  {% include "partials/export_card.html" %}
-{% endwith %}
-
-{% if running_job %}
-<div id="gate-running">
-  {% with job = running_job,
-          done_url = "/documents/" ~ document.id ~ "/gate",
-          done_target = "#gate",
-          working_title = "Checking the document" %}
-    {% include "partials/job.html" %}
-  {% endwith %}
-</div>
-{% endif %}
 {% endblock %}

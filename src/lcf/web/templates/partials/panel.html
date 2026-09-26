@@ -9,20 +9,45 @@
 
 <div class="layout" id="workspace">
 
+  {# The orientation lane. It answers three questions without being read closely:
+     which document is this, how far through am I, and what is the next thing
+     that will let me move. It stays put while the middle lane scrolls. #}
   <nav class="sections card">
-    <h3>Sections</h3>
+    <div class="rail-head">
+      <p class="rail-title">{{ document.title }}</p>
+      <div class="rail-sub">{{ spec.title }} v{{ spec.version }}</div>
+      <div class="meter {{ 'done' if progress.done }}">
+        <span style="width: {{ progress.percent }}%"></span>
+      </div>
+      <div class="meter-note">
+        {{ progress.answered }} of {{ count(progress.questions, 'question') }} answered ·
+        {{ progress.complete }}/{{ progress.sections }} sections complete
+      </div>
+    </div>
+
     {% for s in nav %}
-    {% set target = spec.section(s.key) %}
     <a href="/documents/{{ document.id }}/sections/{{ s.key }}"
-       class="{{ 'active' if s.key == section.key }} {{ 'blocked' if s.status == Status.BLOCKED }}">
+       class="{{ 'active' if s.key == section.key }} {{ 'blocked' if s.status == Status.BLOCKED }}"
+       title="{{ s.title }}{% if s.state.blocked_by %} · waiting on {{ s.state.blocked_by|join(', ') }}{% endif %}">
+      <span class="step-n">{{ s.n }}</span>
       <span class="dot s-{{ s.status }}">
         {%- if s.status == Status.COMPLETE %}✓{% elif s.status == Status.BLOCKED %}⊘
         {%- elif s.status == Status.NEEDS_INPUT %}!{% elif s.status == Status.STALE %}~
         {%- elif s.status == Status.DRAFTED %}◐{% else %}·{% endif -%}
       </span>
-      <span>{{ target.title }}</span>
+      <span class="step-name">{{ s.display_title }}</span>
+      {% if s.total %}
+      <span class="step-count {{ 'all-in' if s.all_in }}"
+            title="{{ s.answered }} of {{ count(s.total, 'question') }} answered{% if s.unconfirmed %}, {{ s.unconfirmed }} unconfirmed{% endif %}">
+        {{ s.answered }}/{{ s.total }}{% if s.unconfirmed %}<span class="s-drafted">•</span>{% endif %}
+      </span>
+      {% endif %}
     </a>
     {% endfor %}
+
+    <div class="actions" style="margin-top:var(--s4)">
+      <a href="/documents/{{ document.id }}" style="font-size:13px">document overview →</a>
+    </div>
   </nav>
 
   <div>
@@ -62,13 +87,36 @@
     </div>
     {% endif %}
 
-    <div class="card">
+    {# The step header. It names the one section being worked on and where it
+       falls in the whole, so the middle lane is never read out of context. #}
+    {% set step = (nav|selectattr('key', 'equalto', section.key)|list|first) %}
+    <div class="card step-head">
       <div class="block-head">
-        <h2>{{ section.title }}</h2>
+        <span class="step-of">Step {{ step.n }} of {{ nav|length }}</span>
         <span class="pill {{ state.status }}">{{ state.status|replace('_', ' ') }}</span>
       </div>
+      <h2>{{ section.title }}</h2>
       {% if section.description %}<p class="lead">{{ section.description }}</p>{% endif %}
       {% if section.guidance %}<p class="hint">{{ section.guidance }}</p>{% endif %}
+
+      <nav class="stepper">
+        {% set prev = nav[step.n - 2] if step.n > 1 else none %}
+        {% set next = nav[step.n] if step.n < nav|length else none %}
+        {% if prev %}
+        <a href="/documents/{{ document.id }}/sections/{{ prev.key }}" class="step-prev">
+          ← {{ prev.display_title }}</a>
+        {% endif %}
+        {# The last section's way onward is out of the sections entirely: the
+           gate and the export live on the overview, and a step sequence that
+           simply stops at the end leaves the author looking for the door. #}
+        {% if next %}
+        <a href="/documents/{{ document.id }}/sections/{{ next.key }}" class="step-next">
+          {{ next.display_title }} →</a>
+        {% else %}
+        <a href="/documents/{{ document.id }}#gate" class="step-next">
+          Quality gate and export →</a>
+        {% endif %}
+      </nav>
     </div>
 
     {% if evidence %}
@@ -167,7 +215,7 @@
        followed the job — these vanished half-read when a proposal was accepted. #}
     {% if gaps and state.status != Status.COMPLETE %}
     <div class="notice">
-      <h3>The assistant needs {{ gaps|length }} thing(s) from you</h3>
+      <h3>The assistant needs {{ count(gaps|length, 'thing') }} from you</h3>
       <p>
         It would not write these without being told. Answer above, then ask for a
         draft again. They stay here until you do.
@@ -329,14 +377,22 @@
             {% for key in state.blocked_by %}<strong>{{ spec.section(key).title }}</strong>
             {%- if not loop.last %} and {% endif %}{% endfor %} first.
           {%- elif state.blockers -%}
-            {{ state.blockers|length }} blocking check(s) still failing.
+            {{ count(state.blockers|length, 'blocking check') }} still failing.
           {%- else -%}
             Nothing written here yet.
           {%- endif -%}
         </span>
         {% endif %}
         {% endif %}
-        <a href="/documents/{{ document.id }}" style="margin-left:auto;font-size:13px">document overview →</a>
+        {# The way onward. Completing a section is the moment the next one
+           unblocks, so the next step belongs here rather than in a menu. #}
+        {% if next %}
+        <a href="/documents/{{ document.id }}/sections/{{ next.key }}"
+           style="margin-left:auto;font-size:13px">next: {{ next.display_title }} →</a>
+        {% else %}
+        <a href="/documents/{{ document.id }}#gate"
+           style="margin-left:auto;font-size:13px">next: quality gate and export →</a>
+        {% endif %}
       </div>
     </div>
   </div>

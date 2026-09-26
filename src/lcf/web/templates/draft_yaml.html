@@ -37,13 +37,13 @@
 </div>
 
 <div class="card">
-  <h3>{% if review.ok %}It checks out{% else %}{{ review.problems|length }} problem(s){% endif %}</h3>
+  <h3>{% if review.ok %}It checks out{% else %}{{ count(review.problems|length, 'problem') }}{% endif %}</h3>
   {% if review.ok %}
   <div class="check pass">
     <span class="mark">✓</span>
     <span>
       <strong>{{ review.spec.title }}</strong>, v{{ review.spec.version }},
-      {{ review.spec.sections|length }} section(s).
+      {{ count(review.spec.sections|length, 'section') }}.
       <span class="where">Publish from the builder when you are ready.</span>
     </span>
   </div>

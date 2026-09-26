@@ -10,7 +10,7 @@
   {% if outcome %}
   <p class="lead">
     {%- if outcome.sections -%}
-      Placed {{ outcome.placed }} passage(s) across {{ outcome.sections|length }} section(s).
+      Placed {{ count(outcome.placed, 'passage') }} across {{ count(outcome.sections|length, 'section') }}.
     {%- else -%}
       Nothing in that text matched a section of this document.
     {%- endif -%}
@@ -22,8 +22,8 @@
     <span>
       <a href="/documents/{{ document_id }}/sections/{{ s.key }}">{{ s.title }}</a>
       <span class="where">
-        {{ s.passages|length }} passage(s){% if s.prefilled %},
-        {{ s.prefilled|length }} answer(s) proposed{% endif %}
+        {{ count(s.passages|length, 'passage') }}{% if s.prefilled %},
+        {{ count(s.prefilled|length, 'answer') }} proposed{% endif %}
       </span>
     </span>
   </div>
@@ -31,7 +31,7 @@
 
   {% if outcome.discarded %}
   <div class="notice" style="margin-top:14px">
-    <strong>{{ outcome.discarded }} fragment(s) discarded.</strong>
+    <strong>{{ count(outcome.discarded, 'fragment') }} discarded.</strong>
     <div class="hint">
       The assistant quoted words that are not in what you pasted, so they were
       dropped rather than filed. Only your own text is kept.

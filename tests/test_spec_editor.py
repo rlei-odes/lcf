@@ -106,7 +106,7 @@ def test_check_lists_the_problems(client):
     response = client.post("/doc-types/check", data={"yaml": "id: x\nversion: 1\n"})
 
     assert response.status_code == 200
-    assert "problem(s)" in response.text
+    assert "1 problem" in response.text
     assert "title" in response.text, "the missing field is named"
 
 
@@ -154,7 +154,7 @@ async def test_the_editor_opens_on_the_next_version(published, client):
 
     assert response.status_code == 200
     assert "version: 2" in response.text, "bumped, because v1 is immutable"
-    assert "1 document(s) are built on it" in response.text
+    assert "1 document is built on it" in response.text
 
 
 async def test_the_spec_view_shows_the_checks_as_sentences(published, client):
@@ -163,7 +163,7 @@ async def test_the_spec_view_shows_the_checks_as_sentences(published, client):
 
     assert response.status_code == 200
     assert "at least 40 words" in response.text
-    assert "at least 2 row(s)" in response.text
+    assert "at least 2 rows" in response.text
     assert "checked by the assistant" in response.text, "judged checks are marked as such"
     assert "Asked before anything is written" in response.text
 
@@ -199,4 +199,4 @@ async def test_the_list_says_how_many_documents_depend_on_a_type(published, clie
 
     assert response.status_code == 200
     assert published.title in response.text
-    assert "2 document(s)" in response.text
+    assert "2 documents" in response.text

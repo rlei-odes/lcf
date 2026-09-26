@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from lcf.core.config import settings
 from lcf.core.db import session as db_session
+from lcf.core.text import count
 from lcf.llm.calls import map_evidence_to_sections, prefill_answers
 from lcf.llm.provider import LLMMalformed, LLMUnavailable
 from lcf.models.tables import Answer, EvidenceItem, EvidenceLink, Section
@@ -107,7 +108,7 @@ async def distribute(
 
     mapping = await map_evidence_to_sections(spec, material)
     if progress is not None:
-        await progress.step(f"Placed {len(mapping.assignments)} passage(s)")
+        await progress.step(f"Placed {count(len(mapping.assignments), 'passage')}")
 
     by_section: dict[str, list[str]] = {}
     for assignment in mapping.assignments:

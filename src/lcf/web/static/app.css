@@ -1,35 +1,104 @@
+/* ---------------------------------------------------------------------------
+   Lancy Content Flow — the whole visual language.
+
+   Three ideas hold it together:
+
+   · Surfaces, not boxes. A page is a quiet ground with panels raised off it by a
+     hairline and a shadow so faint it reads as depth rather than decoration.
+   · State is never colour alone. Every status carries a glyph and, where there
+     is one, a number — so the page reads the same to anyone.
+   · Work has a shape. The creator's screen is lanes: an orientation rail that
+     stays put, and the one thing being worked on beside it.
+   --------------------------------------------------------------------------- */
+
 :root {
   color-scheme: light dark;
-  --bg: #fbfaf8;
+
+  /* Ground and surfaces. Warm paper, not grey. */
+  --bg: #f7f5f1;
   --panel: #ffffff;
-  --ink: #1c1b19;
-  --muted: #6b6862;
-  --line: #e3e0da;
+  --panel-2: #faf9f6;
+  --sunken: #f1efe9;
+
+  --ink: #1a1917;
+  --ink-2: #45423d;
+  --muted: #6e6b64;
+  --faint: #97938b;
+
+  --line: #e5e1d9;
+  --line-2: #efece5;
+
   --accent: #2f5d50;
-  --accent-soft: #e8f0ed;
+  --accent-ink: #24483e;
+  --on-accent: #ffffff;
+  --accent-soft: #e6efec;
+  --accent-line: #b9d2c8;
+
   --blocker: #a33a2a;
   --blocker-soft: #fbeae7;
   --warning: #8a6416;
   --warning-soft: #fbf3e0;
   --ok: #2f6b45;
-  --radius: 7px;
-  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --ok-soft: #e7f1ea;
+
+  /* Spacing scale. Everything spatial comes from here. */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 22px;
+  --s6: 30px;
+  --s7: 44px;
+
+  --radius: 10px;
+  --radius-sm: 7px;
+  --radius-lg: 14px;
+
+  /* Elevation. Barely there on purpose: depth, not drama. */
+  --lift-1: 0 1px 2px rgba(26, 25, 23, .04);
+  --lift-2: 0 2px 4px rgba(26, 25, 23, .05), 0 8px 20px rgba(26, 25, 23, .04);
+  --lift-3: 0 4px 12px rgba(26, 25, 23, .08), 0 16px 40px rgba(26, 25, 23, .07);
+
+  --ring: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Inter, sans-serif;
+
+  --rail: 272px;
+  --measure: 1180px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #17181a;
-    --panel: #1f2123;
-    --ink: #e8e6e3;
-    --muted: #9a968f;
-    --line: #34373a;
+    --bg: #131416;
+    --panel: #1c1e21;
+    --panel-2: #212427;
+    --sunken: #17191b;
+
+    --ink: #eae8e4;
+    --ink-2: #c6c3bd;
+    --muted: #97938c;
+    --faint: #6f6c66;
+
+    --line: #313438;
+    --line-2: #26292c;
+
     --accent: #7fb3a2;
-    --accent-soft: #24322d;
+    --accent-ink: #a6cec1;
+    --on-accent: #10201b;
+    --accent-soft: #21302b;
+    --accent-line: #3a5850;
+
     --blocker: #e08774;
-    --blocker-soft: #35231f;
+    --blocker-soft: #33221e;
     --warning: #d8b169;
-    --warning-soft: #322a1a;
+    --warning-soft: #302818;
     --ok: #79b58f;
+    --ok-soft: #1e2e25;
+
+    --lift-1: 0 1px 2px rgba(0, 0, 0, .3);
+    --lift-2: 0 2px 4px rgba(0, 0, 0, .3), 0 8px 20px rgba(0, 0, 0, .26);
+    --lift-3: 0 4px 12px rgba(0, 0, 0, .4), 0 16px 40px rgba(0, 0, 0, .34);
   }
 }
 
@@ -39,134 +108,281 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--ink);
-  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+  font: 15px/1.6 var(--sans);
+  -webkit-font-smoothing: antialiased;
 }
 
-a { color: var(--accent); }
+a { color: var(--accent); text-underline-offset: 2px; }
+
+::selection { background: var(--accent-soft); }
+
+/* ---------------------------------------------------------------------------
+   The app bar. Three areas, because the product is three jobs: making documents,
+   making the rules documents obey, and looking after the installation. Which one
+   you are in is the first thing the page says.
+   --------------------------------------------------------------------------- */
 
 header.top {
+  position: sticky; top: 0; z-index: 30;
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  backdrop-filter: saturate(1.6) blur(10px);
   border-bottom: 1px solid var(--line);
-  background: var(--panel);
-  padding: 14px 24px;
-  display: flex;
-  align-items: baseline;
-  gap: 14px;
+  padding: 0 var(--s5);
+  display: flex; align-items: center; gap: var(--s5);
+  min-height: 56px;
 }
-header.top h1 { font-size: 15px; margin: 0; letter-spacing: .02em; }
-header.top .sub { color: var(--muted); font-size: 13px; }
-header.top .top-links { margin-left: auto; display: flex; gap: 16px; }
-header.top a { font-size: 13px; }
 
-main { max-width: 1080px; margin: 0 auto; padding: 26px 24px 80px; }
-.layout { display: grid; grid-template-columns: 250px 1fr; gap: 26px; align-items: start; }
-@media (max-width: 880px) { .layout { grid-template-columns: 1fr; } }
+header.top .brand {
+  display: flex; align-items: center; gap: var(--s2);
+  font-size: 14px; font-weight: 650; letter-spacing: -.01em;
+  margin: 0; color: var(--ink); text-decoration: none; flex: none;
+}
+header.top .brand .glyph {
+  width: 22px; height: 22px; border-radius: 6px; flex: none;
+  background: linear-gradient(145deg, var(--accent), color-mix(in srgb, var(--accent) 62%, #000));
+  color: var(--on-accent); font: 700 11px/22px var(--mono); text-align: center;
+}
+
+nav.areas { display: flex; gap: var(--s1); flex: none; }
+nav.areas a {
+  display: block; padding: 6px var(--s3); border-radius: var(--radius-sm);
+  font-size: 13.5px; font-weight: 550; color: var(--muted); text-decoration: none;
+  white-space: nowrap; transition: background .12s, color .12s;
+}
+nav.areas a:hover { background: var(--sunken); color: var(--ink); }
+nav.areas a.here { background: var(--accent-soft); color: var(--accent-ink); }
+
+/* Where you are inside the area. */
+header.top .sub {
+  color: var(--muted); font-size: 13px; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  border-left: 1px solid var(--line); padding-left: var(--s5);
+}
+header.top .sub:empty { display: none; }
+header.top .sub a { color: var(--muted); }
+header.top .sub a:hover { color: var(--accent); }
+header.top .spacer { margin-left: auto; }
+
+@media (max-width: 860px) {
+  header.top { flex-wrap: wrap; padding: var(--s2) var(--s4); gap: var(--s3); }
+  header.top .sub { border-left: 0; padding-left: 0; flex-basis: 100%; }
+}
+
+main { max-width: var(--measure); margin: 0 auto; padding: var(--s6) var(--s5) var(--s7); }
+
+/* ---------------------------------------------------------------------------
+   Lanes. The rail keeps its place while the middle scrolls, so you never lose
+   where you are in the document to read one section of it.
+   --------------------------------------------------------------------------- */
+
+.layout {
+  display: grid; grid-template-columns: var(--rail) minmax(0, 1fr);
+  gap: var(--s6); align-items: start;
+}
+/* A wider left lane, for a lane that holds a form rather than a list of links. */
+.layout.split { grid-template-columns: 352px minmax(0, 1fr); }
+@media (max-width: 980px) {
+  .layout, .layout.split { grid-template-columns: 1fr; gap: var(--s4); }
+  .layout.split > div:first-child > .card { position: static !important; }
+}
 
 .card {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 18px 20px;
-  margin-bottom: 18px;
+  box-shadow: var(--lift-1);
+  padding: var(--s5) var(--s5);
+  margin-bottom: var(--s4);
 }
+.card.flush { padding: 0; overflow: hidden; }
+.card.quiet { background: var(--panel-2); box-shadow: none; }
 
-h2 { font-size: 17px; margin: 0 0 4px; }
-h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin: 0 0 10px; }
-p.lead { color: var(--muted); margin: 0 0 16px; }
+h2 { font-size: 19px; line-height: 1.3; margin: 0 0 var(--s1); letter-spacing: -.015em; }
+h3 {
+  font-size: 11.5px; text-transform: uppercase; letter-spacing: .09em;
+  color: var(--faint); margin: 0 0 var(--s3); font-weight: 650;
+}
+p.lead { color: var(--muted); margin: 0 0 var(--s4); }
+p.lead:last-child { margin-bottom: 0; }
 
-/* section navigation */
-nav.sections { position: sticky; top: 18px; }
+/* ---------------------------------------------------------------------------
+   The orientation rail: where you are, how far in, what is left.
+   --------------------------------------------------------------------------- */
+
+nav.sections { position: sticky; top: calc(56px + var(--s4)); }
+.rail-head { padding: 0 0 var(--s3); border-bottom: 1px solid var(--line-2); margin-bottom: var(--s2); }
+.rail-head .rail-title {
+  font-size: 14px; font-weight: 650; letter-spacing: -.01em;
+  margin: 0 0 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rail-head .rail-sub { font-size: 12px; color: var(--muted); }
+
+/* How far in. A bar carries the shape, the numbers carry the fact. */
+.meter {
+  height: 5px; border-radius: 3px; background: var(--sunken);
+  overflow: hidden; margin: var(--s2) 0 var(--s1);
+}
+.meter > span {
+  display: block; height: 100%; border-radius: 3px;
+  background: var(--accent); transition: width .3s ease;
+}
+.meter.done > span { background: var(--ok); }
+.meter-note { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
 nav.sections a {
-  display: flex; gap: 9px; align-items: baseline;
-  padding: 8px 10px; border-radius: 6px;
-  text-decoration: none; color: var(--ink); font-size: 14px;
+  display: flex; gap: var(--s2); align-items: baseline;
+  padding: 7px var(--s2); border-radius: var(--radius-sm);
+  text-decoration: none; color: var(--ink-2); font-size: 13.5px;
+  transition: background .12s, color .12s;
 }
-nav.sections a:hover { background: var(--accent-soft); }
-nav.sections a.active { background: var(--accent-soft); font-weight: 600; }
-nav.sections a.blocked { color: var(--muted); }
+nav.sections a:hover { background: var(--sunken); color: var(--ink); }
+nav.sections a.active {
+  background: var(--accent-soft); color: var(--accent-ink); font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+nav.sections a.blocked { color: var(--faint); }
+
+/* A step in the rail: number, name, and how much of it is answered. */
+.step-n {
+  flex: none; width: 19px; height: 19px; border-radius: 50%;
+  font: 600 10.5px/19px var(--mono); text-align: center;
+  background: var(--sunken); color: var(--muted);
+}
+nav.sections a.active .step-n { background: var(--accent); color: var(--on-accent); }
+.step-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.step-count {
+  flex: none; font: 500 11px/1 var(--mono); color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+nav.sections a.active .step-count { color: var(--accent-ink); }
+.step-count.all-in { color: var(--ok); }
+
 .dot { font-family: var(--mono); width: 1em; text-align: center; flex: none; }
+
+/* The step header of the middle lane: which of how many, and the two moves out
+   of here. Numbering the work is what makes it feel finite. */
+.step-head .block-head { margin-bottom: var(--s2); }
+.step-of {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .09em;
+  color: var(--accent-ink); font-weight: 650;
+  background: var(--accent-soft); border-radius: 20px; padding: 3px 10px;
+}
+nav.stepper {
+  display: flex; gap: var(--s4); align-items: baseline;
+  margin-top: var(--s4); padding-top: var(--s3); border-top: 1px solid var(--line-2);
+  font-size: 13px;
+}
+nav.stepper a { text-decoration: none; color: var(--muted); }
+nav.stepper a:hover { color: var(--accent); }
+nav.stepper .step-next { margin-left: auto; text-align: right; font-weight: 550; }
 
 /* status colours */
 .s-complete { color: var(--ok); }
 .s-stale { color: var(--warning); }
 .s-needs_input { color: var(--blocker); }
-.s-blocked, .s-empty { color: var(--muted); }
+.s-blocked, .s-empty { color: var(--faint); }
 .s-drafted { color: var(--accent); }
 
 .pill {
-  display: inline-block; font-size: 11px; letter-spacing: .05em;
-  text-transform: uppercase; padding: 3px 8px; border-radius: 20px;
-  border: 1px solid var(--line); color: var(--muted);
+  display: inline-block; font-size: 10.5px; letter-spacing: .07em;
+  text-transform: uppercase; padding: 3px 9px; border-radius: 20px;
+  border: 1px solid var(--line); color: var(--muted); font-weight: 600;
+  white-space: nowrap;
 }
-.pill.complete { color: var(--ok); border-color: var(--ok); }
-.pill.needs_input { color: var(--blocker); border-color: var(--blocker); }
-.pill.stale { color: var(--warning); border-color: var(--warning); }
-.pill.drafted { color: var(--accent); border-color: var(--accent); }
+.pill.complete { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); background: var(--ok-soft); }
+.pill.needs_input { color: var(--blocker); border-color: color-mix(in srgb, var(--blocker) 45%, transparent); background: var(--blocker-soft); }
+.pill.stale { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 45%, transparent); background: var(--warning-soft); }
+.pill.drafted { color: var(--accent-ink); border-color: var(--accent-line); background: var(--accent-soft); }
+.pill.blocked, .pill.empty { color: var(--faint); }
 
 /* The author's own words, quoted back to them: what intake filed under a section,
-   and what a proposed answer was read from. Distinct from content on purpose —
+   and what a proposed answer was read from. Distinct from content on purpose:
    this is material, not document. */
 blockquote.quote {
-  margin: 0 0 10px; padding: 10px 14px;
-  border-left: 3px solid var(--accent); background: var(--accent-soft);
-  border-radius: 0 6px 6px 0; white-space: pre-wrap;
+  margin: 0 0 var(--s2); padding: var(--s3) var(--s4);
+  border-left: 3px solid var(--accent-line); background: var(--accent-soft);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0; white-space: pre-wrap;
+  font-size: 14px;
 }
 blockquote.quote .where {
-  display: block; margin-top: 6px;
+  display: block; margin-top: var(--s1);
   color: var(--muted); font-size: 12px; font-family: var(--mono);
 }
 /* A field holding an answer nobody has confirmed yet. */
-.field.proposed > label { color: var(--accent); }
+.field.proposed > label { color: var(--accent-ink); }
+.field.proposed textarea, .field.proposed input, .field.proposed select {
+  border-color: var(--accent-line); background: color-mix(in srgb, var(--accent-soft) 45%, var(--panel));
+}
 
 /* The spec editor. A spec is read as much as written, so it gets a real
    monospace column rather than a prose textarea. */
 textarea.code {
-  font-family: var(--mono); font-size: 13px; line-height: 1.5;
+  font-family: var(--mono); font-size: 13px; line-height: 1.55;
   tab-size: 2; white-space: pre; overflow-wrap: normal; overflow-x: auto;
 }
-/* Sub-headings inside a spec view — below h3, above body text. */
+/* Sub-headings inside a spec view: below h3, above body text. */
 h4 {
-  font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
-  color: var(--muted); margin: 18px 0 8px; font-weight: 600;
+  font-size: 11.5px; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--faint); margin: var(--s5) 0 var(--s2); font-weight: 650;
 }
-.card > ul.plain + h4 { margin-top: 20px; }
+.card > ul.plain + h4 { margin-top: var(--s5); }
 
 /* forms */
-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
-.hint { font-size: 12px; color: var(--muted); margin: 2px 0 8px; font-weight: 400; }
-input[type=text], input[type=date], input[type=number], textarea, select {
-  width: 100%; padding: 8px 10px; font: inherit;
-  background: var(--bg); color: var(--ink);
-  border: 1px solid var(--line); border-radius: 6px;
+label { display: block; font-size: 13px; font-weight: 600; margin-bottom: var(--s1); }
+.hint { font-size: 12.5px; color: var(--muted); margin: 2px 0 var(--s2); font-weight: 400; }
+input[type=text], input[type=date], input[type=number], input[type=file], textarea, select {
+  width: 100%; padding: 9px var(--s3); font: inherit;
+  background: var(--panel-2); color: var(--ink);
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  transition: border-color .12s, box-shadow .12s, background .12s;
 }
-textarea { resize: vertical; min-height: 92px; line-height: 1.6; }
-input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-.field { margin-bottom: 14px; }
+input::placeholder, textarea::placeholder { color: var(--faint); }
+textarea { resize: vertical; min-height: 96px; line-height: 1.6; }
+input:hover, textarea:hover, select:hover { border-color: var(--accent-line); }
+input:focus, textarea:focus, select:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: var(--ring); background: var(--panel);
+}
+.field { margin-bottom: var(--s4); }
 
 button {
-  font: inherit; font-size: 14px; padding: 8px 15px;
-  border-radius: 6px; border: 1px solid var(--line);
+  font: inherit; font-size: 13.5px; font-weight: 550; padding: 8px var(--s4);
+  border-radius: var(--radius-sm); border: 1px solid var(--line);
   background: var(--panel); color: var(--ink); cursor: pointer;
+  box-shadow: var(--lift-1); transition: border-color .12s, background .12s, box-shadow .12s, transform .06s;
 }
-button:hover { border-color: var(--accent); }
-button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-button.primary:hover { filter: brightness(1.08); }
-button:disabled { opacity: .45; cursor: not-allowed; }
-.actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 16px; }
-.actions .why { font-size: 13px; color: var(--muted); }
+button:hover { border-color: var(--accent-line); background: var(--panel-2); }
+button:active { transform: translateY(1px); box-shadow: none; }
+button:focus-visible { outline: none; box-shadow: var(--ring); }
+button.primary {
+  background: var(--accent); border-color: var(--accent); color: var(--on-accent);
+  box-shadow: var(--lift-1);
+}
+button.primary:hover { background: var(--accent-ink); border-color: var(--accent-ink); }
+button:disabled, button:disabled:hover {
+  opacity: .42; cursor: not-allowed; transform: none;
+  background: var(--panel); border-color: var(--line); box-shadow: none;
+}
+button.primary:disabled, button.primary:disabled:hover { background: var(--accent); border-color: var(--accent); }
+.actions { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; margin-top: var(--s4); }
+.actions .why { font-size: 12.5px; color: var(--muted); }
 
 /* tables */
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th {
-  text-align: left; font-size: 11px; text-transform: uppercase;
-  letter-spacing: .06em; color: var(--muted); font-weight: 600;
-  padding: 0 6px 6px; border-bottom: 1px solid var(--line);
+  text-align: left; font-size: 10.5px; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--faint); font-weight: 650;
+  padding: 0 var(--s1) var(--s2); border-bottom: 1px solid var(--line);
 }
-td { padding: 3px 4px; vertical-align: top; }
-td input, td select { padding: 6px 8px; font-size: 13px; }
+td { padding: var(--s1) var(--s1); vertical-align: top; }
+td input, td select { padding: 6px var(--s2); font-size: 13px; }
 .scroll { overflow-x: auto; }
 
 /* checks */
-.check { display: flex; gap: 9px; padding: 7px 0; font-size: 13.5px; border-top: 1px solid var(--line); }
+.check {
+  display: flex; gap: var(--s2); padding: var(--s2) 0; font-size: 13.5px;
+  border-top: 1px solid var(--line-2);
+}
 .check:first-child { border-top: 0; }
 .check .mark { font-family: var(--mono); flex: none; }
 .check.blocker .mark { color: var(--blocker); }
@@ -174,31 +390,83 @@ td input, td select { padding: 6px 8px; font-size: 13px; }
 .check.pass .mark { color: var(--ok); }
 .check .where { display: block; color: var(--muted); font-size: 12px; font-family: var(--mono); margin-top: 2px; }
 
-.notice { border-left: 3px solid var(--warning); background: var(--warning-soft); padding: 12px 15px; border-radius: 0 6px 6px 0; margin-bottom: 16px; }
+/* A run of checks that share an outcome, collapsed to one line. The summary is
+   shaped exactly like a `.check` row so the list reads as one list whether the
+   group is open or shut. */
+details.check-group { border-top: 1px solid var(--line-2); }
+details.check-group:first-child { border-top: 0; }
+details.check-group > summary {
+  display: flex; gap: var(--s2); padding: var(--s2) 0; font-size: 13.5px;
+  cursor: pointer; list-style: none; border-radius: var(--radius-sm);
+}
+details.check-group > summary::-webkit-details-marker { display: none; }
+details.check-group > summary::after {
+  content: "show"; margin-left: auto; font-size: 11.5px; color: var(--faint);
+}
+details.check-group[open] > summary::after { content: "hide"; }
+details.check-group > summary:hover::after { color: var(--accent); }
+details.check-group > summary .mark { font-family: var(--mono); flex: none; }
+details.check-group.pass > summary .mark { color: var(--ok); }
+details.check-group .check-group-body {
+  padding: var(--s1) 0 var(--s3) var(--s5);
+  border-left: 2px solid var(--line-2); margin: 0 0 var(--s1) 6px;
+}
+details.check-group .check-group-body .check { border-top: 0; padding: 5px 0; }
+
+.notice {
+  border-left: 3px solid var(--warning); background: var(--warning-soft);
+  padding: var(--s3) var(--s4); border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  margin-bottom: var(--s4);
+}
 .notice.blocker { border-color: var(--blocker); background: var(--blocker-soft); }
-.notice h3 { color: inherit; margin-bottom: 6px; }
-.notice label { font-weight: 400; display: flex; gap: 8px; align-items: center; margin: 4px 0; }
+.notice h3 { color: inherit; margin-bottom: var(--s1); }
+.notice label { font-weight: 400; display: flex; gap: var(--s2); align-items: center; margin: var(--s1) 0; }
 .notice input[type=checkbox] { width: auto; }
 
-.block { border-top: 1px solid var(--line); padding-top: 18px; margin-top: 18px; }
+.block { border-top: 1px solid var(--line-2); padding-top: var(--s5); margin-top: var(--s5); }
 .block:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
-.block-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
-.block-head .kind { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+.block-head { display: flex; align-items: baseline; gap: var(--s3); margin-bottom: var(--s2); }
+.block-head .kind {
+  font-size: 10.5px; color: var(--faint); font-family: var(--mono);
+  padding: 2px 7px; background: var(--sunken); border-radius: 5px;
+}
 .saved { color: var(--ok); font-size: 12px; }
 
-details.paste { margin-top: 10px; }
+details.paste { margin-top: var(--s2); }
 details.paste summary { font-size: 13px; color: var(--muted); cursor: pointer; }
-details.paste textarea { margin-top: 8px; min-height: 70px; font-family: var(--mono); font-size: 12.5px; }
+details.paste textarea { margin-top: var(--s2); min-height: 74px; font-family: var(--mono); font-size: 12.5px; }
 
 ul.plain { list-style: none; padding: 0; margin: 0; }
-ul.plain li { padding: 9px 0; border-top: 1px solid var(--line); display: flex; gap: 10px; align-items: baseline; }
+ul.plain li {
+  padding: var(--s3) 0; border-top: 1px solid var(--line-2);
+  display: flex; gap: var(--s3); align-items: baseline;
+}
 ul.plain li:first-child { border-top: 0; }
-ul.plain .meta { color: var(--muted); font-size: 12.5px; margin-left: auto; }
+ul.plain .meta { color: var(--muted); font-size: 12.5px; margin-left: auto; white-space: nowrap; }
+
+/* A list whose rows are destinations. The whole row lights up, not just the link. */
+ul.rows li { padding: 0; }
+ul.rows li > a.row-link {
+  display: flex; gap: var(--s3); align-items: baseline; flex: 1; min-width: 0;
+  padding: var(--s3) var(--s2); margin: 0 calc(var(--s2) * -1); border-radius: var(--radius-sm);
+  text-decoration: none; color: inherit; transition: background .12s;
+}
+ul.rows li > a.row-link:hover { background: var(--sunken); }
+ul.rows .row-title { font-weight: 550; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+ul.rows .row-link:hover .row-title { color: var(--accent); }
+ul.rows .row-of { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+
+/* A progress bar small enough to sit inside a row of text. */
+.bar {
+  display: inline-block; vertical-align: middle; width: 46px; height: 4px;
+  border-radius: 2px; background: var(--sunken); overflow: hidden; margin-right: var(--s1);
+}
+.bar > span { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
 
 .htmx-request { opacity: .55; transition: opacity .12s; }
 
 .notice.proposal { border-color: var(--accent); background: var(--accent-soft); }
-.notice.proposal h3 { color: var(--accent); }
+.notice.proposal h3 { color: var(--accent-ink); }
 .notice.proposal .actions form { display: inline; }
 /* htmx adds .htmx-request to the element that triggered the request, so an
    indicator inside that element shows for exactly as long as it is in flight.
@@ -206,7 +474,7 @@ ul.plain .meta { color: var(--muted); font-size: 12.5px; margin-left: auto; }
 .htmx-indicator { display: none; }
 .htmx-request .htmx-indicator, .htmx-request.htmx-indicator { display: inline-block; }
 .working {
-  font-size: 13px; color: var(--accent); margin-left: 12px;
+  font-size: 13px; color: var(--accent); margin-left: var(--s3);
   animation: pulse 1.4s ease-in-out infinite;
 }
 @keyframes pulse { 0%, 100% { opacity: 1 } 50% { opacity: .45 } }
@@ -216,48 +484,101 @@ form.htmx-request { opacity: 1; }
 form.busy { cursor: progress; }
 form.busy button { animation: pulse 1.4s ease-in-out infinite; }
 
-/* --------------------------------------------------------------------------
+/* ---------------------------------------------------------------------------
+   The start-a-document panel, and the empty states that stand in for it.
+   --------------------------------------------------------------------------- */
+
+.hero {
+  background: linear-gradient(160deg, var(--accent-soft), color-mix(in srgb, var(--accent-soft) 30%, var(--panel)));
+  border: 1px solid var(--accent-line); box-shadow: var(--lift-2);
+}
+.hero h2 { color: var(--accent-ink); }
+
+.empty {
+  text-align: center; padding: var(--s6) var(--s4); color: var(--muted);
+  border: 1px dashed var(--line); border-radius: var(--radius); background: var(--panel-2);
+}
+.empty .empty-mark { font-size: 22px; font-family: var(--mono); color: var(--faint); display: block; margin-bottom: var(--s2); }
+
+/* Numbers worth reading at a glance: how many, of what. */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--s3); }
+.stat {
+  background: var(--panel-2); border: 1px solid var(--line-2);
+  border-radius: var(--radius-sm); padding: var(--s3) var(--s4);
+}
+.stat .n {
+  display: block; font-size: 22px; font-weight: 650; letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums; line-height: 1.2;
+}
+.stat .k { font-size: 11.5px; color: var(--muted); }
+.stat.good .n { color: var(--ok); }
+.stat.bad .n { color: var(--blocker); }
+
+/* One external dependency and whether it answered. The target is shown because
+   "cannot reach the database" without saying which database is not a report. */
+.probe { display: flex; gap: var(--s3); padding: var(--s3) 0; border-top: 1px solid var(--line-2); }
+.probe:first-of-type { border-top: 0; }
+.probe .mark { font-family: var(--mono); flex: none; font-size: 15px; }
+.probe-body { min-width: 0; flex: 1; }
+.probe-name { font-weight: 600; font-size: 14px; }
+.probe-target { font-family: var(--mono); font-size: 12px; color: var(--faint); word-break: break-all; }
+.probe-detail { font-size: 13px; color: var(--muted); margin-top: 2px; }
+.probe-detail.bad { color: var(--blocker); }
+.probe-items { display: flex; flex-wrap: wrap; gap: var(--s1); margin-top: var(--s2); }
+.chip {
+  font-family: var(--mono); font-size: 11px; padding: 2px 8px; border-radius: 20px;
+  background: var(--sunken); color: var(--muted); border: 1px solid var(--line-2);
+}
+.chip.good { background: var(--ok-soft); color: var(--ok); border-color: color-mix(in srgb, var(--ok) 30%, transparent); }
+.chip.bad { background: var(--blocker-soft); color: var(--blocker); border-color: color-mix(in srgb, var(--blocker) 30%, transparent); }
+
+/* Settings, read-only. Keys quiet, values in mono so a URL is scannable. */
+table.config { margin-bottom: var(--s2); }
+table.config td { padding: 5px var(--s3) 5px 0; border-top: 1px solid var(--line-2); }
+table.config tr:first-child td { border-top: 0; }
+table.config .k { color: var(--muted); font-size: 13px; width: 200px; white-space: nowrap; }
+table.config .v { font-family: var(--mono); font-size: 12.5px; word-break: break-all; }
+
+/* ---------------------------------------------------------------------------
    The structured spec editor (ARCHITECTURE §15).
 
    The rule builder's side is a form over a nested document, and the danger of
    that is a wall of boxes. So: one thing open at a time, every row readable
    collapsed, and a problem shown beside the field that caused it rather than in
    a list at the bottom of the page.
-   -------------------------------------------------------------------------- */
+   --------------------------------------------------------------------------- */
 
 nav.builder-nav .nav-heading {
-  font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
-  color: var(--muted); margin: 16px 0 4px; padding: 0 10px;
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--faint); margin: var(--s4) 0 var(--s1); padding: 0 var(--s2); font-weight: 650;
 }
-nav.builder-nav .nav-empty { padding: 0 10px; }
+nav.builder-nav .nav-empty { padding: 0 var(--s2); }
 nav.builder-nav a { justify-content: flex-start; }
-nav.builder-nav .nav-add { margin: 6px 0 14px; }
-nav.builder-nav .nav-add input { font-size: 13px; padding: 7px 10px; }
+nav.builder-nav .nav-add { margin: var(--s1) 0 var(--s4); }
+nav.builder-nav .nav-add input { font-size: 13px; padding: 7px var(--s3); }
 
-/* How many things are wrong below this point. Never a colour alone — it carries
+/* How many things are wrong below this point. Never a colour alone: it carries
    the number, so it reads the same to anyone. */
 .problem-count {
   margin-left: auto; flex: none;
-  font-size: 11px; font-family: var(--mono); font-weight: 600;
-  min-width: 18px; text-align: center; padding: 1px 5px; border-radius: 10px;
+  font-size: 10.5px; font-family: var(--mono); font-weight: 700;
+  min-width: 18px; text-align: center; padding: 1px 6px; border-radius: 10px;
   background: var(--blocker-soft); color: var(--blocker);
 }
-.field-problem {
-  margin: 5px 0 0; font-size: 12.5px; color: var(--blocker);
-}
-.field-problem::before { content: "✗ "; font-family: var(--mono); }
 
 /* A row that opens into its own editor. Collapsed, it has to say enough that you
    do not have to open it to know what it is. */
-details.item { border-top: 1px solid var(--line); }
+details.item { border-top: 1px solid var(--line-2); }
 details.item:first-of-type { border-top: 0; }
 details.item > summary {
-  display: flex; gap: 10px; align-items: baseline;
-  padding: 10px 2px; cursor: pointer; list-style: none;
+  display: flex; gap: var(--s3); align-items: baseline;
+  padding: var(--s3) 2px; cursor: pointer; list-style: none;
+  border-radius: var(--radius-sm);
 }
+details.item > summary:hover { background: var(--sunken); }
 details.item > summary::-webkit-details-marker { display: none; }
 details.item > summary::before {
-  content: "▸"; font-family: var(--mono); color: var(--muted); flex: none;
+  content: "▸"; font-family: var(--mono); color: var(--faint); flex: none;
 }
 details.item[open] > summary::before { content: "▾"; }
 details.item[open] > summary { font-weight: 600; }
@@ -267,7 +588,7 @@ details.item .item-meta {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 details.item .item-body {
-  padding: 4px 2px 20px 22px;
+  padding: var(--s1) 2px var(--s5) var(--s5);
   border-left: 2px solid var(--accent-soft); margin-left: 5px;
 }
 details.check-item > summary .mark { font-family: var(--mono); flex: none; }
@@ -277,54 +598,53 @@ details.add-check > summary::before { content: none; }
 details.add-check > summary .item-name { color: var(--accent); }
 
 /* Two fields side by side, where they are read as a pair. */
-.row { display: flex; gap: 14px; }
+.row { display: flex; gap: var(--s4); }
 .row > .field { flex: 1; min-width: 0; }
 @media (max-width: 620px) { .row { flex-direction: column; gap: 0; } }
 
 /* A choice, with the consequence spelled out next to it rather than in a
-   tooltip — severity is the case that matters (ARCHITECTURE §15.4). */
+   tooltip: severity is the case that matters (ARCHITECTURE §15.4). */
 fieldset.choices {
-  border: 1px solid var(--line); border-radius: var(--radius);
-  padding: 10px 14px 12px; margin: 0 0 14px;
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: var(--s3) var(--s4) var(--s3); margin: 0 0 var(--s4);
+  background: var(--panel-2);
 }
-fieldset.choices legend {
-  font-size: 13px; font-weight: 600; padding: 0 6px;
-}
+fieldset.choices legend { font-size: 13px; font-weight: 600; padding: 0 var(--s1); }
 label.option {
-  display: flex; gap: 9px; align-items: baseline;
-  font-weight: 400; font-size: 14px; margin: 5px 0;
+  display: flex; gap: var(--s2); align-items: baseline;
+  font-weight: 400; font-size: 14px; margin: var(--s1) 0;
 }
 label.option input { width: auto; flex: none; }
-fieldset.choices .indent { padding-left: 24px; }
+fieldset.choices .indent { padding-left: var(--s6); }
 label.inline-check { margin: 0; display: flex; justify-content: center; }
 label.inline-check input { width: auto; }
 
 /* Add-one-more, at the foot of every list. Deliberately the same shape
    everywhere, so it is recognisable rather than read each time. */
 form.add-row {
-  display: flex; gap: 8px; align-items: center;
-  margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line);
+  display: flex; gap: var(--s2); align-items: center;
+  margin-top: var(--s3); padding-top: var(--s3); border-top: 1px dashed var(--line);
 }
 form.add-row input[type=text] { flex: 1; }
 form.add-row select { width: auto; }
 
-/* Move and delete. Quiet until wanted — they sit beside things people are
+/* Move and delete. Quiet until wanted: they sit beside things people are
    reading, not things they are about to press. */
-.rowtools { display: inline-flex; gap: 4px; align-items: center; }
+.rowtools { display: inline-flex; gap: var(--s1); align-items: center; }
 .rowtools form { display: inline; }
 .rowtools-right { margin-left: auto; }
 button.tool {
-  padding: 3px 9px; font-size: 13px; line-height: 1.4;
-  color: var(--muted); border-color: transparent; background: transparent;
+  padding: 3px var(--s2); font-size: 13px; line-height: 1.4;
+  color: var(--muted); border-color: transparent; background: transparent; box-shadow: none;
 }
-button.tool:hover { color: var(--ink); border-color: var(--line); }
+button.tool:hover { color: var(--ink); border-color: var(--line); background: var(--panel); }
 button.tool.danger:hover { color: var(--blocker); border-color: var(--blocker); }
-button.quiet { color: var(--muted); border-color: transparent; }
+button.quiet { color: var(--muted); border-color: transparent; box-shadow: none; }
 button.quiet:hover { color: var(--blocker); border-color: var(--blocker); }
 
 /* The key, and the only way to change it. Folded away because it is identity,
-   not a label — and renaming it is a refactor (ARCHITECTURE §15.2). */
-.under-form { margin-top: 14px; }
+   not a label, and renaming it is a refactor (ARCHITECTURE §15.2). */
+.under-form { margin-top: var(--s4); }
 details.rename > summary {
   font-family: var(--mono); font-size: 12px; color: var(--muted);
   cursor: pointer; list-style: none;
@@ -332,31 +652,29 @@ details.rename > summary {
 details.rename > summary::-webkit-details-marker { display: none; }
 details.rename > summary::after { content: "  ✎"; }
 details.rename > summary:hover { color: var(--accent); }
-details.rename form { margin-top: 8px; max-width: 460px; }
+details.rename form { margin-top: var(--s2); max-width: 460px; }
 details.rename .row { align-items: center; }
 details.rename .row input { flex: 1; }
 details.rename .row button { flex: none; }
 
 details.quiet-details > summary {
-  font-size: 13px; color: var(--muted); cursor: pointer; margin-bottom: 8px;
+  font-size: 13px; color: var(--muted); cursor: pointer; margin-bottom: var(--s2);
 }
 
-/* Columns of a table, edited in place. */
-.sub {
-  margin-top: 18px; padding-top: 4px;
-  border-top: 1px solid var(--line);
-}
-.sub h4 { margin-top: 14px; }
-table.col-editor td { padding: 6px 0; border-top: 1px solid var(--line); }
+/* Columns of a table, edited in place. A form nested inside a form's editor:
+   named `subform` rather than `sub`, which the app bar's subtitle already owns. */
+.subform { margin-top: var(--s5); padding-top: var(--s1); border-top: 1px solid var(--line-2); }
+.subform h4 { margin-top: var(--s4); }
+table.col-editor td { padding: var(--s2) 0; border-top: 1px solid var(--line-2); }
 table.col-editor tr:first-child td { border-top: 0; }
-form.col-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+form.col-row { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; }
 form.col-row input[type=text] { flex: 2; min-width: 140px; }
 form.col-row select { flex: 1; width: auto; min-width: 120px; }
-form.col-row .col-values { flex-basis: 100%; margin-top: 6px; }
-form.col-row .col-values textarea { font-size: 13px; min-height: 60px; }
+form.col-row .col-values { flex-basis: 100%; margin-top: var(--s1); }
+form.col-row .col-values textarea { font-size: 13px; min-height: 62px; }
 .col-tools {
-  display: flex; gap: 10px; align-items: center;
-  margin-top: 4px; font-size: 12px; color: var(--muted);
+  display: flex; gap: var(--s3); align-items: center;
+  margin-top: var(--s1); font-size: 12px; color: var(--muted);
 }
 .col-tools code { font-family: var(--mono); }
 
@@ -364,22 +682,22 @@ form.col-row .col-values textarea { font-size: 13px; min-height: 60px; }
    string `draft_block` composes into the prompt, which is the whole point:
    the check is the instruction (DESIGN §5.8). */
 .told {
-  margin: 14px 0 4px; padding: 10px 14px;
+  margin: var(--s4) 0 var(--s1); padding: var(--s3) var(--s4);
   border-left: 3px solid var(--accent); background: var(--accent-soft);
-  border-radius: 0 6px 6px 0;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 .told .told-label {
-  display: block; font-size: 11px; text-transform: uppercase;
-  letter-spacing: .06em; color: var(--accent); font-weight: 600;
+  display: block; font-size: 10.5px; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--accent-ink); font-weight: 650;
 }
-.told p { margin: 4px 0 0; }
+.told p { margin: var(--s1) 0 0; }
 
 /* The assembled prompt, read-only. Long, and meant to be read as a document. */
 pre.prompt {
   font-family: var(--mono); font-size: 12.5px; line-height: 1.6;
   white-space: pre-wrap; word-wrap: break-word;
-  background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius);
-  padding: 16px 18px; max-height: 70vh; overflow-y: auto;
+  background: var(--sunken); border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: var(--s4) var(--s5); max-height: 70vh; overflow-y: auto;
 }
 
 /* A form that matches what the server rendered has nothing to save, and says so
@@ -403,43 +721,41 @@ form[data-unconfirmed] .saved-note { display: none; }
 .info:hover, .info:focus { color: var(--accent); border-color: var(--accent); outline: none; }
 .info::after {
   content: attr(data-info);
-  position: absolute; bottom: calc(100% + 8px); left: -8px;
-  width: 300px; max-width: 78vw; padding: 9px 12px; z-index: 20;
+  position: absolute; bottom: calc(100% + var(--s2)); left: -8px;
+  width: 300px; max-width: 78vw; padding: var(--s2) var(--s3); z-index: 40;
   background: var(--ink); color: var(--bg);
-  border-radius: 6px; font: 400 12.5px/1.5 system-ui, sans-serif; font-style: normal;
+  border-radius: var(--radius-sm); font: 400 12.5px/1.5 var(--sans); font-style: normal;
   text-transform: none; letter-spacing: 0; text-align: left;
   opacity: 0; visibility: hidden; transition: opacity .12s;
-  box-shadow: 0 4px 14px rgba(0,0,0,.18);
+  box-shadow: var(--lift-3);
 }
 .info:hover::after, .info:focus::after { opacity: 1; visibility: visible; }
 /* Near the top of a card the tooltip would be clipped; drop it below instead. */
 .card > form > .field:first-of-type .info::after,
-.item-body > form > .field:first-of-type .info::after { bottom: auto; top: calc(100% + 8px); }
+.item-body > form > .field:first-of-type .info::after { bottom: auto; top: calc(100% + var(--s2)); }
 
 /* Delete now carries its word: it is the only tool on a row, so an unlabelled
    glyph would be a guess. */
-.rowtools button.tool.danger { font-size: 12px; padding: 4px 10px; }
+.rowtools button.tool.danger { font-size: 12px; padding: var(--s1) var(--s3); }
 
 /* The picker above a read-only prompt: two selects that reload the view. */
-form.picker { align-items: flex-end; gap: 14px; }
+form.picker { align-items: flex-end; gap: var(--s4); }
 form.picker .field { margin-bottom: 0; }
-nav.builder-nav .nav-add { display: flex; gap: 6px; }
+nav.builder-nav .nav-add { display: flex; gap: var(--s1); }
 nav.builder-nav .nav-add input { flex: 1; min-width: 0; }
-nav.builder-nav .nav-add button { flex: none; padding: 7px 11px; font-size: 13px; }
+nav.builder-nav .nav-add button { flex: none; padding: 7px var(--s3); font-size: 13px; }
 
 /* The list of what is wrong, each line a way to get to it. A count with no route
    to the cause is just an accusation. */
 .problem-link {
-  display: flex; gap: 9px; padding: 8px 0; font-size: 13.5px;
-  border-top: 1px solid var(--blocker); border-color: color-mix(in srgb, var(--blocker) 30%, transparent);
+  display: flex; gap: var(--s2); padding: var(--s2) 0; font-size: 13.5px;
+  border-top: 1px solid color-mix(in srgb, var(--blocker) 30%, transparent);
   text-decoration: none; color: inherit;
 }
 .problem-link:first-of-type { border-top: 0; }
 .problem-link:hover { color: var(--blocker); }
 .problem-link .mark { font-family: var(--mono); color: var(--blocker); flex: none; }
-.problem-link .where {
-  display: block; color: var(--muted); font-size: 12px; margin-top: 2px;
-}
+.problem-link .where { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
 .problem-link:hover .where { color: var(--blocker); }
 a.pill.needs_input { text-decoration: none; }
 a.pill.needs_input:hover { background: var(--blocker-soft); }
@@ -447,8 +763,9 @@ a.pill.needs_input:hover { background: var(--blocker-soft); }
 /* An anchored problem is an error, and has to look like one beside a field that
    otherwise looks fine. */
 .field-problem {
-  display: block; margin: 6px 0 0; padding: 6px 10px;
+  display: block; margin: var(--s1) 0 0; padding: var(--s1) var(--s3);
   font-size: 12.5px; font-weight: 600; color: var(--blocker);
   background: var(--blocker-soft); border-left: 3px solid var(--blocker);
   border-radius: 0 4px 4px 0;
 }
+.field-problem::before { content: "✗ "; font-family: var(--mono); }

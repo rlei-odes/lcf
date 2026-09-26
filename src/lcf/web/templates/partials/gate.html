@@ -1,3 +1,10 @@
+{# The gate's findings.
+
+   Problems are open, because they are the reason anyone opened this. What
+   passed is folded away but reachable: a bare "20 checks pass" is a claim with
+   no way to see what was actually claimed, and a document going to a customer
+   is exactly where someone wants to read the list. #}
+
 {% for r in report.blockers %}
 <div class="check blocker">
   <span class="mark">✗</span>
@@ -6,18 +13,45 @@
   </span>
 </div>
 {% endfor %}
+
 {% for r in report.warnings %}
 <div class="check warning">
   <span class="mark">✗</span>
-  <span><strong>warning</strong> · {{ r.check_id }} - {{ r.reason }}</span>
+  <span><strong>warning</strong> · {{ r.check_id }} - {{ r.reason }}
+    {% if r.evidence %}<span class="where">{{ r.evidence|join(' · ') }}</span>{% endif %}
+  </span>
 </div>
 {% endfor %}
+
 {% if report.passes %}
-<div class="check pass"><span class="mark">✓</span><span>{{ report.passes|length }} check(s) pass</span></div>
+<details class="check-group pass">
+  <summary>
+    <span class="mark">✓</span>
+    <span>{{ count(report.passes|length, 'check') }} pass</span>
+  </summary>
+  <div class="check-group-body">
+    {% for r in report.passes %}
+    <div class="check pass">
+      <span class="mark">✓</span>
+      <span>{{ r.check_id }}{% if r.reason %} - {{ r.reason }}{% endif %}
+        {% if r.evidence %}<span class="where">{{ r.evidence|join(' · ') }}</span>{% endif %}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+</details>
 {% endif %}
+
 {% if report.not_evaluated %}
-<div class="check">
-  <span class="mark">·</span>
-  <span>{{ report.not_evaluated|length }} check(s) need a model: not evaluated yet</span>
-</div>
+<details class="check-group">
+  <summary>
+    <span class="mark">·</span>
+    <span>{{ count(report.not_evaluated|length, 'check') }} need a model: not evaluated yet</span>
+  </summary>
+  <div class="check-group-body">
+    {% for check_id in report.not_evaluated %}
+    <div class="check"><span class="mark">·</span><span>{{ check_id }}</span></div>
+    {% endfor %}
+  </div>
+</details>
 {% endif %}

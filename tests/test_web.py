@@ -272,7 +272,7 @@ async def test_draft_hands_back_a_job_watcher(published_4d, client, stub_handler
 
     # The panel the browser loads once the stream says done carries the gaps.
     panel = client.get(f"{url}/panel", params={"job": str(job_id)})
-    assert "The assistant needs 1 thing(s) from you" in panel.text
+    assert "The assistant needs 1 thing from you" in panel.text
     assert "Which part?" in panel.text
 
 
@@ -402,7 +402,7 @@ async def test_the_export_record_distinguishes_unrun_from_failing(published_4d, 
     history_html = client.get(location).text
 
     assert "before the checks were run" in history_html
-    assert "past 0 blocking problem(s)" not in history_html, "nonsense wording"
+    assert "past 0 blocking problems" not in history_html, "nonsense wording"
 
 
 async def test_creating_without_a_title_is_not_a_validation_dump(published_4d, client):
@@ -482,9 +482,9 @@ async def test_the_intake_panel_reports_where_the_material_landed(published_4d, 
     response = client.get(f"/documents/{document_id}/intake/panel?job={job_id}")
 
     assert response.status_code == 200
-    assert "Placed 1 passage(s)" in response.text
-    assert "1 answer(s) proposed" in response.text
-    assert "2 fragment(s) discarded" in response.text, "quotes it could not find, said out loud"
+    assert "Placed 1 passage" in response.text
+    assert "1 answer proposed" in response.text
+    assert "2 fragments discarded" in response.text, "quotes it could not find, said out loud"
     assert "Nothing was written into the document" in response.text
 
 

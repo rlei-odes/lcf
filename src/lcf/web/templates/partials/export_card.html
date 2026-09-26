@@ -28,12 +28,12 @@
     {%- if report.passed -%}
       Everything checked passes. This document is ready to go out.
     {%- elif report.blockers and report.not_evaluated -%}
-      {{ report.blockers|length }} blocking problem(s) unresolved, and
-      {{ report.not_evaluated|length }} check(s) have never been run.
+      {{ count(report.blockers|length, 'blocking problem') }} unresolved, and
+      {{ count(report.not_evaluated|length, 'check') }} have never been run.
     {%- elif report.blockers -%}
-      {{ report.blockers|length }} blocking problem(s) unresolved.
+      {{ count(report.blockers|length, 'blocking problem') }} unresolved.
     {%- else -%}
-      {{ report.not_evaluated|length }} check(s) have never been run - run the full
+      {{ count(report.not_evaluated|length, 'check') }} have never been run - run the full
       check above first. A document nobody checked is not a document that passed.
     {%- endif -%}
   </p>
@@ -76,9 +76,9 @@
           {% if e.override_reason %}
           <span class="where">
             {%- if e.blockers and e.unchecked -%}
-              past {{ e.blockers }} blocking problem(s) and {{ e.unchecked }} unrun check(s)
+              past {{ count(e.blockers, 'blocking problem') }} and {{ count(e.unchecked, 'unrun check') }}
             {%- elif e.blockers -%}
-              past {{ e.blockers }} blocking problem(s)
+              past {{ count(e.blockers, 'blocking problem') }}
             {%- else -%}
               before the checks were run
             {%- endif %} - {{ e.override_reason }}

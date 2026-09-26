@@ -15,6 +15,7 @@ from typing import Any
 from ruamel.yaml import YAML
 
 from lcf.core.db import session
+from lcf.core.text import count
 from lcf.engine.state import Status, document_state, ordered_sections, section_state
 from lcf.services import assessment, doc_types, documents
 from lcf.spec import loader
@@ -48,7 +49,7 @@ def cmd_lint(args) -> int:
     spec = loader.load(args.path)
     errors = lint(spec)
     if errors:
-        print(f"{spec.id} v{spec.version}: {len(errors)} problem(s)")
+        print(f"{spec.id} v{spec.version}: {count(len(errors), 'problem')}")
         for error in errors:
             print(f"  ✗ {error}")
         return 1
@@ -135,9 +136,9 @@ def _print_states(states) -> None:
         if state.blocked_by:
             detail = f"waiting on {', '.join(state.blocked_by)}"
         elif state.missing_answers:
-            detail = f"{len(state.missing_answers)} question(s) unanswered"
+            detail = f"{count(len(state.missing_answers), 'question')} unanswered"
         elif state.failures:
-            detail = f"{len(state.failures)} check(s) failing"
+            detail = f"{count(len(state.failures), 'check')} failing"
         print(f"  {_ICON[state.status]} {state.key:18} {state.status:12} {detail}")
 
 

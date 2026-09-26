@@ -18,15 +18,26 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from lcf.core.db import session
+from lcf.core.text import count, verb
 from lcf.engine.state import Status, document_state, ordered_sections, section_state
 from lcf.models.tables import Document
-from lcf.services import assessment, doc_types, documents, drafts, exports, intake, jobs, proposals
+from lcf.services import (
+    admin,
+    assessment,
+    doc_types,
+    documents,
+    drafts,
+    exports,
+    intake,
+    jobs,
+    proposals,
+)
 from lcf.services import templates as templates_service
 from lcf.spec import loader
 from lcf.spec.describe import describe_criterion, describe_requirement, scope_of
 from lcf.web import builder
 from lcf.web.forms import parse_block_value, parse_pasted_table
-from lcf.web.presenters import section_panel_context
+from lcf.web.presenters import document_nav, progress_of, section_panel_context
 
 HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=str(HERE / "templates"))
@@ -48,6 +59,48 @@ def _localtime(value):
 
 
 templates.env.filters["localtime"] = _localtime
+
+
+# The three things this application is for. The app bar names them, and every
+# page belongs to exactly one — derived from the path so that adding a route
+# never means remembering to label it.
+AREAS = (
+    ("flow", "Doc flow", "/"),
+    ("factory", "Doctype factory", "/doc-types"),
+    ("admin", "Admin", "/admin"),
+)
+
+
+def _area_of(path: str) -> str:
+    if path.startswith("/doc-types"):
+        return "factory"
+    if path.startswith("/admin"):
+        return "admin"
+    return "flow"
+
+
+templates.env.globals["AREAS"] = AREAS
+templates.env.globals["area_of"] = _area_of
+
+
+def _asset(path: str) -> str:
+    """A static URL that changes whenever the file does.
+
+    Browsers cache `/static/app.css` hard, and a stylesheet one edit behind the
+    HTML is worse than no stylesheet: the new markup's classes simply do not
+    exist in the old rules, so the page renders unstyled rather than broken, and
+    looks like a design failure instead of a caching one. The mtime makes that
+    impossible without anyone having to know to hard-refresh.
+    """
+    try:
+        stamp = int((HERE / "static" / path).stat().st_mtime)
+    except OSError:
+        return f"/static/{path}"
+    return f"/static/{path}?v={stamp}"
+
+
+templates.env.globals["count"] = count
+templates.env.globals["asset"] = _asset
 
 # The spec view renders a check with the same function that composes it into the
 # drafting prompt, so what the rule builder reads is literally what the assistant
@@ -100,8 +153,17 @@ async def unusable(request: Request, exc: Exception) -> HTMLResponse:
 async def index(request: Request):
     async with session() as s:
         types = await doc_types.list_types(s)
-        docs = await documents.recent(s)
+        docs = await documents.recent_rows(s)
     return page(request, "index.html", doc_types=types, documents=docs)
+
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_page(request: Request):
+    """The installation seen from inside: what answers, what is in the database,
+    what ran, and what it was configured with. Every probe is read-only."""
+    async with session() as s:
+        state = await admin.health(s)
+    return page(request, "admin.html", health=state)
 
 
 # --- the rule builder's side -------------------------------------------------
@@ -837,7 +899,7 @@ async def edit_doc_type(request: Request, key: str):
         heading=f"Edit {spec.title}",
         note=(
             f"Opened as v{spec.version}. v{latest.version} stays as it is"
-            + (f": {in_use} document(s) are built on it." if in_use else ".")
+            + (f": {count(in_use, 'document')} {verb(in_use)} built on it." if in_use else ".")
         ),
     )
 
@@ -1071,12 +1133,22 @@ async def document_overview(request: Request, document_id: UUID):
         pasted = await intake.items(s, document_id)
     running = await jobs.latest_for(document_id, "assess")
     running_intake = await jobs.latest_for(document_id, "intake")
+    nav = document_nav(spec, view)
+    # The first section that is neither finished nor waiting on one that is. It
+    # is the only question this page has to answer on arrival: where do I go now.
+    next_up = next(
+        (s for s in nav if s.status not in (Status.COMPLETE, Status.BLOCKED)),
+        None,
+    )
     return page(
         request,
         "document.html",
         document=document,
         spec=spec,
         states=document_state(view),
+        nav=nav,
+        progress=progress_of(nav, view.completed),
+        next_up=next_up,
         report=report,
         history=past_exports,
         items=pasted,

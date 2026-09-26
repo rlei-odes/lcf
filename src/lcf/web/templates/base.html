@@ -4,21 +4,29 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Lancy Content Flow{% endblock %}</title>
-  <link rel="stylesheet" href="/static/app.css">
+  {# Versioned by file mtime: a cached stylesheet one edit behind the markup
+     renders the page unstyled rather than broken, which reads as a design
+     failure instead of a caching one. #}
+  <link rel="stylesheet" href="{{ asset('app.css') }}">
   <script src="/static/vendor/htmx.min.js"></script>
   <script src="/static/vendor/alpine.min.js" defer></script>
-  <script src="/static/export.js" defer></script>
-  <script src="/static/spec_editor.js" defer></script>
-  <script src="/static/dirty.js" defer></script>
+  <script src="{{ asset('export.js') }}" defer></script>
+  <script src="{{ asset('spec_editor.js') }}" defer></script>
+  <script src="{{ asset('dirty.js') }}" defer></script>
 </head>
 <body>
+  {# Three areas, because the product is three jobs: writing documents, writing
+     the rules documents obey, and looking after the installation. Which one you
+     are in comes from the path, so a new route never needs labelling. #}
+  {% set here = area_of(request.url.path) %}
   <header class="top">
-    <h1>Lancy Content Flow</h1>
+    <a class="brand" href="/"><span class="glyph">L</span> Lancy Content Flow</a>
+    <nav class="areas">
+      {% for key, label, href in AREAS %}
+      <a href="{{ href }}" class="{{ 'here' if key == here }}">{{ label }}</a>
+      {% endfor %}
+    </nav>
     <span class="sub">{% block subtitle %}{% endblock %}</span>
-    <nav class="top-links">
-    <a href="/">all documents</a>
-    <a href="/doc-types">document types</a>
-  </nav>
   </header>
   <main>{% block content %}{% endblock %}</main>
 </body>

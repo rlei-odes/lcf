@@ -3,80 +3,108 @@
 {% block subtitle %}rule builder{% endblock %}
 
 {% block content %}
-<div class="card">
-  <h2>Document types</h2>
-  <p class="lead">
-    A type is the rules: the sections, the questions asked before anything is
-    written, and the checks a finished document has to pass. Every document pins
-    the version it was started on, so publishing a new one never disturbs work
-    already under way.
-  </p>
+<div class="layout split">
 
-  {% if rows %}
-  <ul class="plain">
-    {% for r in rows %}
-    {% set latest = r.versions[0] %}
-    <li>
-      <span class="dot s-complete">·</span>
-      <span>
-        <a href="/doc-types/{{ r.type.key }}/versions/{{ latest.version }}">{{ r.type.title }}</a>
-        <span class="where">
-          {{ r.type.key }} · v{{ latest.version }} current
-          {%- if r.versions|length > 1 %} · {{ r.versions|length }} versions{% endif -%}
-          {%- set used = r.usage.values()|sum %}
-          {%- if used %} · {{ used }} document(s){% endif %}
-        </span>
-      </span>
-      <span class="meta">{{ latest.published_at|localtime }}</span>
-    </li>
-    {% endfor %}
-  </ul>
-  {% else %}
-  <p class="lead">Nothing published yet.</p>
-  {% endif %}
+  {# The three ways in, in one lane: build it as forms, write it as YAML, or
+     bring a file. Nothing here publishes anything. #}
+  <div>
+    <div class="card hero" style="position:sticky;top:calc(56px + var(--s4))">
+      <h2>Build a type</h2>
+      <p class="lead">
+        A type is the rules: the sections, the questions asked before anything is
+        written, and the checks a finished document has to pass.
+      </p>
 
-  <form method="post" action="/doc-types/drafts" class="add-row" style="margin-top:18px">
-    <input type="text" name="title" required placeholder="Build a new type: what is it called?"
-           aria-label="What the new document type is called">
-    <button class="primary" type="submit">Start building</button>
-  </form>
+      <form method="post" action="/doc-types/drafts">
+        <div class="field">
+          <label for="new-title">What is it called?</label>
+          <input type="text" id="new-title" name="title" required
+                 placeholder="Supplier Audit Report">
+        </div>
+        <button class="primary" type="submit">Start building</button>
+      </form>
 
-  <div class="actions">
-    <a href="/doc-types/new"><button type="button">Write one as YAML</button></a>
-    <form method="post" action="/doc-types/import" enctype="multipart/form-data"
-          style="display:flex;gap:10px;align-items:center;margin-left:auto">
-      <input type="file" name="file" accept=".yaml,.yml,text/yaml" required
-             style="width:auto;font-size:13px">
-      <button type="submit">Import YAML</button>
-    </form>
+      <div class="actions">
+        <a href="/doc-types/new"><button type="button">Write one as YAML</button></a>
+      </div>
+
+      <form method="post" action="/doc-types/import" enctype="multipart/form-data"
+            style="margin-top:var(--s4)">
+        <div class="field">
+          <label for="import-file">Or bring a YAML file</label>
+          <input type="file" id="import-file" name="file" accept=".yaml,.yml,text/yaml" required
+                 style="font-size:13px">
+        </div>
+        <button type="submit">Import YAML</button>
+      </form>
+
+      <p class="hint" style="margin-top:var(--s4)">
+        Building walks you through it, question by question. YAML is the same
+        thing as a file, for when that is faster. Either way nothing is published
+        until you say so.
+      </p>
+    </div>
   </div>
-  <p class="hint">
-    Building walks you through it, question by question. YAML is the same thing as
-    a file, for when that is faster. Either way nothing is published until you say
-    so.
-  </p>
-</div>
 
-{# Drafts survive a closed tab, which is half the reason they are held on the
-   server at all (ARCHITECTURE §15.2). Showing them is the other half. #}
-{% if draft_rows %}
-<div class="card">
-  <h3>Being worked on</h3>
-  <p class="lead">Unpublished. Nobody can start a document from these yet.</p>
-  <ul class="plain">
-    {% for d in draft_rows %}
-    <li>
-      <span class="dot s-drafted">·</span>
-      <span>
-        <a href="/doc-types/drafts/{{ d.id }}">{{ d.title or "Untitled" }}</a>
-        <span class="where">
-          {% if d.based_on %}will publish over v{{ d.based_on }}{% else %}new type{% endif %}
-        </span>
-      </span>
-      <span class="meta">saved {{ d.updated_at|localtime }}</span>
-    </li>
-    {% endfor %}
-  </ul>
+  <div>
+    <div class="card">
+      <h3>Published{% if rows %} · {{ rows|length }}{% endif %}</h3>
+      <p class="lead">
+        Every document pins the version it was started on, so publishing a new
+        one never disturbs work already under way.
+      </p>
+      {% if rows %}
+      <ul class="plain rows">
+        {% for r in rows %}
+        {% set latest = r.versions[0] %}
+        {% set used = r.usage.values()|sum %}
+        <li>
+          <a class="row-link" href="/doc-types/{{ r.type.key }}/versions/{{ latest.version }}">
+            <span class="dot s-complete">✓</span>
+            <span class="row-title">{{ r.type.title }}</span>
+            <span class="row-of">{{ r.type.key }}</span>
+            <span class="meta">
+              v{{ latest.version }} current
+              {%- if r.versions|length > 1 %} · {{ r.versions|length }} versions{% endif -%}
+              {%- if used %} · {{ count(used, 'document') }}{% endif %}
+              · {{ latest.published_at|localtime }}
+            </span>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="empty">
+        <span class="empty-mark">·</span>
+        Nothing published yet. Build one beside this, or run <code>lcf seed</code>
+        for the examples.
+      </div>
+      {% endif %}
+    </div>
+
+    {# Drafts survive a closed tab, which is half the reason they are held on the
+       server at all (ARCHITECTURE §15.2). Showing them is the other half. #}
+    {% if draft_rows %}
+    <div class="card">
+      <h3>Being worked on · {{ draft_rows|length }}</h3>
+      <p class="lead">Unpublished. Nobody can start a document from these yet.</p>
+      <ul class="plain rows">
+        {% for d in draft_rows %}
+        <li>
+          <a class="row-link" href="/doc-types/drafts/{{ d.id }}">
+            <span class="dot s-drafted">◦</span>
+            <span class="row-title">{{ d.title or "Untitled" }}</span>
+            <span class="row-of">
+              {% if d.based_on %}will publish over v{{ d.based_on }}{% else %}new type{% endif %}
+            </span>
+            <span class="meta">saved {{ d.updated_at|localtime }}</span>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+
 </div>
-{% endif %}
 {% endblock %}

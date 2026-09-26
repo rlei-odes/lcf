@@ -267,6 +267,57 @@ async def recent(session: AsyncSession, limit: int = 30) -> list[Document]:
     )
 
 
+@dataclass
+class DocumentRow:
+    """A document as the list shows it: what it is, and how far along.
+
+    Progress is counted in completed sections rather than derived state, because
+    a list of thirty documents must not cost thirty view builds and a check run
+    each. Completion is a stored fact (a person marked it), so this is one query.
+    """
+
+    id: UUID
+    title: str
+    created_at: datetime
+    type_key: str
+    type_title: str
+    version: int
+    sections: int
+    complete: int
+
+    @property
+    def percent(self) -> int:
+        return round(100 * self.complete / self.sections) if self.sections else 0
+
+    @property
+    def done(self) -> bool:
+        return self.sections > 0 and self.complete == self.sections
+
+
+async def recent_rows(session: AsyncSession, limit: int = 30) -> list[DocumentRow]:
+    from lcf.models.tables import DocType, DocTypeVersion
+
+    rows = await session.execute(
+        select(
+            Document.id,
+            Document.title,
+            Document.created_at,
+            DocType.key,
+            DocType.title,
+            DocTypeVersion.version,
+            func.count(Section.id).label("sections"),
+            func.count(Section.completed_at).label("complete"),
+        )
+        .join(DocTypeVersion, DocTypeVersion.id == Document.doc_type_version_id)
+        .join(DocType, DocType.id == DocTypeVersion.doc_type_id)
+        .outerjoin(Section, Section.document_id == Document.id)
+        .group_by(Document.id, DocType.key, DocType.title, DocTypeVersion.version)
+        .order_by(Document.created_at.desc())
+        .limit(limit)
+    )
+    return [DocumentRow(*row) for row in rows.all()]
+
+
 async def mark_complete(session: AsyncSession, document_id: UUID, section_key: str) -> None:
     section = await _section(session, document_id, section_key)
     section.completed_at = datetime.now(UTC)
