@@ -350,6 +350,88 @@ input[type=text], input[type=date], input[type=number], input[type=file], textar
   transition: border-color .12s, box-shadow .12s, background .12s;
 }
 input::placeholder, textarea::placeholder { color: var(--faint); }
+
+/* ---------------------------------------------------------------------------
+   Selects.
+
+   The native control puts its arrow hard against the right edge, which breaks
+   the margin every other field keeps. So the arrow is ours: drawn as a
+   background image and set the same `--s3` in from the right as the text is
+   from the left, so a row of fields lines up on both edges.
+   --------------------------------------------------------------------------- */
+
+select {
+  appearance: none; -webkit-appearance: none;
+  padding-right: calc(var(--s3) * 2 + 10px);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%236e6b64' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--s3) center;
+}
+@media (prefers-color-scheme: dark) {
+  select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2397938c' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+}
+select:hover { background-color: var(--panel); }
+/* A select with no value yet reads as a placeholder, like an empty input. */
+select:has(option[value=""]:checked) { color: var(--faint); }
+
+/* Where the browser allows it, the open list is ours too. Left native
+   elsewhere: a half-styled popup is worse than an honest system one. */
+@supports (appearance: base-select) {
+  select, ::picker(select) { appearance: base-select; }
+  select { background-image: none; padding-right: var(--s3); }
+
+  select::picker-icon {
+    color: var(--muted);
+    transition: transform .15s ease;
+    margin-left: auto;
+  }
+  select:open::picker-icon { transform: rotate(180deg); }
+
+  ::picker(select) {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--panel);
+    box-shadow: var(--lift-3);
+    padding: var(--s1);
+    margin-top: var(--s1);
+    /* Stay below the field, and shrink rather than jump.
+
+       The browser's own fallback flips the list above the field far too eagerly
+       — measured at 365px of clear space beneath a list only 184px tall, which
+       puts the jump in the middle of the screen and covers whatever you were
+       reading. Suppressing the fallback leaves the UA's `max-height: stretch`
+       in charge: the list fills the room there is and scrolls inside itself, so
+       it stays put down to about 100px of space and only flips in the last
+       50px, where it truly cannot fit. */
+    position-try-fallbacks: none;
+    overflow-y: auto;
+    /* The browser's default is a hard square hairline in its own colour. */
+    opacity: 0; transition: opacity .12s, overlay .12s allow-discrete,
+                            display .12s allow-discrete;
+  }
+  ::picker(select):popover-open { opacity: 1; }
+
+  /* static/selects.js sets this for one opening, when the field is at the very
+     end of the document and no amount of scrolling can make room below it.
+     Then, and only then, the list is allowed upward. */
+  select.flip-up::picker(select) {
+    position-try-fallbacks: flip-block;
+    margin-top: 0; margin-bottom: var(--s1);
+  }
+
+  option {
+    display: flex; align-items: center; gap: var(--s2);
+    padding: 7px var(--s3); border-radius: 5px;
+    font: inherit; color: var(--ink); background: transparent;
+    border: 0;
+  }
+  option:hover, option:focus { background: var(--sunken); outline: none; }
+  option:checked { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
+  /* The tick is redundant next to the highlight, and it shifts every label. */
+  option::checkmark { display: none; }
+}
 textarea { resize: vertical; min-height: 96px; line-height: 1.6; }
 input:hover, textarea:hover, select:hover { border-color: var(--accent-line); }
 input:focus, textarea:focus, select:focus {

@@ -1,7 +1,7 @@
-# Lancy Content Flow — structured documents, written with a local LLM
+# Lancy Content Flow — create structured documents, assisted by a local LLM
 
-An open-source, self-hosted alternative for filling in structured documents — **8D and 4D problem
-solving reports, CAPA write-ups, product specifications, deviation notices** — with a local LLM.
+An open-source, self-hosted solution for filling in structured documents assisted by a local LLM: **8D and 4D problem
+solving reports, product specifications, deviation notices**.
 Define the sections and the quality criteria once, paste your raw notes, and accept or decline what
 the assistant proposes. Nothing leaves your network.
 
@@ -34,8 +34,7 @@ Design: [docs/DESIGN.md](docs/DESIGN.md) · Architecture: [docs/ARCHITECTURE.md]
 
 ## What this is for
 
-The shipped examples are quality-management documents because that is where the problem bites
-hardest: an **8D report** or a **CAPA** has a fixed structure, a customer who will read it closely,
+The shipped examples are quality-management documents because that is where the problem materializes: an **8D report** or a **requirement document** has a fixed structure, a customer who will read it closely,
 and rules that a well-written paragraph can still break — containment that does not cover every
 population of parts implicated in the problem description, a five-why chain that stops at human
 error instead of reaching a systemic cause, a claim with no evidence behind it. Those are exactly
@@ -60,7 +59,7 @@ the 8D is just the largest one shipped.
 
 **Working end to end.** A document type is defined, a document is created from it, notes are pasted
 and sorted into sections, the assistant drafts, a person accepts, the quality gate runs, and a
-branded .docx comes out the other side. All of it self-hosted.
+branded .docx comes out the other side. Admin section for setup and usage insights. Currently no user management and role concept. 
 
 Everything on the build order in [ARCHITECTURE §14](docs/ARCHITECTURE.md) is done except the last
 two, and both are additive — nothing already built is waiting on them:
@@ -89,9 +88,6 @@ two, and both are additive — nothing already built is waiting on them:
 
 What is left, in order, is in [BACKLOG.md](docs/BACKLOG.md).
 
-**The milestone that matters:** a 4D report can be driven from empty to a clean quality gate with
-hand-written content and no model involved. If that ever stops working, the deterministic core is
-broken — and that is far cheaper to discover here than through an LLM.
 
 ```
 $ lcf walkthrough
