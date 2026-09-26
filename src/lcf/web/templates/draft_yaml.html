@@ -13,7 +13,7 @@
   <h2>{{ draft.title or "Untitled" }} as YAML</h2>
   <p class="lead">
     What this draft would be written to a file as. Edit it here and it goes back
-    into the builder — the two are the same draft.
+    into the builder, the two are the same draft.
   </p>
 
   {% if yaml_error %}
@@ -49,7 +49,7 @@
   </div>
   {% else %}
   <p class="hint">
-    A draft is allowed to be unfinished — this is what still stands between it and
+    A draft is allowed to be unfinished: this is what still stands between it and
     publishing.
   </p>
   {% for p in review.problems %}

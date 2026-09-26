@@ -12,7 +12,7 @@
         <td>
           {% if c.type|string == 'enum' %}
             <select name="r{{ ri }}.{{ c.key }}">
-              <option value="">—</option>
+              <option value="">(none)</option>
               {% for option in c.values or [] %}
               <option value="{{ option }}" {{ 'selected' if v|string == option }}>{{ option }}</option>
               {% endfor %}

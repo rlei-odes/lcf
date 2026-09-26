@@ -798,7 +798,7 @@ async def publish_draft(request: Request, draft_id: UUID):
                 request,
                 loaded,
                 focus=builder.text(await request.form(), "focus") or None,
-                conflict="This cannot be published yet — the problems below say why.",
+                conflict="This cannot be published yet: the problems below say why.",
             )
         try:
             version = await drafts.publish(s, draft_id)
@@ -837,7 +837,7 @@ async def edit_doc_type(request: Request, key: str):
         heading=f"Edit {spec.title}",
         note=(
             f"Opened as v{spec.version}. v{latest.version} stays as it is"
-            + (f" — {in_use} document(s) are built on it." if in_use else ".")
+            + (f": {in_use} document(s) are built on it." if in_use else ".")
         ),
     )
 
@@ -1101,7 +1101,7 @@ async def start_intake(request: Request, document_id: UUID, text: str = Form("")
         return page(
             request,
             "partials/notice.html",
-            message="Nothing was pasted — the box was empty.",
+            message="Nothing was pasted: the box was empty.",
         )
 
     async with session() as s:

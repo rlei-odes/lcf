@@ -56,7 +56,7 @@ def cmd_lint(args) -> int:
     requirements = sum(len(s.requirements) for s in spec.sections)
     questions = sum(len(s.questions) for s in spec.sections)
     print(
-        f"{spec.id} v{spec.version} OK — {sections} sections, {questions} questions, "
+        f"{spec.id} v{spec.version} OK: {sections} sections, {questions} questions, "
         f"{requirements} requirements, {len(spec.quality_criteria)} quality criteria"
     )
     return 0
@@ -86,7 +86,7 @@ async def _publish(path: Path) -> tuple[str, int]:
             await doc_types.publish(s, spec)
             print(f"published {spec.id} v{spec.version}")
         except doc_types.VersionExists:
-            print(f"{spec.id} v{spec.version} already published — reusing it")
+            print(f"{spec.id} v{spec.version} already published: reusing it")
     return spec.id, spec.version
 
 
@@ -201,7 +201,7 @@ async def _walkthrough(spec_path: Path, content_path: Path) -> int:
         )
     print(f"  revision {result.revision_seq} appended")
     if result.dependents:
-        print(f"  built on this: {', '.join(result.dependents)} — still valid?")
+        print(f"  built on this: {', '.join(result.dependents)}. Still valid?")
 
     print("\nblame for d2_problem.detection")
     async with session() as s:

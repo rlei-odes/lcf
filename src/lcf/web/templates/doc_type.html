@@ -163,7 +163,7 @@
   <div class="check {{ c.severity }}">
     <span class="mark">{{ '!' if c.severity|string == 'blocker' else '·' }}</span>
     <span>
-      <strong>{{ c.title }}</strong> — {{ c|describe_criterion }}
+      <strong>{{ c.title }}</strong> - {{ c|describe_criterion }}
       <span class="where">
         {{ c.id }} · {{ c.kind }} · over {{ c|scope }} ·
         {{ 'blocks export' if c.severity|string == 'blocker' else 'warning' }}

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ section.title }} — {{ document.title }}{% endblock %}
+{% block title %}{{ section.title }} · {{ document.title }}{% endblock %}
 {% block subtitle %}
   <a href="/documents/{{ document.id }}">{{ document.title }}</a> · {{ spec.title }} v{{ spec.version }}
 {% endblock %}

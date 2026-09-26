@@ -22,7 +22,7 @@
   <h3>What this section is</h3>
   <p class="lead">
     Everything in this box is read by the person writing the document <em>and</em>
-    given to the assistant. You are not writing instructions for a machine — you
+    given to the assistant. You are not writing instructions for a machine, you
     are writing what a new colleague would need, and the assistant is given the
     same thing.
   </p>
@@ -55,7 +55,7 @@
         {{ m.info('Shown to the author, and given to the assistant as advice when it drafts this section. Not used anywhere else.') }}
       </label>
       <p class="hint">
-        The note a senior colleague would give. Say what a good one contains — not
+        The note a senior colleague would give. Say what a good one contains, not
         how to phrase a request to a machine.
       </p>
       <textarea id="s-guidance" name="guidance">{{ sec.guidance or '' }}</textarea>
@@ -64,7 +64,7 @@
     <div class="field">
       <label for="s-style">
         How this section should read
-        {{ m.info('Tone and voice only. Layered under the document type\'s own house style, and given to the assistant as how to write — never as what to say.') }}
+        {{ m.info('Tone and voice only. Layered under the document type\'s own house style, and given to the assistant as how to write, never as what to say.') }}
       </label>
       <p class="hint">Optional. Narrows the type's house style for this section only.</p>
       <textarea id="s-style" name="style" rows="2">{{ sec.style or '' }}</textarea>
@@ -94,7 +94,7 @@
       <legend>Section properties</legend>
       <label class="option">
         <input type="checkbox" name="required" {% if sec.get('required', true) %}checked{% endif %}>
-        <span>Every document must have this section — it cannot be skipped</span>
+        <span>Every document must have this section, it cannot be skipped</span>
       </label>
       <label class="option">
         <input type="checkbox" name="uses_images" {% if sec.get('uses_images') %}checked{% endif %}>
@@ -113,7 +113,7 @@
     This is how a section gets written without the author having to write it.
     They answer a few short questions; the assistant drafts the content from those
     answers and proposes it; they accept, edit or decline. Ask for the facts only
-    they know — the answers themselves never appear in the document, so ask
+    they know. The answers themselves never appear in the document, so ask
     plainly rather than in finished prose.
   </p>
   <p class="hint">
@@ -219,7 +219,7 @@
   </p>
   <p class="hint">
     If this section is simply a piece of prose, the single paragraph below is all
-    it needs — rename it if you like and move on. Add more only when the section
+    it needs. Rename it if you like and move on. Add more only when the section
     has genuinely separate parts, or needs a table or a set of labelled fields.
   </p>
   {{ m.problems(review, at + ['blocks']) }}
@@ -256,7 +256,7 @@
             <label>What shape it takes</label>
             <select name="kind">
               {% for value, label, blurb in builder.BLOCK_KINDS %}
-              <option value="{{ value }}" {% if b.get('kind') == value %}selected{% endif %}>{{ label }} — {{ blurb }}</option>
+              <option value="{{ value }}" {% if b.get('kind') == value %}selected{% endif %}>{{ label }} - {{ blurb }}</option>
               {% endfor %}
             </select>
             {{ m.problems(review, bat + ['kind']) }}
@@ -313,7 +313,7 @@
     <input type="hidden" name="op" value="add">
     <input type="hidden" name="section" value="{{ sec.key }}">
     <input type="text" name="label" required maxlength="80"
-           placeholder="Name it — “Summary”, “Findings”, “Risks”…"
+           placeholder="Name it: “Summary”, “Findings”, “Risks”…"
            aria-label="A short name for the new block">
     <select name="kind" aria-label="What shape it takes">
       {% for value, label, blurb in builder.BLOCK_KINDS %}
@@ -323,7 +323,7 @@
     <button type="submit">Add</button>
   </form>
   <p class="hint">
-    A short heading, the way it should appear in the finished document — what the
+    A short heading, the way it should appear in the finished document: what the
     box is called, not what belongs in it. Say what belongs in it under “a hint
     beside it”, once the box exists.
   </p>
@@ -334,7 +334,7 @@
   <h3>What it is checked against</h3>
   <p class="lead">
     These are the instructions. Each one is given to the assistant as a target
-    before it writes, and used to grade the result afterwards — so there is
+    before it writes, and used to grade the result afterwards. So there is
     nothing else to write down, and the two can never disagree.
   </p>
 

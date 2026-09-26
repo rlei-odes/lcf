@@ -386,6 +386,9 @@ pre.prompt {
    rather than offering a button that would do nothing. See static/dirty.js. */
 .saved-note { font-size: 12px; color: var(--muted); }
 form.is-dirty .saved-note { display: none; }
+/* Proposed answers are stored, but "Saved" would read as settled, and they are
+   not: nobody has confirmed them yet. */
+form[data-unconfirmed] .saved-note { display: none; }
 .why.blocker { color: var(--blocker); }
 
 /* An "i" that answers the one question these forms keep raising: does what I

@@ -123,7 +123,7 @@
   <div class="field">
     <label>Must match a value already in</label>
     <p class="hint">
-      Any table column in this document type — that is what a cross-reference is
+      Any table column in this document type, that is what a cross-reference is
       for: tying one section's rows to another's.
     </p>
     <select name="references">
@@ -154,7 +154,7 @@
       {% if kind == 'consistency' %}What must stay consistent{% else %}What a good one looks like{% endif %}
     </label>
     <p class="hint">
-      The only free text in a document type, and it is a check — written once,
+      The only free text in a document type, and it is a check: written once,
       shown to the assistant as a target, and used to grade what comes back.
     </p>
     <textarea name="rubric" placeholder="{% if kind == 'consistency' %}The parts named here must be the same parts named in the problem description.{% else %}Names a specific mechanism, not a category. “Seal lip inverted during press-fit” rather than “assembly error”.{% endif %}"

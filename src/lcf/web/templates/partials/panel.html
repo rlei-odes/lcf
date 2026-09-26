@@ -2,6 +2,11 @@
 
    Both are swapped together because section statuses in the nav change as soon
    as a block is saved — swapping only the panel would leave the nav lying. #}
+
+{# Answers intake proposed that nobody has agreed to yet. They gate drafting, so
+   both the questions card and the drafting hint below speak about them. #}
+{% set unconfirmed = questions|selectattr('proposed')|list %}
+
 <div class="layout" id="workspace">
 
   <nav class="sections card">
@@ -71,7 +76,7 @@
       <h3>What you supplied about this</h3>
       <p class="lead">
         Your own words, filed here from what you pasted. The draft is written from
-        these — nothing else about this case reaches the assistant.
+        these, nothing else about this case reaches the assistant.
       </p>
       {% for e in evidence %}
       <blockquote class="quote">
@@ -87,21 +92,22 @@
       <h3>Questions{% if state.missing_answers %} · {{ state.missing_answers|length }} open{% endif %}</h3>
       <p class="lead">
         Answer these and the assistant can draft the section for you. What you
-        write here is the material it works from — it is never copied into the
+        write here is the material it works from, it is never copied into the
         document as it stands.
       </p>
-      {% if questions|selectattr('proposed')|list %}
+      {% if unconfirmed %}
       <div class="notice">
         <strong>Some answers were filled in from your material.</strong>
         <div class="hint">
-          They are proposals until you save them. Read each one against the words
-          it came from, correct what is wrong, then save — drafting waits for that.
+          They are proposals until you confirm them. Read each one against the
+          words it came from, correct what is wrong, then confirm - drafting waits
+          for that. Confirming them all unchanged is a fine answer.
         </div>
       </div>
       {% endif %}
       <form hx-post="/documents/{{ document.id }}/sections/{{ section.key }}/answers"
             hx-target="#workspace" hx-swap="outerHTML" hx-disabled-elt="find button"
-            data-dirty="your answers">
+            data-dirty="your answers" {{ 'data-unconfirmed' if unconfirmed }}>
         {% for q in questions %}
         <div class="field{{ ' proposed' if q.proposed }}">
           <label for="q-{{ q.question.key }}">
@@ -112,7 +118,7 @@
           {% if q.question.hint %}<div class="hint">{{ q.question.hint }}</div>{% endif %}
           {% if q.question.type == 'choice' %}
             <select id="q-{{ q.question.key }}" name="q.{{ q.question.key }}">
-              <option value="">—</option>
+              <option value="">(none)</option>
               {% for option in q.question.options %}
               <option value="{{ option }}" {{ 'selected' if q.text == option }}>
                 {{ option|replace('_', ' ') }}</option>
@@ -120,7 +126,7 @@
             </select>
           {% elif q.question.type == 'boolean' %}
             <select id="q-{{ q.question.key }}" name="q.{{ q.question.key }}">
-              <option value="">—</option>
+              <option value="">(none)</option>
               <option value="true" {{ 'selected' if q.text == 'true' }}>Yes</option>
               <option value="false" {{ 'selected' if q.text == 'false' }}>No</option>
             </select>
@@ -137,9 +143,14 @@
         </div>
         {% endfor %}
         <div class="actions">
-          <button type="submit" data-save>Save answers</button>
+          <button type="submit" data-save class="{{ 'primary' if unconfirmed }}">
+            {{ 'Confirm these answers' if unconfirmed else 'Save answers' }}
+          </button>
           <span class="saved-note">Saved</span>
           <span class="htmx-indicator working">Saving…</span>
+          {% if unconfirmed %}
+          <span class="why">{{ unconfirmed|length }} waiting on you. Nothing is drafted until they are confirmed.</span>
+          {% endif %}
         </div>
       </form>
     </div>
@@ -163,7 +174,7 @@
       </p>
       {% for g in gaps %}
       <div class="check"><span class="mark">?</span>
-        <span>{{ g.question }}<span class="where">{{ g.block }} — {{ g.why }}</span></span>
+        <span>{{ g.question }}<span class="where">{{ g.block }} - {{ g.why }}</span></span>
       </div>
       {% endfor %}
     </div>
@@ -195,12 +206,12 @@
       <p class="hint">
         {%- if not blocks %}
           This section has nothing to write in it. That is a fault in the document
-          type, not in anything you did — it cannot be filled in or exported as it
+          type, not in anything you did. It cannot be filled in or exported as it
           stands.
         {%- elif state.blocked_by %}Drafting needs the sections above completed first.
-        {%- elif questions|selectattr('proposed')|list %}Confirm the answers filled in from your
-          material — read them, then save. Drafting waits for that, not for the assistant.
-        {%- elif state.missing_answers %}Answer the required questions first — the draft is
+        {%- elif unconfirmed %}Confirm the answers filled in from your material. Read them, then
+          press Confirm above. Drafting waits for that, not for the assistant.
+        {%- elif state.missing_answers %}Answer the required questions first, the draft is
           written from them.
         {%- elif not draftable %}Everything here is written already. Clear a box below to have
           the assistant try it again.
@@ -227,7 +238,7 @@
               <input type="hidden" name="section" value="{{ section.key }}">
               <button type="submit">Decline</button>
             </form>
-            <span class="why">Accept, then edit below — nothing is written until you do.</span>
+            <span class="why">Accept, then edit below. Nothing is written until you do.</span>
           </div>
         </div>
         {% endfor %}
@@ -290,7 +301,7 @@
         {% for r in state.results %}
         <div class="check {{ r.severity if r.failed else 'pass' }}">
           <span class="mark">{{ '✗' if r.failed else ('·' if r.outcome == 'not_applicable' else '✓') }}</span>
-          <span>{{ r.check_id }}{% if r.reason %} — {{ r.reason }}{% endif %}</span>
+          <span>{{ r.check_id }}{% if r.reason %} - {{ r.reason }}{% endif %}</span>
         </div>
         {% endfor %}
       {% else %}

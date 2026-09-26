@@ -13,7 +13,7 @@
       What each row of this table records. Checks below can name these, so give
       them the names a reader would use.
     {% else %}
-      A label and a value each — like the header of a form.
+      A label and a value each, like the header of a form.
     {% endif %}
   </p>
 
@@ -51,7 +51,7 @@
 
           {% if c.get('type') == 'enum' %}
           <div class="col-values">
-            <label>The values it may take — one per line</label>
+            <label>The values it may take, one per line</label>
             <textarea name="values" rows="3">{{ (c.get('values') or []) | join('\n') }}</textarea>
             {{ m.problems(review, cat + ['values']) }}
           </div>

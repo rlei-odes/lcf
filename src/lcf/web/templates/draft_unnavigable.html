@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ draft.title or "Draft" }} — cannot be shown as forms{% endblock %}
+{% block title %}{{ draft.title or "Draft" }} · cannot be shown as forms{% endblock %}
 {% block subtitle %}<a href="/doc-types">document types</a>{% endblock %}
 
 {# Every invalid state the forms themselves produce is still a draft the builder
@@ -10,7 +10,7 @@
 <div class="card">
   <h2>This draft cannot be shown as forms</h2>
   <p class="lead">
-    It was edited as YAML into a shape the builder has no fields for — a list
+    It was edited as YAML into a shape the builder has no fields for. A list
     where it expects sections, or something that is not a list at all. Nothing is
     lost; it is all still in the text.
   </p>

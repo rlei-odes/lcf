@@ -29,8 +29,13 @@
     if (form.__clean === null) return;
     var dirty = snapshot(form) !== form.__clean;
     form.classList.toggle("is-dirty", dirty);
+    // A form marked data-unconfirmed holds values nobody has agreed to yet —
+    // answers intake proposed. Pressing Save there is the confirmation, not an
+    // edit, so it stays pressable with nothing typed. Without this the author
+    // who wants to change none of them has no way past the gate at all.
+    var savable = dirty || form.hasAttribute("data-unconfirmed");
     form.querySelectorAll("[data-save]").forEach(function (button) {
-      button.disabled = !dirty;
+      button.disabled = !savable;
     });
     guards();
   }

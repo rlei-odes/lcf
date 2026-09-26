@@ -373,8 +373,8 @@ def _check(
     if len(parts) > 2 and parts[2] not in ATTRIBUTES[block.kind]:
         allowed = ", ".join(sorted(ATTRIBUTES[block.kind]))
         problems.append(
-            f"{tag}: {name!r} is a {block.kind.value} block and has no {parts[2]!r} — "
-            f"try one of: {allowed}"
+            f"{tag}: {name!r} is a {block.kind.value} block and has no {parts[2]!r}. "
+            f"Try one of: {allowed}"
         )
 
 

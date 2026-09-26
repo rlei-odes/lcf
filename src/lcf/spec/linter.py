@@ -88,7 +88,7 @@ def _keys_fit(spec: DocTypeSpec) -> list[LintError]:
 
 
 def _too_long(what: str) -> str:
-    return f"{what} is longer than {MAX_KEY} characters — rename it to something shorter"
+    return f"{what} is longer than {MAX_KEY} characters: rename it to something shorter"
 
 
 def _sections_can_hold_content(spec: DocTypeSpec) -> list[LintError]:
@@ -105,7 +105,7 @@ def _sections_can_hold_content(spec: DocTypeSpec) -> list[LintError]:
     return [
         LintError(
             section.key,
-            "section has nothing to write in it — give it at least one block",
+            "section has nothing to write in it: give it at least one block",
             ("sections", index, "blocks"),
         )
         for index, section in enumerate(spec.sections)

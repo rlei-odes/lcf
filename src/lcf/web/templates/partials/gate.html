@@ -1,7 +1,7 @@
 {% for r in report.blockers %}
 <div class="check blocker">
   <span class="mark">✗</span>
-  <span><strong>blocker</strong> · {{ r.check_id }} — {{ r.reason }}
+  <span><strong>blocker</strong> · {{ r.check_id }} - {{ r.reason }}
     {% if r.evidence %}<span class="where">{{ r.evidence|join(' · ') }}</span>{% endif %}
   </span>
 </div>
@@ -9,7 +9,7 @@
 {% for r in report.warnings %}
 <div class="check warning">
   <span class="mark">✗</span>
-  <span><strong>warning</strong> · {{ r.check_id }} — {{ r.reason }}</span>
+  <span><strong>warning</strong> · {{ r.check_id }} - {{ r.reason }}</span>
 </div>
 {% endfor %}
 {% if report.passes %}
@@ -18,6 +18,6 @@
 {% if report.not_evaluated %}
 <div class="check">
   <span class="mark">·</span>
-  <span>{{ report.not_evaluated|length }} check(s) need a model — not evaluated yet</span>
+  <span>{{ report.not_evaluated|length }} check(s) need a model: not evaluated yet</span>
 </div>
 {% endif %}

@@ -33,7 +33,7 @@
     {%- elif report.blockers -%}
       {{ report.blockers|length }} blocking problem(s) unresolved.
     {%- else -%}
-      {{ report.not_evaluated|length }} check(s) have never been run — run the full
+      {{ report.not_evaluated|length }} check(s) have never been run - run the full
       check above first. A document nobody checked is not a document that passed.
     {%- endif -%}
   </p>
@@ -81,7 +81,7 @@
               past {{ e.blockers }} blocking problem(s)
             {%- else -%}
               before the checks were run
-            {%- endif %} — {{ e.override_reason }}
+            {%- endif %} - {{ e.override_reason }}
           </span>
           {% endif %}
         </span>

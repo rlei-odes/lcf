@@ -174,7 +174,7 @@ def _format(view, section, block, value, req) -> CheckResult:
     where = f"{section.key}.{block.key}"
     if _blank(value):
         return not_applicable(
-            req.id, req.severity, f"{block.label} is empty — presence is a separate check"
+            req.id, req.severity, f"{block.label} is empty: presence is a separate check"
         )
     allowed = _allowed_enum_values(block, req.field)
     bad, evidence = [], []

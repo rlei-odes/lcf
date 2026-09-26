@@ -194,11 +194,11 @@ def format_report(report: Report) -> str:
     for result in report.blockers:
         mark = "·" if result.unevaluated else "✗"
         label = "UNCHECKED" if result.unevaluated else "BLOCKER  "
-        lines.append(f"{label}{mark}  {result.check_id} — {result.reason}")
+        lines.append(f"{label}{mark}  {result.check_id}: {result.reason}")
         if result.evidence:
             lines.append(f"            → {', '.join(result.evidence)}")
     for result in report.warnings:
-        lines.append(f"WARNING  ✗  {result.check_id} — {result.reason}")
+        lines.append(f"WARNING  ✗  {result.check_id}: {result.reason}")
     if report.passes:
         lines.append(f"PASS     ✓  {len(report.passes)} check(s)")
     if report.not_evaluated:

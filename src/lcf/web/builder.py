@@ -25,7 +25,7 @@ from lcf.services import drafts
 # --- what the rule builder reads ---------------------------------------------
 
 BLOCK_KINDS: list[tuple[str, str, str]] = [
-    ("prose", "Paragraphs", "Written text — the usual one."),
+    ("prose", "Paragraphs", "Written text: the usual one."),
     ("list", "A list of points", "Short items, one per line."),
     ("table", "A table", "Rows and columns you define."),
     ("keyvalue", "A set of labelled fields", "Like a form header: a label and a value."),

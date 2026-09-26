@@ -241,7 +241,7 @@ title: My Document Type
 description: What this document is for, in one line.
 language: en
 
-# Optional. Layered under the system default, above nothing — how the writing
+# Optional. Layered under the system default, above nothing: how the writing
 # should read across the whole type. Never instructions about *what* to write.
 style: >
   Write plainly, in the past tense, for a reader outside the team.
