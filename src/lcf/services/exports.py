@@ -141,6 +141,25 @@ async def create(
     session.add(export)
     await session.flush()
 
+    from lcf.services import events
+
+    # The same wording the export card uses. "past 0 blocking problems" is what
+    # you get from naming only one half of why a gate did not pass.
+    past = GateBlocked(blockers, unchecked).summary if not report.passed else ""
+    await events.record(
+        "export.made",
+        f"Exported {rendered.filename}" + (f" past {past}" if past else ""),
+        category="document",
+        ok=report.passed,
+        document_id=document_id,
+        meta={
+            "format": fmt,
+            "bytes": len(rendered.data),
+            "gate_passed": report.passed,
+            "stored": bool(uri),
+        },
+    )
+
     if reason:
         logger.warning(
             "document {} exported as {} past {} blocker(s): {}",

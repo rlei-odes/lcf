@@ -374,3 +374,33 @@ class CheckResult(Base):
     confidence: Mapped[float | None] = mapped_column(Float)
 
     assessment: Mapped[Assessment] = relationship(back_populates="results")
+
+
+class Event(Base):
+    """What happened, for an administrator watching the installation.
+
+    Not a debug log and not an audit trail of content — revisions already are
+    that. This is operational: which model calls were made, how long they took,
+    which background work succeeded, and what came out the other end.
+
+    Deliberately not joined to anything. A document deleted later should not
+    take the record of the work done on it with it, so `document_id` is a plain
+    column with no foreign key, and the summary carries enough to read the row
+    on its own.
+    """
+
+    __tablename__ = "event"
+
+    id: Mapped[UUID] = _pk()
+    at: Mapped[datetime] = _created()
+    # assistant | job | document | type — what the row is about, for filtering.
+    category: Mapped[str] = mapped_column(String(20), nullable=False)
+    # A dotted name: llm.call, job.finished, export.made. Specific enough to
+    # count, stable enough to filter on.
+    kind: Mapped[str] = mapped_column(String(50), nullable=False)
+    ok: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    document_id: Mapped[UUID | None] = mapped_column()
+    # Numbers worth showing beside the row: duration_ms, tokens, per_second.
+    # A column apiece would be mostly nulls, since each kind measures its own.
+    meta: Mapped[dict | None] = mapped_column(JSONB)

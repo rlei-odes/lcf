@@ -28,7 +28,7 @@ def stub_llm(monkeypatch):
     calls: list[dict] = []
 
     def respond(payload, *, fail: Exception | None = None):
-        async def fake(system, user, schema, schema_name="response"):
+        async def fake(system, user, schema, schema_name="response", purpose=""):
             calls.append({"system": system, "user": user, "schema": schema})
             if fail is not None:
                 raise fail

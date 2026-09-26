@@ -10,6 +10,7 @@ borrow the request's transaction.
 """
 
 import asyncio
+import time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
@@ -70,15 +71,42 @@ async def enqueue(kind: str, document_id: UUID | None = None, scope: str | None 
     return detached
 
 
+# What a job is called where someone reads it, rather than where it is dispatched.
+_TITLES = {
+    "draft_section": "Drafted a section",
+    "intake": "Sorted pasted material",
+    "assess": "Ran the quality gate",
+}
+
+
 async def _run(job_id: UUID, kind: str, document_id: UUID | None, scope: str | None) -> None:
+    from lcf.services import events
+
     progress = Progress(job_id)
+    started = time.monotonic()
+
+    def took() -> dict[str, Any]:
+        return {"duration_ms": int((time.monotonic() - started) * 1000), "job": kind}
+
+    title = _TITLES.get(kind, kind.replace("_", " ").capitalize())
+    # Intake scopes itself by evidence id, which says nothing to a reader. Only
+    # a scope short enough to be a section key earns a place in the summary.
+    where = f": {scope}" if scope and len(scope) < 40 and "-" not in scope else ""
     try:
         result = await _handlers[kind](document_id, scope, progress)
         # The last progress message is kept: it says what the job was doing when
         # it finished, which is worth having when reading a row back later.
         await _update(job_id, status="succeeded", result=result, finished_at=datetime.now(UTC))
+        await events.record(
+            "job.finished", f"{title}{where}", category="job",
+            document_id=document_id, meta=took() | (result or {}),
+        )
     except asyncio.CancelledError:
         await _update(job_id, status="failed", error="cancelled", finished_at=datetime.now(UTC))
+        await events.record(
+            "job.cancelled", f"{title}{where} was cancelled", category="job",
+            ok=False, document_id=document_id, meta=took(),
+        )
         raise
     except Exception as exc:
         logger.exception("job {} ({}) failed", job_id, kind)
@@ -87,6 +115,10 @@ async def _run(job_id: UUID, kind: str, document_id: UUID | None, scope: str | N
             status="failed",
             error=f"{type(exc).__name__}: {exc}",
             finished_at=datetime.now(UTC),
+        )
+        await events.record(
+            "job.failed", f"{title}{where} failed: {type(exc).__name__}: {exc}",
+            category="job", ok=False, document_id=document_id, meta=took(),
         )
 
 

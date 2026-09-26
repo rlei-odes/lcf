@@ -181,9 +181,18 @@ main { max-width: var(--measure); margin: 0 auto; padding: var(--s6) var(--s5) v
 }
 /* A wider left lane, for a lane that holds a form rather than a list of links. */
 .layout.split { grid-template-columns: 352px minmax(0, 1fr); }
+
+/* Sticky only works inside a containing block taller than the element, and a
+   grid item wrapped around it is exactly as tall as it is — so the lane must be
+   a *direct* grid child, whose containing block is the whole row. Wrapping one
+   in a <div> silently turns sticky back into static and it scrolls away. */
+.layout > nav.sections,
+.layout > .lane-sticky { position: sticky; top: calc(56px + var(--s4)); align-self: start; }
+
 @media (max-width: 980px) {
   .layout, .layout.split { grid-template-columns: 1fr; gap: var(--s4); }
-  .layout.split > div:first-child > .card { position: static !important; }
+  .layout > nav.sections,
+  .layout > .lane-sticky { position: static; }
 }
 
 .card {
@@ -209,7 +218,6 @@ p.lead:last-child { margin-bottom: 0; }
    The orientation rail: where you are, how far in, what is left.
    --------------------------------------------------------------------------- */
 
-nav.sections { position: sticky; top: calc(56px + var(--s4)); }
 .rail-head { padding: 0 0 var(--s3); border-bottom: 1px solid var(--line-2); margin-bottom: var(--s2); }
 .rail-head .rail-title {
   font-size: 14px; font-weight: 650; letter-spacing: -.01em;
@@ -546,6 +554,41 @@ pre.probe-out {
   background: var(--sunken); border-radius: var(--radius-sm);
   max-height: 260px; overflow-y: auto;
 }
+
+/* An anchor jump scrolls its target to the very top, which on a page with a
+   sticky app bar puts the heading underneath it. */
+[id] { scroll-margin-top: calc(56px + var(--s4)); }
+
+/* Filters above the log. A chip that is on reads as pressed, not as a link. */
+.filters { display: flex; flex-wrap: wrap; gap: var(--s1); margin-bottom: var(--s3); }
+.filters .chip { text-decoration: none; cursor: pointer; }
+.filters .chip:hover { border-color: var(--accent-line); color: var(--ink); }
+.filters .chip.on {
+  background: var(--accent); border-color: var(--accent); color: var(--on-accent);
+}
+
+/* The event log. Dense on purpose: it is read by scanning, not by reading.
+   The kind chip is fixed-width so the summaries line up into a column. */
+ul.log li { padding: var(--s2) 0; align-items: baseline; }
+ul.log .chip.kind {
+  flex: none; width: 82px; text-align: center; font-size: 10px;
+  text-transform: uppercase; letter-spacing: .05em; font-family: var(--sans);
+  font-weight: 650; padding: 2px 6px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap;
+}
+ul.log .chip.k-assistant { background: var(--accent-soft); color: var(--accent-ink); border-color: var(--accent-line); }
+ul.log .chip.k-job { background: var(--sunken); color: var(--muted); }
+ul.log .chip.k-document { background: var(--ok-soft); color: var(--ok); border-color: color-mix(in srgb, var(--ok) 30%, transparent); }
+ul.log .chip.k-type { background: var(--warning-soft); color: var(--warning); border-color: color-mix(in srgb, var(--warning) 30%, transparent); }
+@media (max-width: 720px) { ul.log .chip.kind { width: auto; } }
+ul.log .log-body { flex: 1; min-width: 0; }
+ul.log .log-summary { font-size: 13.5px; }
+ul.log .log-meta {
+  display: block; font-family: var(--mono); font-size: 11.5px;
+  color: var(--faint); margin-top: 1px;
+}
+ul.log .log-doc { font-size: 12px; }
+ul.log .meta { white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 /* Settings, read-only. Keys quiet, values in mono so a URL is scannable. */
 table.config { margin-bottom: var(--s2); }

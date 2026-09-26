@@ -10,6 +10,7 @@ an endpoint that drops a constraint does not tell you it dropped it.
 """
 
 import json
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -52,6 +53,55 @@ class Completion:
     model: str
     duration_ms: int
     attempts: int
+    # Counted from the stream rather than asked for: the response is abandoned
+    # the moment its JSON object closes, so the usage chunk a server sends at
+    # the end never arrives. Chunks are one token each on every server this runs
+    # against, which is why the figure is reported as approximate.
+    chunks: int = 0
+    chars: int = 0
+
+    @property
+    def per_second(self) -> float:
+        return round(self.chunks / (self.duration_ms / 1000), 1) if self.duration_ms else 0.0
+
+
+@dataclass
+class CallRecord:
+    """What one model call cost, for whoever is keeping the log."""
+
+    purpose: str
+    model: str
+    ok: bool
+    duration_ms: int
+    attempts: int
+    chunks: int
+    chars: int
+    detail: str = ""
+
+    @property
+    def per_second(self) -> float:
+        return round(self.chunks / (self.duration_ms / 1000), 1) if self.duration_ms else 0.0
+
+
+# Installed by `lcf.services.events`. A plain hook, because `engine/` calls
+# straight into here and must never reach a database: the provider hands over a
+# record and stays ignorant of what happens to it (ARCHITECTURE §3).
+_observer: Callable[[CallRecord], Awaitable[None]] | None = None
+
+
+def observe(fn: Callable[[CallRecord], Awaitable[None]] | None) -> None:
+    global _observer
+    _observer = fn
+
+
+async def _emit(record: CallRecord) -> None:
+    """Never let bookkeeping break the work it is describing."""
+    if _observer is None:
+        return
+    try:
+        await _observer(record)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("could not record llm call: {}", exc)
 
 
 @lru_cache
@@ -68,25 +118,45 @@ def client() -> AsyncOpenAI:
 
 
 async def complete_json(
-    system: str, user: str, schema: dict[str, Any], schema_name: str = "response"
+    system: str,
+    user: str,
+    schema: dict[str, Any],
+    schema_name: str = "response",
+    purpose: str = "",
 ) -> Completion:
-    """Ask for one JSON object matching `schema`, and insist on getting one."""
+    """Ask for one JSON object matching `schema`, and insist on getting one.
+
+    `purpose` names the call in the event log. It defaults to the schema name,
+    which is already a decent description of what was asked for.
+    """
     import time
 
     s = settings()
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
     started = time.monotonic()
     last_error = ""
+    chunks = chars = 0
+    label = purpose or schema_name
+
+    def elapsed() -> int:
+        return int((time.monotonic() - started) * 1000)
 
     for attempt in (1, 2):
         raw = ""
         problem: str | None = None
         try:
-            raw = await _stream_one_object(messages, schema, schema_name)
+            raw, streamed = await _stream_one_object(messages, schema, schema_name)
+            chunks += streamed
+            chars += len(raw)
         except _Padding as exc:
             problem = f"degenerate output: {exc}"
             raw = exc.partial
+            chars += len(raw)
         except Exception as exc:  # network, timeout, refusal
+            await _emit(
+                CallRecord(label, s.llm_model, False, elapsed(), attempt, chunks, chars,
+                           f"{type(exc).__name__}: {exc}")
+            )
             raise LLMUnavailable(f"{type(exc).__name__}: {exc}") from exc
 
         try:
@@ -112,15 +182,21 @@ async def complete_json(
                     }
                 )
                 continue
+            await _emit(
+                CallRecord(label, s.llm_model, False, elapsed(), attempt, chunks, chars, last_error)
+            )
             raise LLMMalformed(last_error)
 
+        await _emit(CallRecord(label, s.llm_model, True, elapsed(), attempt, chunks, chars))
         return Completion(
             data=data,
             raw=raw,
             prompt=f"{system}\n\n---\n\n{user}",
             model=s.llm_model,
-            duration_ms=int((time.monotonic() - started) * 1000),
+            duration_ms=elapsed(),
             attempts=attempt,
+            chunks=chunks,
+            chars=chars,
         )
 
     raise LLMMalformed(last_error)
@@ -128,7 +204,7 @@ async def complete_json(
 
 async def _stream_one_object(
     messages: list[dict[str, str]], schema: dict[str, Any], schema_name: str
-) -> str:
+) -> tuple[str, int]:
     """Stream the response and stop the moment the JSON object closes.
 
     A JSON grammar allows unlimited whitespace between tokens, and this model uses
@@ -164,11 +240,16 @@ async def _stream_one_object(
     in_string = False
     escaped = False
     run = 0
+    # One chunk is one token on every server this runs against. Counted here
+    # because the stream is abandoned as soon as the object closes, so the usage
+    # totals a server reports at the end never arrive.
+    chunks = 0
 
     try:
         async for chunk in stream:
             if not chunk.choices:
                 continue
+            chunks += 1
             piece = chunk.choices[0].delta.content or ""
             for char in piece:
                 out.append(char)
@@ -196,11 +277,11 @@ async def _stream_one_object(
                 elif char == "}":
                     depth -= 1
                     if started and depth == 0:
-                        return "".join(out)
+                        return "".join(out), chunks
     finally:
         await stream.close()
 
-    return "".join(out)
+    return "".join(out), chunks
 
 
 async def reachable() -> bool:

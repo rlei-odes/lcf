@@ -5,8 +5,7 @@
 <div class="layout split">
 
   {# Starting one is the whole point of this area, so it leads and stays put. #}
-  <div>
-    <div class="card hero" style="position:sticky;top:calc(56px + var(--s4))">
+  <div class="card hero lane-sticky">
       <h2>Start a document</h2>
       <p class="lead">Pick a type. Its sections, questions and quality criteria come with it.</p>
       {% if doc_types %}
@@ -29,7 +28,6 @@
       <p><a href="/doc-types">Build one in the doctype factory</a>, or publish an example:</p>
       <p><code>lcf seed</code></p>
       {% endif %}
-    </div>
   </div>
 
   <div>

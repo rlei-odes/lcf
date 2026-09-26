@@ -98,6 +98,16 @@ async def create(
         for spec_block in spec_section.blocks:
             session.add(Block(section_id=section.id, key=spec_block.key, kind=str(spec_block.kind)))
     await session.flush()
+
+    from lcf.services import events
+
+    await events.record(
+        "document.created",
+        f"Created \u201c{title or 'Untitled'}\u201d",
+        category="document",
+        document_id=document.id,
+        meta={"doc_type": spec.title, "version": spec.version},
+    )
     return document
 
 

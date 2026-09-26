@@ -28,6 +28,7 @@ from lcf.services import (
     doc_types,
     documents,
     drafts,
+    events,
     exports,
     intake,
     jobs,
@@ -63,6 +64,7 @@ def _localtime(value):
 
 
 templates.env.filters["localtime"] = _localtime
+templates.env.filters["event_label"] = events.label
 
 
 # The three things this application is for. The app bar names them, and every
@@ -120,6 +122,10 @@ templates.env.filters["scope"] = scope_of
 # the templates offer choices rather than free text.
 templates.env.globals["builder"] = builder
 templates.env.globals["drafts"] = drafts
+
+# Every model call is recorded from here on. Installed once, at the one place
+# that knows both halves exist — the provider must not import a database.
+events.install()
 
 app = FastAPI(title="Lancy Content Flow")
 app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
@@ -329,12 +335,24 @@ async def setup_seed(request: Request):
 
 
 @app.get("/admin", response_class=HTMLResponse)
-async def admin_page(request: Request):
-    """The installation seen from inside: what answers, what is in the database,
-    what ran, and what it was configured with. Every probe is read-only."""
+async def admin_page(request: Request, category: str = "", failures: str = ""):
+    """The installation seen from inside: what answers, what has been happening,
+    what is in the database, and what it was configured with. Read-only."""
+    failures_only = failures == "1"
     async with session() as s:
         state = await admin.health(s)
-    return page(request, "admin.html", health=state)
+        log = await events.recent(s, category=category or None, failures_only=failures_only)
+        activity = await events.counts(s)
+    return page(
+        request,
+        "admin.html",
+        health=state,
+        log=log,
+        activity=activity,
+        categories=events.CATEGORIES,
+        category=category,
+        failures_only=failures_only,
+    )
 
 
 # --- the rule builder's side -------------------------------------------------

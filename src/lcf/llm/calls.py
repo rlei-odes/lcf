@@ -69,7 +69,11 @@ async def draft_block(view: DocumentView, section: Section, block: Block, style:
     user = _runtime_data(view, section, block)  # 6. answers and current content
 
     completion = await complete_json(
-        system, user, draft_response_schema(block), schema_name=f"draft_{block.key}"
+        system,
+        user,
+        draft_response_schema(block),
+        schema_name=f"draft_{block.key}",
+        purpose="draft_block",
     )
     data = completion.data
     return BlockDraft(
@@ -119,7 +123,11 @@ async def map_evidence_to_sections(spec: DocTypeSpec, material: str) -> Mapping:
     user = f"## The author's material\n\n{material}"
 
     completion = await complete_json(
-        system, user, mapping_schema(keys, titles), schema_name="evidence_mapping"
+        system,
+        user,
+        mapping_schema(keys, titles),
+        schema_name="evidence_mapping",
+        purpose="map_evidence",
     )
     data = completion.data
 
@@ -198,7 +206,11 @@ async def prefill_answers(
     user = "\n\n".join(parts)
 
     completion = await complete_json(
-        system, user, prefill_schema(questions), schema_name=f"prefill_{section.key}"
+        system,
+        user,
+        prefill_schema(questions),
+        schema_name=f"prefill_{section.key}",
+        purpose="prefill_answers",
     )
     answers = completion.data.get("answers") or {}
 

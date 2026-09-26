@@ -2,37 +2,65 @@
 {% block title %}Admin · Lancy Content Flow{% endblock %}
 {% block subtitle %}installation{% endblock %}
 
-{# Three dependencies live outside this process, and each one fails somewhere
-   unhelpful: a 500 on save, an export that never arrives, a drafting job that
-   times out. Reaching them on purpose turns three mysteries into three rows. #}
+{# Read in the order an administrator asks: what is in here, is it working, how
+   is it configured, and what has it been doing. Activity is last because it is
+   the longest and the only one you scroll rather than scan. #}
 {% block content %}
 <div class="layout split">
 
-  <div>
-    <nav class="sections card" style="position:sticky;top:calc(56px + var(--s4))">
-      <div class="rail-head">
-        <p class="rail-title">Installation</p>
-        <div class="rail-sub">checked {{ health.checked_at.strftime('%H:%M:%S') }}</div>
-      </div>
-      <a href="#health" class="active"><span class="step-n">1</span>
-        <span class="step-name">Health</span>
-        <span class="step-count {{ 'all-in' if health.probes|selectattr('ok')|list|length == 3 }}">
-          {{ health.probes|selectattr('ok')|list|length }}/{{ health.probes|length }}</span></a>
-      <a href="#contents"><span class="step-n">2</span><span class="step-name">Contents</span></a>
-      <a href="#jobs"><span class="step-n">3</span><span class="step-name">Background work</span></a>
-      <a href="#config"><span class="step-n">4</span><span class="step-name">Configuration</span></a>
+  {# data-spy: the highlight follows what is on screen. Anchors that pretend to
+     be navigation while always pointing at the first section are worse than no
+     navigation, because they claim to know where you are. A direct grid child,
+     because sticky needs a containing block taller than itself. #}
+  <nav class="sections card" data-spy>
+    <div class="rail-head">
+      <p class="rail-title">Installation</p>
+      <div class="rail-sub">checked {{ health.checked_at.strftime('%H:%M:%S') }}</div>
+    </div>
+    {% set ok = health.probes|selectattr('ok')|list|length %}
+    <a href="#contents"><span class="step-n">1</span>
+      <span class="step-name">Contents</span>
+      <span class="step-count">{{ health.counts.documents }}</span></a>
+    <a href="#health"><span class="step-n">2</span>
+      <span class="step-name">Health</span>
+      <span class="step-count {{ 'all-in' if ok == health.probes|length }}">
+        {{ ok }}/{{ health.probes|length }}</span></a>
+    <a href="#config"><span class="step-n">3</span>
+      <span class="step-name">Configuration</span></a>
+    <a href="#activity"><span class="step-n">4</span>
+      <span class="step-name">Activity</span>
+      {% if activity.failures %}
+      <span class="step-count s-needs_input">{{ activity.failures }}✗</span>
+      {% else %}
+      <span class="step-count">{{ activity.total }}</span>
+      {% endif %}</a>
 
-      <div class="actions" style="margin-top:var(--s4)">
-        <a href="/admin" style="font-size:13px">check again →</a>
-        {# Setup only accepts requests from this machine, so it is offered
-           rather than promised: a remote admin following it gets a refusal
-           that explains itself. #}
-        <a href="/setup" style="font-size:13px">setup →</a>
-      </div>
-    </nav>
-  </div>
+    <div class="actions" style="margin-top:var(--s4)">
+      <a href="/admin" style="font-size:13px">check again →</a>
+      {# Setup only accepts requests from this machine, so it is offered rather
+         than promised: a remote admin following it gets a refusal that explains
+         itself. #}
+      <a href="/setup" style="font-size:13px">setup →</a>
+    </div>
+  </nav>
 
   <div>
+    {# --- 1. contents --- #}
+    <div class="card" id="contents">
+      <h3>Contents</h3>
+      <p class="lead">What this installation holds.</p>
+      <div class="stats">
+        <div class="stat"><span class="n">{{ health.counts.documents }}</span><span class="k">documents</span></div>
+        <div class="stat"><span class="n">{{ health.counts.doc_types }}</span><span class="k">document types</span></div>
+        <div class="stat"><span class="n">{{ health.counts.versions }}</span><span class="k">published versions</span></div>
+        <div class="stat"><span class="n">{{ health.counts.drafts }}</span><span class="k">type drafts</span></div>
+        <div class="stat"><span class="n">{{ health.counts.revisions }}</span><span class="k">revisions</span></div>
+        <div class="stat"><span class="n">{{ health.counts.evidence }}</span><span class="k">pasted items</span></div>
+        <div class="stat"><span class="n">{{ health.counts.exports }}</span><span class="k">exports</span></div>
+      </div>
+    </div>
+
+    {# --- 2. health --- #}
     <div class="card" id="health">
       <h3>Health</h3>
       <p class="lead">
@@ -69,51 +97,7 @@
       {% endif %}
     </div>
 
-    <div class="card" id="contents">
-      <h3>Contents</h3>
-      <div class="stats">
-        <div class="stat"><span class="n">{{ health.counts.doc_types }}</span><span class="k">document types</span></div>
-        <div class="stat"><span class="n">{{ health.counts.versions }}</span><span class="k">published versions</span></div>
-        <div class="stat"><span class="n">{{ health.counts.drafts }}</span><span class="k">type drafts</span></div>
-        <div class="stat"><span class="n">{{ health.counts.documents }}</span><span class="k">documents</span></div>
-        <div class="stat"><span class="n">{{ health.counts.revisions }}</span><span class="k">revisions</span></div>
-        <div class="stat"><span class="n">{{ health.counts.evidence }}</span><span class="k">pasted items</span></div>
-        <div class="stat"><span class="n">{{ health.counts.exports }}</span><span class="k">exports</span></div>
-      </div>
-    </div>
-
-    <div class="card" id="jobs">
-      <h3>Background work</h3>
-      {% if health.jobs %}
-      <p class="lead">
-        The last {{ health.jobs|length }}. Drafting, intake and the quality gate
-        run as jobs so a slow assistant never holds a request open.
-      </p>
-      <ul class="plain">
-        {% for j in health.jobs %}
-        <li>
-          <span class="dot {{ 's-complete' if j.status == 'succeeded' else ('s-needs_input' if j.status == 'failed' else 's-drafted') }}">
-            {{ '✓' if j.status == 'succeeded' else ('✗' if j.status == 'failed' else '◐') }}</span>
-          <span>
-            <strong>{{ j.kind }}</strong>{% if j.scope %} · {{ j.scope }}{% endif %}
-            {% if j.error %}<span class="where">{{ j.error|truncate(160) }}</span>
-            {% elif j.message %}<span class="where">{{ j.message|truncate(160) }}</span>{% endif %}
-          </span>
-          <span class="meta">
-            {% if not j.done and j.total %}{{ j.percent }}% · {% endif %}
-            {{ j.status }} · {{ j.created_at|localtime }}
-          </span>
-        </li>
-        {% endfor %}
-      </ul>
-      {% else %}
-      <div class="empty">
-        <span class="empty-mark">·</span>
-        No jobs yet. Ask for a draft, paste some material, or run the gate.
-      </div>
-      {% endif %}
-    </div>
-
+    {# --- 3. configuration --- #}
     <div class="card" id="config">
       <h3>Configuration</h3>
       <p class="lead">
@@ -130,10 +114,98 @@
       </table>
       {% endfor %}
       <p class="hint" style="margin-top:var(--s4)">
-        Changing any of these means editing <code>.env</code> and restarting.
-        There is no setting this page can write: configuration that drifts from
-        the file it came from is worse than configuration you have to restart for.
+        Changing any of these means editing <code>.env</code> and restarting, or
+        using <a href="/setup">setup</a> from this machine. There is no setting
+        this page can write: configuration that drifts from the file it came from
+        is worse than configuration you have to restart for.
       </p>
+    </div>
+
+    {# --- 4. activity --- #}
+    <div class="card" id="activity">
+      <h3>Activity</h3>
+      <p class="lead">
+        What this installation has been doing: every call to the assistant, every
+        piece of background work, and the documents that came out. Not a debug
+        log — prompts and replies are never stored, only what a call cost.
+      </p>
+
+      <div class="stats" style="margin-bottom:var(--s4)">
+        <div class="stat"><span class="n">{{ activity.calls }}</span>
+          <span class="k">assistant calls · {{ activity.hours }}h</span></div>
+        <div class="stat"><span class="n">{{ activity.seconds }}s</span>
+          <span class="k">spent waiting on it</span></div>
+        <div class="stat"><span class="n">~{{ '{:,}'.format(activity.tokens) }}</span>
+          <span class="k">tokens produced</span></div>
+        <div class="stat {{ 'bad' if activity.failures }}"><span class="n">{{ activity.failures }}</span>
+          <span class="k">failures</span></div>
+      </div>
+
+      <div class="filters">
+        <a href="/admin#activity" class="chip {{ 'on' if not category and not failures_only }}">Everything</a>
+        {% for key, label in categories %}
+        <a href="/admin?category={{ key }}#activity"
+           class="chip {{ 'on' if category == key }}">{{ label }}</a>
+        {% endfor %}
+        <a href="/admin?failures=1#activity"
+           class="chip {{ 'on' if failures_only }}">Failures only</a>
+      </div>
+
+      {% if log %}
+      <ul class="plain log">
+        {% for e in log %}
+        <li>
+          <span class="dot {{ 's-complete' if e.ok else 's-needs_input' }}">{{ '·' if e.ok else '✗' }}</span>
+          {# The kind, said in one or two words. Without it every row is a bare
+             title and you cannot tell a new document from an export. #}
+          <span class="chip kind k-{{ e.category }}">{{ e.kind|event_label }}</span>
+          <span class="log-body">
+            <span class="log-summary">{{ e.summary }}</span>
+            {# .get, not attribute access: every kind of event measures its own
+               things, so most keys are absent on most rows. #}
+            {% set m = e.meta or {} %}
+            {% set bits = [] %}
+            {% if m.get('doc_type') %}
+              {% set _ = bits.append(m['doc_type'] ~ ' v' ~ m.get('version', '?')) %}
+            {% endif %}
+            {% if m.get('duration_ms') is not none %}
+              {% set _ = bits.append('%.1fs'|format(m['duration_ms'] / 1000)) %}
+            {% endif %}
+            {% if m.get('tokens') %}
+              {% set _ = bits.append('~' ~ m['tokens'] ~ ' tokens'
+                   ~ (' at ' ~ m['per_second'] ~ '/s' if m.get('per_second') else '')) %}
+            {% endif %}
+            {% if m.get('model') %}{% set _ = bits.append(m['model']) %}{% endif %}
+            {% if m.get('attempts', 1) > 1 %}
+              {% set _ = bits.append(count(m['attempts'], 'attempt')) %}
+            {% endif %}
+            {% if m.get('format') %}{% set _ = bits.append(m['format']) %}{% endif %}
+            {% if m.get('bytes') %}{% set _ = bits.append((m['bytes'] / 1024)|round|int ~ ' KB') %}{% endif %}
+            {% if bits %}<span class="log-meta">{{ bits|join(' · ') }}</span>{% endif %}
+          </span>
+          <span class="meta">
+            {% if e.document_id %}
+            <a href="/documents/{{ e.document_id }}" class="log-doc">open</a> ·
+            {% endif %}
+            {{ e.at|localtime }}
+          </span>
+        </li>
+        {% endfor %}
+      </ul>
+      <p class="hint" style="margin-top:var(--s3)">
+        Newest first, {{ log|length }} shown.
+        {% if category or failures_only %}<a href="/admin#activity">Show everything</a>.{% endif %}
+      </p>
+      {% else %}
+      <div class="empty">
+        <span class="empty-mark">·</span>
+        {% if category or failures_only %}
+          Nothing matches that filter. <a href="/admin#activity">Show everything</a>.
+        {% else %}
+          Nothing yet. Ask for a draft, paste some material, or run the gate.
+        {% endif %}
+      </div>
+      {% endif %}
     </div>
   </div>
 
