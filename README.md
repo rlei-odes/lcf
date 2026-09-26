@@ -1,10 +1,27 @@
-# Lancy Content Flow
+# Lancy Content Flow — structured documents, written with a local LLM
 
-Guided, LLM-assisted creation of rule-bound documents.
+An open-source, self-hosted alternative for filling in structured documents — **8D and 4D problem
+solving reports, CAPA write-ups, product specifications, deviation notices** — with a local LLM.
+Define the sections and the quality criteria once, paste your raw notes, and accept or decline what
+the assistant proposes. Nothing leaves your network.
+
+Runs against any OpenAI-compatible endpoint: **Ollama**, **vLLM**, **LM Studio**, llama.cpp's
+server, or a hosted API if you would rather.
+
+![A product specification in Lancy Content Flow: all four sections complete, the quality gate reporting 20 checks passed, and Word, Markdown and JSON export unlocked](docs/lcf_screenshot.png)
+
+*A finished document. The rail tracks how far in you are, the quality gate has run its judged checks,
+and export only unlocks once they pass.*
+
+---
 
 A **rule builder** defines document types: sections, the questions a creator must answer,
 requirements, quality criteria, and a branded docx template. A **document creator** then works
 through a guided flow that drafts what it can from the material supplied and asks about the rest.
+
+Made for quality management and technical writing, where a document has to obey a standard rather
+than merely read well: every section carries its own pass/fail checks, and the document cannot be
+exported until they pass or someone records, permanently, why they overrode them.
 
 Two invariants shape everything:
 
@@ -15,9 +32,38 @@ Two invariants shape everything:
 
 Design: [docs/DESIGN.md](docs/DESIGN.md) · Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
+## What this is for
+
+The shipped examples are quality-management documents because that is where the problem bites
+hardest: an **8D report** or a **CAPA** has a fixed structure, a customer who will read it closely,
+and rules that a well-written paragraph can still break — containment that does not cover every
+population of parts implicated in the problem description, a five-why chain that stops at human
+error instead of reaching a systemic cause, a claim with no evidence behind it. Those are exactly
+the rules a general-purpose chat assistant cannot hold, and exactly what a quality criterion in a
+document type states once and then enforces on every report.
+
+Types the model is built for:
+
+- **8D and 4D problem solving reports** — D1 team through D8, dependency-gated so containment
+  cannot be written before the problem is described
+- **CAPA** — corrective and preventive action records
+- **Root cause analysis** — five-why chains, Ishikawa, with the chain checked for depth
+- **Deviation and nonconformance notices**
+- **Product and requirements specifications** — testability, no weasel words, every requirement
+  traced to an acceptance criterion
+- **Supplier audit reports**, change requests, and anything else with sections and rules
+
+None of that is hard-coded. A document type is a YAML file or a few minutes in the rule builder;
+the 8D is just the largest one shipped.
+
 ## Status
 
-Early. Most of the build order in [ARCHITECTURE §14](docs/ARCHITECTURE.md) is done:
+**Working end to end.** A document type is defined, a document is created from it, notes are pasted
+and sorted into sections, the assistant drafts, a person accepts, the quality gate runs, and a
+branded .docx comes out the other side. All of it self-hosted.
+
+Everything on the build order in [ARCHITECTURE §14](docs/ARCHITECTURE.md) is done except the last
+two, and both are additive — nothing already built is waiting on them:
 
 | Done | |
 |---|---|
@@ -36,6 +82,7 @@ Early. Most of the build order in [ARCHITECTURE §14](docs/ARCHITECTURE.md) is d
 | ✓ | Spec editor for the rule builder: check, publish as a new version, import/export YAML |
 | ✓ | A structured builder for the same specs — sections, questions, blocks and checks as forms, for someone who has never read YAML |
 | ✓ | Word templates: a starter generated from the spec, branded in Word, bound to a version and carried forward |
+| ✓ | Admin view: health of the database, object store and LLM endpoint, background jobs, configuration |
 | | Image evidence: upload and captioning |
 | | Span-level suggestions and the TipTap editor island |
 
@@ -49,7 +96,7 @@ broken — and that is far cheaper to discover here than through an LLM.
 $ lcf walkthrough
 
 initial state
-  · header             empty        1 question(s) unanswered
+  · header             empty        1 question unanswered
   ⊘ d1_team            blocked      waiting on header
   ⊘ d2_problem         blocked      waiting on header
   ⊘ d3_containment     blocked      waiting on d2_problem
@@ -63,18 +110,18 @@ filling sections in dependency order
   ✓ d4_root_cause      complete
 
 quality gate
-  PASS     ✓  14 check(s)
-  PENDING  ·  11 check(s) need a model, not evaluated
+  PASS     ✓  14 checks
+  PENDING  ·  11 judged checks not run yet
 
 editing a completed section (d2_problem)
   revision 2 appended
-  built on this: d3_containment, d4_root_cause — still valid?
+  built on this: d3_containment, d4_root_cause. Still valid?
 ```
 
 ## Setup
 
-Requires Python 3.13, a PostgreSQL database, and an S3-compatible store. All local; nothing leaves
-the network.
+Requires Python 3.13, a PostgreSQL database, an S3-compatible store (MinIO, versitygw, Ceph), and an
+LLM endpoint. All local; nothing leaves the network.
 
 ```bash
 python3.13 -m venv .venv
@@ -84,6 +131,7 @@ cp .env.example .env     # fill in database, LLM endpoint and storage
 .venv/bin/alembic upgrade head
 .venv/bin/lcf buckets
 .venv/bin/lcf seed       # publish the example document types
+.venv/bin/lcf serve      # then open http://localhost:8090
 ```
 
 `lcf seed` is what turns an empty database into something you can click through:
@@ -97,6 +145,32 @@ quietly acquires demo document types.
 The 8D is not seeded. It is the stress test for the spec model, and 22 KB of it in
 a fresh type list is clutter; publish it by hand with
 `lcf publish docs/examples/8d-report.yaml` when that is the point.
+
+### Pointing it at a model
+
+Anything that speaks the OpenAI chat-completions API will do. Set two values in `.env`:
+
+```bash
+# Ollama
+LCF_LLM_BASE_URL=http://localhost:11434/v1
+LCF_LLM_MODEL=gemma3:27b
+
+# vLLM
+LCF_LLM_BASE_URL=http://your-host:8000/v1
+LCF_LLM_MODEL=the-model-id-vllm-serves
+
+# LM Studio
+LCF_LLM_BASE_URL=http://localhost:1234/v1
+LCF_LLM_MODEL=the-model-id-lm-studio-serves
+```
+
+The **Admin** page reaches all three dependencies and says which one is not answering, including
+when the endpoint is up but serving a different model than the one configured.
+
+Structured output is required: every model call is schema-constrained and the result is validated
+locally, so a model with weak JSON adherence will produce declined proposals rather than bad
+content. A 20B-class instruct model is comfortable; smaller ones work for drafting and struggle as
+judges.
 
 ### Trying the intake
 
