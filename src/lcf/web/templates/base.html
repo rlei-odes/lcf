@@ -21,11 +21,15 @@
   {% set here = area_of(request.url.path) %}
   <header class="top">
     <a class="brand" href="/"><span class="glyph">L</span> Lancy Content Flow</a>
+    {# During setup every area would redirect straight back here, so offering
+       them would be three links that do nothing. #}
+    {% if here != 'setup' %}
     <nav class="areas">
       {% for key, label, href in AREAS %}
       <a href="{{ href }}" class="{{ 'here' if key == here }}">{{ label }}</a>
       {% endfor %}
     </nav>
+    {% endif %}
     <span class="sub">{% block subtitle %}{% endblock %}</span>
   </header>
   <main>{% block content %}{% endblock %}</main>

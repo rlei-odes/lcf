@@ -1,0 +1,330 @@
+{% extends "base.html" %}
+{% block title %}Set up Lancy Content Flow{% endblock %}
+{% block subtitle %}first run{% endblock %}
+
+{# The one page an unconfigured installation serves. Every step tests before it
+   saves, and the commands offered are built from the values typed in, so a
+   copied command and the stored configuration can never disagree. #}
+{% block content %}
+<div class="layout">
+
+  <nav class="sections card">
+    <div class="rail-head">
+      <p class="rail-title">Setting up</p>
+      <div class="rail-sub">nothing is stored until a step passes</div>
+      {% set done = state.steps|selectattr('done')|list|length %}
+      <div class="meter {{ 'done' if done == state.steps|length }}">
+        <span style="width: {{ (100 * done / state.steps|length)|round|int }}%"></span>
+      </div>
+      <div class="meter-note">{{ done }} of {{ state.steps|length }} ready</div>
+    </div>
+
+    {% for s in state.steps %}
+    <a href="#step-{{ s.key }}">
+      <span class="step-n">{{ loop.index }}</span>
+      <span class="dot {{ 's-complete' if s.done else 's-empty' }}">{{ '✓' if s.done else '·' }}</span>
+      <span class="step-name">{{ s.title }}</span>
+    </a>
+    {% endfor %}
+
+    <div class="hint" style="margin-top:var(--s4);padding:0 var(--s2)">
+      Configuration is written to<br><code style="font-size:11px">{{ env_path }}</code>
+    </div>
+  </nav>
+
+  <div>
+    {% if not local %}
+    <div class="notice blocker">
+      <h3>Setup is refused from here</h3>
+      <p>
+        This page writes a database password to disk and has no login, so it only
+        accepts requests from the machine the application runs on. Open it at
+        <code>http://localhost:8090/setup</code>, or forward the port over SSH:
+      </p>
+      <pre class="prompt">ssh -L 8090:localhost:8090 you@this-machine</pre>
+    </div>
+    {% endif %}
+
+    {% if shadowed %}
+    <div class="notice blocker">
+      <h3>Some settings are held in the environment</h3>
+      <p>
+        {% for key in shadowed %}<code>{{ key }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
+        {{ 'is' if shadowed|length == 1 else 'are' }} set as
+        {{ 'an environment variable' if shadowed|length == 1 else 'environment variables' }},
+        and the environment outranks the configuration file. This page will
+        refuse to save
+        {{ 'it' if shadowed|length == 1 else 'them' }}, because saving would look
+        like it worked and change nothing.
+      </p>
+      <div class="hint">
+        Change
+        {{ 'it' if shadowed|length == 1 else 'them' }} where
+        {{ 'it is' if shadowed|length == 1 else 'they are' }} set — your shell,
+        the systemd unit, the compose file — or unset and use this page instead.
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="card hero">
+      {% if live %}
+      <h2>This installation is set up</h2>
+      <p class="lead">
+        The database is live and the schema is current, so the database step
+        below is frozen — repointing a working installation belongs in the
+        configuration file, not in a browser. Storage and the assistant can
+        still be changed here.
+      </p>
+      <div class="actions" style="margin-top:0">
+        <a href="/"><button class="primary" type="button">Open the app</button></a>
+        <a href="/admin"><button type="button">Admin</button></a>
+      </div>
+      {% else %}
+      <h2>Let's get this running</h2>
+      <p class="lead">
+        Four step to get everything working, and storage has a local default. The LLM is needed for the assistant. Nothing here is
+        saved until it has been tested and answered.
+      </p>
+      {% endif %}
+    </div>
+
+    {# --- 1. database --- #}
+    <div class="card" id="step-database">
+      <div class="block-head">
+        <span class="step-of">Step 1</span>
+        <span class="pill {{ 'complete' if state.steps[0].done else 'needs_input' }}">
+          {{ 'connected' if state.steps[0].done else 'required' }}</span>
+      </div>
+      <h2>Database</h2>
+      <p class="lead">
+        PostgreSQL holds every document, revision and decision. Tell the app where
+        it is; it will not create one for you.
+      </p>
+
+      <form hx-post="/setup/database" hx-target="#out-database" hx-swap="innerHTML"
+            hx-disabled-elt="find button">
+        <fieldset style="border:0;padding:0;margin:0" {{ 'disabled' if live }}>
+        <div class="row">
+          <div class="field">
+            <label for="db-host">Host</label>
+            <input type="text" id="db-host" name="host" value="{{ db.host }}">
+          </div>
+          <div class="field" style="max-width:120px">
+            <label for="db-port">Port</label>
+            <input type="text" id="db-port" name="port" value="{{ db.port }}">
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="db-name">Database</label>
+            <input type="text" id="db-name" name="name" value="{{ db.name }}">
+          </div>
+          <div class="field">
+            <label for="db-user">User</label>
+            <input type="text" id="db-user" name="user" value="{{ db.user }}">
+          </div>
+        </div>
+        <div class="field">
+          <label for="db-pass">Password</label>
+          <input type="password" id="db-pass" name="password"
+                 placeholder="{{ 'one is already stored' if stored_password }}">
+          {% if stored_password %}
+          <div class="hint">
+            A password is already stored and is never shown here. Leave this
+            empty to keep it.
+          </div>
+          {% endif %}
+        </div>
+        </fieldset>
+        <div class="actions">
+          <button class="primary" type="submit" {{ 'disabled' if live }}>Test and save</button>
+          <span class="htmx-indicator working">Connecting…</span>
+          <span class="why">
+            {%- if live %}Frozen: edit the configuration file to change this.
+            {%- else %}Saved only if it answers.{% endif -%}
+          </span>
+        </div>
+      </form>
+
+      <div id="out-database">
+        {% if state.steps[0].detail %}
+        {% with step = state.steps[0], saved = false %}
+          {% include "partials/setup_step.html" %}
+        {% endwith %}
+        {% endif %}
+      </div>
+
+      {% if not live %}
+      <details class="quiet-details" style="margin-top:var(--s4)" {{ 'open' if not state.steps[0].done }}>
+        <summary>No database there yet? Create one</summary>
+        {# Re-rendered out of band by the database step, so the commands always
+           carry the values that were last tested rather than the page's. #}
+        <div id="db-commands">
+          {% include "partials/setup_commands.html" %}
+        </div>
+      </details>
+      {% endif %}
+    </div>
+
+    {# --- 2. schema --- #}
+    <div class="card" id="step-schema">
+      <div class="block-head">
+        <span class="step-of">Step 2</span>
+        <span class="pill {{ 'complete' if state.steps[1].done else 'needs_input' }}">
+          {{ 'at head' if state.steps[1].done else 'required' }}</span>
+      </div>
+      <h2>Schema</h2>
+      <p class="lead">
+        The tables, brought up to the version this build expects. Safe to run
+        again: it applies what is missing and nothing else.
+      </p>
+      <form hx-post="/setup/migrate" hx-target="#out-schema" hx-swap="innerHTML"
+            hx-disabled-elt="find button">
+        <div class="actions" style="margin-top:0">
+          <button class="primary" type="submit"
+                  {{ 'disabled' if not state.steps[0].done }}>Run the migrations</button>
+          <span class="htmx-indicator working">Migrating…</span>
+          {% if not state.steps[0].done %}
+          <span class="why">Connect the database first.</span>
+          {% endif %}
+        </div>
+      </form>
+      <div id="out-schema">
+        {% if state.steps[1].detail %}
+        {% with step = state.steps[1], saved = false %}
+          {% include "partials/setup_step.html" %}
+        {% endwith %}
+        {% endif %}
+      </div>
+    </div>
+
+    {# --- 3. storage --- #}
+    <div class="card" id="step-storage">
+      <div class="block-head">
+        <span class="step-of">Step 3</span>
+        <span class="pill {{ 'complete' if state.steps[2].done else 'needs_input' }}">
+          {{ 'ready' if state.steps[2].done else 'check it' }}</span>
+      </div>
+      <h2>Storage</h2>
+      <p class="lead">
+        Where exports and Word templates are kept. The local disk is the default
+        and needs no setup at all — point this at S3 only if more than one machine
+        has to read the same files.
+      </p>
+      <form hx-post="/setup/storage" hx-target="#out-storage" hx-swap="innerHTML"
+            hx-disabled-elt="find button">
+        <div class="field">
+          <label for="s3-endpoint">S3 endpoint <span class="hint" style="display:inline">— leave empty to use the disk</span></label>
+          <input type="text" id="s3-endpoint" name="endpoint" placeholder="http://localhost:9000"
+                 value="{{ s3_endpoint }}">
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="s3-key">Access key</label>
+            <input type="text" id="s3-key" name="access_key">
+          </div>
+          <div class="field">
+            <label for="s3-secret">Secret key</label>
+            <input type="password" id="s3-secret" name="secret_key">
+          </div>
+        </div>
+        <div class="actions">
+          <button type="submit">Test and save</button>
+          <span class="htmx-indicator working">Writing a test file…</span>
+        </div>
+      </form>
+      <div id="out-storage">
+        {% with step = state.steps[2], saved = false %}
+          {% include "partials/setup_step.html" %}
+        {% endwith %}
+      </div>
+    </div>
+
+    {# --- 4. assistant --- #}
+    <div class="card" id="step-assistant">
+      <div class="block-head">
+        <span class="step-of">Step 4</span>
+        <span class="pill {{ 'complete' if state.steps[3].done else 'recommended' }}">
+          {{ 'reachable' if state.steps[3].done else 'recommended' }}</span>
+      </div>
+      <h2>Assistant</h2>
+      <p class="lead">
+        Any endpoint that speaks the OpenAI chat-completions API.
+      </p>
+      {% if not state.steps[3].done %}
+      <div class="notice">
+        <strong>Without this you have a forms application.</strong>
+        <div class="hint">
+          The app still runs, and every deterministic check still works — but
+          nothing drafts a section from your notes, nothing sorts a pasted email
+          into the sections it belongs to, and the judged half of the quality
+          gate never runs. That is most of the point. You can come back to this,
+          but do not skip it and conclude the tool does not do much.
+        </div>
+      </div>
+      {% endif %}
+      <form hx-post="/setup/assistant" hx-target="#out-assistant" hx-swap="innerHTML"
+            hx-disabled-elt="find button">
+        <div class="field">
+          <label for="llm-url">Endpoint</label>
+          <input type="text" id="llm-url" name="base_url" list="llm-suggestions"
+                 placeholder="http://localhost:11434/v1">
+          <datalist id="llm-suggestions">
+            {% for label, url in suggested %}<option value="{{ url }}">{{ label }}</option>{% endfor %}
+          </datalist>
+          <div class="hint">
+            {% for label, url in suggested %}{{ label }} <code>{{ url }}</code>{% if not loop.last %} · {% endif %}{% endfor %}
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="llm-model">Model</label>
+            <input type="text" id="llm-model" name="model" placeholder="gemma3:27b">
+          </div>
+          <div class="field">
+            <label for="llm-key">API key <span class="hint" style="display:inline">— usually not needed locally</span></label>
+            <input type="password" id="llm-key" name="api_key">
+          </div>
+        </div>
+        <div class="actions">
+          <button type="submit">Test and save</button>
+          <span class="htmx-indicator working">Asking what it serves…</span>
+          <span class="why">Leave the model empty to see what the endpoint offers.</span>
+        </div>
+      </form>
+      <div id="out-assistant">
+        {% with step = state.steps[3], saved = false %}
+          {% include "partials/setup_step.html" %}
+        {% endwith %}
+      </div>
+    </div>
+
+    {# --- finish --- #}
+    <div class="card {{ 'hero' if state.steps[1].done }}">
+      <h2>Finish</h2>
+      {% if state.steps[1].done %}
+      <p class="lead">
+        The database is up and the schema is current. Start with the two example
+        document types — a 4D report and a product specification — so the first
+        screen has something in it, or go straight in and build your own.
+      </p>
+      <div class="actions" style="margin-top:0">
+        <form method="post" action="/setup/seed">
+          <button class="primary" type="submit">Add the examples and open the app</button>
+        </form>
+        <a href="/"><button type="button">Just open the app</button></a>
+      </div>
+      {% else %}
+      <p class="lead">
+        Once the database and schema are green, this is where you come back to
+        finish. Reload the page at any point to re-check every step.
+      </p>
+      <div class="actions" style="margin-top:0">
+        <a href="/setup"><button type="button">Re-check everything</button></a>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}

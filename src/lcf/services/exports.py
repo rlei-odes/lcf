@@ -170,36 +170,28 @@ async def get(session: AsyncSession, export_id: UUID) -> Export:
 
 
 def fetch(export: Export) -> bytes | None:
-    """Read a stored export back out of object storage."""
+    """Read a stored export back out of storage, whichever backend wrote it."""
     if not export.uri:
         return None
-    from lcf.storage.s3 import client
+    import lcf.storage as storage
 
-    bucket, _, key = export.uri.removeprefix("s3://").partition("/")
     try:
-        return client().get_object(Bucket=bucket, Key=key)["Body"].read()
+        return storage.fetch(export.uri)
     except Exception as exc:
         logger.error("could not fetch {}: {}", export.uri, exc)
         return None
 
 
 def _store(document_id: UUID, rendered: Rendered) -> str | None:
-    """Keep the artefact. A missing store must not fail the export — the bytes
+    """Keep the artefact. A failing store must not fail the export — the bytes
     are already made, and the user asked for a document, not a backup."""
-    s = settings()
-    if not s.s3_endpoint:
-        return None
-    from lcf.storage.s3 import client
+    import lcf.storage as storage
 
     key = f"{document_id}/{datetime.now(UTC):%Y%m%dT%H%M%S}-{rendered.filename}"
     try:
-        client().put_object(
-            Bucket=s.s3_bucket_exports,
-            Key=key,
-            Body=rendered.data,
-            ContentType=rendered.content_type,
+        return storage.put(
+            settings().s3_bucket_exports, key, rendered.data, rendered.content_type
         )
-        return f"s3://{s.s3_bucket_exports}/{key}"
     except Exception as exc:
         logger.error("could not store export: {}", exc)
         return None

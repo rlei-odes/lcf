@@ -109,11 +109,10 @@ async def remove(session: AsyncSession, version: DocTypeVersion) -> None:
 def fetch(version: DocTypeVersion) -> bytes | None:
     if not version.template_uri:
         return None
-    from lcf.storage.s3 import client
+    import lcf.storage as storage
 
-    bucket, _, key = version.template_uri.removeprefix("s3://").partition("/")
     try:
-        return client().get_object(Bucket=bucket, Key=key)["Body"].read()
+        return storage.fetch(version.template_uri)
     except Exception as exc:
         logger.error("could not fetch template {}: {}", version.template_uri, exc)
         return None
@@ -128,18 +127,14 @@ async def for_document(session: AsyncSession, document_id: UUID) -> bytes | None
 
 
 def _store(version: DocTypeVersion, data: bytes, filename: str) -> str:
-    s = settings()
-    if not s.s3_endpoint:
-        raise NoStore("object storage is not configured; a template cannot be kept")
-
-    from lcf.storage.s3 import client
+    import lcf.storage as storage
 
     # Keyed by version and time, never overwritten: a version that carried a
     # template forward points at the older version's key, and an upload that
     # reused a key would rewrite the branding of every version sharing it.
     stamp = f"{datetime.now(UTC):%Y%m%dT%H%M%S}"
     key = f"{version.doc_type_id}/v{version.version}/{stamp}-{filename}"
-    client().put_object(
-        Bucket=s.s3_bucket_templates, Key=key, Body=data, ContentType=DOCX_TYPE
-    )
-    return f"s3://{s.s3_bucket_templates}/{key}"
+    try:
+        return storage.put(settings().s3_bucket_templates, key, data, DOCX_TYPE)
+    except storage.StorageError as exc:
+        raise NoStore(f"the template could not be kept: {exc}") from exc

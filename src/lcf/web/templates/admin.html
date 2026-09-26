@@ -24,6 +24,10 @@
 
       <div class="actions" style="margin-top:var(--s4)">
         <a href="/admin" style="font-size:13px">check again →</a>
+        {# Setup only accepts requests from this machine, so it is offered
+           rather than promised: a remote admin following it gets a refusal
+           that explains itself. #}
+        <a href="/setup" style="font-size:13px">setup →</a>
       </div>
     </nav>
   </div>

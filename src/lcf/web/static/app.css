@@ -294,6 +294,11 @@ nav.stepper .step-next { margin-left: auto; text-align: right; font-weight: 550;
 .pill.stale { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 45%, transparent); background: var(--warning-soft); }
 .pill.drafted { color: var(--accent-ink); border-color: var(--accent-line); background: var(--accent-soft); }
 .pill.blocked, .pill.empty { color: var(--faint); }
+/* Not required, but the product does not do what it says without it. */
+.pill.recommended {
+  color: var(--warning); background: var(--warning-soft);
+  border-color: color-mix(in srgb, var(--warning) 45%, transparent);
+}
 
 /* The author's own words, quoted back to them: what intake filed under a section,
    and what a proposed answer was read from. Distinct from content on purpose:
@@ -311,7 +316,7 @@ blockquote.quote .where {
 /* A field holding an answer nobody has confirmed yet. */
 .field.proposed > label { color: var(--accent-ink); }
 .field.proposed textarea, .field.proposed input, .field.proposed select {
-  border-color: var(--accent-line); background: color-mix(in srgb, var(--accent-soft) 45%, var(--panel));
+  border-color: var(--accent-line); background: var(--accent-soft);
 }
 
 /* The spec editor. A spec is read as much as written, so it gets a real
@@ -489,7 +494,7 @@ form.busy button { animation: pulse 1.4s ease-in-out infinite; }
    --------------------------------------------------------------------------- */
 
 .hero {
-  background: linear-gradient(160deg, var(--accent-soft), color-mix(in srgb, var(--accent-soft) 30%, var(--panel)));
+  background: var(--accent-soft);
   border: 1px solid var(--accent-line); box-shadow: var(--lift-2);
 }
 .hero h2 { color: var(--accent-ink); }
@@ -531,6 +536,16 @@ form.busy button { animation: pulse 1.4s ease-in-out infinite; }
 }
 .chip.good { background: var(--ok-soft); color: var(--ok); border-color: color-mix(in srgb, var(--ok) 30%, transparent); }
 .chip.bad { background: var(--blocker-soft); color: var(--blocker); border-color: color-mix(in srgb, var(--blocker) 30%, transparent); }
+
+/* What a setup step said when it was tested. Wraps, because a driver's error is
+   a paragraph and truncating it hides the one line that names the cause. */
+pre.probe-out {
+  margin: var(--s1) 0 0; padding: var(--s2) var(--s3);
+  font-family: var(--mono); font-size: 12px; line-height: 1.55;
+  white-space: pre-wrap; word-break: break-word;
+  background: var(--sunken); border-radius: var(--radius-sm);
+  max-height: 260px; overflow-y: auto;
+}
 
 /* Settings, read-only. Keys quiet, values in mono so a URL is scannable. */
 table.config { margin-bottom: var(--s2); }

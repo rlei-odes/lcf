@@ -73,9 +73,10 @@ def cmd_roundtrip(args) -> int:
 
 
 def cmd_buckets(args) -> int:
-    from lcf.storage.s3 import ensure_buckets
+    import lcf.storage as storage
 
-    for name, state in ensure_buckets().items():
+    print(f"  store: {storage.store().describe()}")
+    for name, state in storage.ensure_buckets().items():
         print(f"  {name:22} {state}")
     return 0
 

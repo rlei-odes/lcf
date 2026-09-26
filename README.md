@@ -72,7 +72,7 @@ two, and both are additive — nothing already built is waiting on them:
 | ✓ | Deterministic check engine (6 kinds) |
 | ✓ | Section state machine, dependency gating, staleness |
 | ✓ | Service layer: publish, create, answer, edit, assess, blame |
-| ✓ | Object storage bucket provisioning |
+| ✓ | Storage on the local disk by default, S3-compatible when you want it |
 | ✓ | Web UI (FastAPI + Jinja + HTMX), paste-from-spreadsheet tables |
 | ✓ | LLM drafting: schema-constrained proposals, gaps, accept/decline, decision log |
 | ✓ | Background jobs with live progress — drafting no longer blocks the request |
@@ -82,7 +82,8 @@ two, and both are additive — nothing already built is waiting on them:
 | ✓ | Spec editor for the rule builder: check, publish as a new version, import/export YAML |
 | ✓ | A structured builder for the same specs — sections, questions, blocks and checks as forms, for someone who has never read YAML |
 | ✓ | Word templates: a starter generated from the spec, branded in Word, bound to a version and carried forward |
-| ✓ | Admin view: health of the database, object store and LLM endpoint, background jobs, configuration |
+| ✓ | Admin view: health of the database, store and LLM endpoint, background jobs, configuration |
+| ✓ | Guided first-run setup: tests each dependency before saving, runs the migrations |
 | | Image evidence: upload and captioning |
 | | Span-level suggestions and the TipTap editor island |
 
@@ -120,19 +121,44 @@ editing a completed section (d2_problem)
 
 ## Setup
 
-Requires Python 3.13, a PostgreSQL database, an S3-compatible store (MinIO, versitygw, Ceph), and an
-LLM endpoint. All local; nothing leaves the network.
+Requires Python 3.13, a PostgreSQL database, and an LLM endpoint. Files are kept on the local disk
+unless you point it at an S3-compatible store. All local; nothing leaves the network.
 
 ```bash
 python3.13 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
-
-cp .env.example .env     # fill in database, LLM endpoint and storage
-.venv/bin/alembic upgrade head
-.venv/bin/lcf buckets
-.venv/bin/lcf seed       # publish the example document types
 .venv/bin/lcf serve      # then open http://localhost:8090
 ```
+
+That is the whole of it. An installation with no configuration serves a **setup page** instead of
+the app: it asks where PostgreSQL is, tests the connection before saving anything, and hands you the
+`psql` or `docker run` command to create the database — generated from the values you typed, so the
+command and the configuration cannot disagree. Then it runs the migrations, checks storage, and
+tests the model endpoint.
+
+Setup only accepts requests from the machine the application runs on, and it will not repoint a
+database that is already working. It has no login, because it writes a database password to a file
+and a page that does that should not be reachable across a network. If you are on another machine,
+forward the port:
+
+```bash
+ssh -L 8090:localhost:8090 you@the-server
+```
+
+<details>
+<summary>Prefer to do it by hand?</summary>
+
+```bash
+cp .env.example .env     # fill in database, LLM endpoint and storage
+.venv/bin/alembic upgrade head
+.venv/bin/lcf buckets    # only needed for S3; the local disk makes its own
+.venv/bin/lcf seed       # publish the example document types
+.venv/bin/lcf serve
+```
+
+Configuration is read from `.env` beside `pyproject.toml` in a source checkout, or
+`~/.config/lcf/.env` when installed. `LCF_ENV_FILE` overrides both.
+</details>
 
 `lcf seed` is what turns an empty database into something you can click through:
 it publishes [4d-report.yaml](docs/examples/4d-report.yaml) and

@@ -96,20 +96,20 @@ async def probe_database(session: AsyncSession) -> Probe:
 async def probe_storage() -> Probe:
     """Which of the three buckets exist. Never creates one: `lcf buckets` does
     that, and a status page that provisions is a status page that lies."""
-    from lcf.storage import s3
+    import lcf.storage as storage
 
     s = settings()
+    backend = storage.store()
+    name = "Object storage" if backend.scheme == "s3" else "Storage (local disk)"
     try:
-        present = await asyncio.to_thread(
-            lambda: {b["Name"] for b in s3.client().list_buckets().get("Buckets", [])}
-        )
+        present = await asyncio.to_thread(backend.existing)
     except Exception as exc:  # noqa: BLE001
-        return Probe("Object storage", s.s3_endpoint, False, f"{type(exc).__name__}: {exc}")
+        return Probe(name, backend.describe(), False, f"{type(exc).__name__}: {exc}")
 
-    items = [(name, "present" if name in present else "missing") for name in s.buckets]
-    missing = [name for name, state in items if state == "missing"]
+    items = [(b, "present" if b in present else "missing") for b in s.buckets]
+    missing = [b for b, state in items if state == "missing"]
     detail = "all three buckets present" if not missing else f"missing: {', '.join(missing)}"
-    return Probe("Object storage", s.s3_endpoint, not missing, detail, items)
+    return Probe(name, backend.describe(), not missing, detail, items)
 
 
 async def probe_llm() -> Probe:

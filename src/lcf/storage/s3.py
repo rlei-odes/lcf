@@ -1,4 +1,4 @@
-"""S3-compatible object storage (versitygw).
+"""S3-compatible object storage (versitygw, MinIO, Ceph, AWS).
 
 The app creates its own buckets when they are missing, so deployment needs only a
 credential with the rights to do so — not a prepared environment.
@@ -10,6 +10,7 @@ from botocore.exceptions import ClientError
 from loguru import logger
 
 from lcf.core.config import settings
+from lcf.storage import StorageError
 
 
 def client():
@@ -26,25 +27,54 @@ def client():
     )
 
 
-def ensure_buckets(names: list[str] | None = None) -> dict[str, str]:
-    """Create any missing buckets. Idempotent — safe to call on every startup."""
-    s3 = client()
-    existing = {b["Name"] for b in s3.list_buckets().get("Buckets", [])}
-    outcome: dict[str, str] = {}
+class S3Store:
+    scheme = "s3"
 
-    for name in names or settings().buckets:
-        if name in existing:
-            outcome[name] = "present"
-            continue
+    def describe(self) -> str:
+        return settings().s3_endpoint or "s3"
+
+    def get(self, bucket: str, key: str) -> bytes:
         try:
-            s3.create_bucket(Bucket=name)
-            outcome[name] = "created"
-            logger.info("created bucket {}", name)
-        except ClientError as exc:
-            code = exc.response.get("Error", {}).get("Code", "")
-            if code in ("BucketAlreadyOwnedByYou", "BucketAlreadyExists"):
+            return client().get_object(Bucket=bucket, Key=key)["Body"].read()
+        except Exception as exc:
+            raise StorageError(f"could not read s3://{bucket}/{key}: {exc}") from exc
+
+    def put(self, bucket: str, key: str, data: bytes, content_type: str) -> str:
+        try:
+            client().put_object(Bucket=bucket, Key=key, Body=data, ContentType=content_type)
+        except Exception as exc:
+            raise StorageError(f"could not write s3://{bucket}/{key}: {exc}") from exc
+        return f"{self.scheme}://{bucket}/{key}"
+
+    def existing(self) -> set[str]:
+        try:
+            return {b["Name"] for b in client().list_buckets().get("Buckets", [])}
+        except Exception as exc:
+            raise StorageError(f"could not list buckets: {exc}") from exc
+
+    def ensure(self, names: list[str]) -> dict[str, str]:
+        s3 = client()
+        existing = self.existing()
+        outcome: dict[str, str] = {}
+
+        for name in names:
+            if name in existing:
                 outcome[name] = "present"
-            else:
-                outcome[name] = f"failed: {code or exc}"
-                logger.error("could not create bucket {}: {}", name, exc)
-    return outcome
+                continue
+            try:
+                s3.create_bucket(Bucket=name)
+                outcome[name] = "created"
+                logger.info("created bucket {}", name)
+            except ClientError as exc:
+                code = exc.response.get("Error", {}).get("Code", "")
+                if code in ("BucketAlreadyOwnedByYou", "BucketAlreadyExists"):
+                    outcome[name] = "present"
+                else:
+                    outcome[name] = f"failed: {code or exc}"
+                    logger.error("could not create bucket {}: {}", name, exc)
+        return outcome
+
+
+def ensure_buckets(names: list[str] | None = None) -> dict[str, str]:
+    """Kept for callers that want S3 specifically. Most want `storage.ensure_buckets`."""
+    return S3Store().ensure(names or settings().buckets)

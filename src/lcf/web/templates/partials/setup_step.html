@@ -1,0 +1,24 @@
+{# The result of testing one step. Swapped in beneath the form that ran it, so
+   the answer arrives where the question was asked. #}
+<div class="probe">
+  <span class="mark {{ 's-complete' if step.done else 's-needs_input' }}">{{ '✓' if step.done else '✗' }}</span>
+  <div class="probe-body">
+    <div class="probe-name">
+      {{ 'Working' if step.done else 'Not yet' }}
+      {%- if saved %} <span class="pill complete">saved</span>{% endif %}
+    </div>
+    <pre class="probe-out">{{ step.detail }}</pre>
+    {% if step.done and saved %}
+    <div class="hint">Written to the configuration file. Carry on below.</div>
+    {% endif %}
+  </div>
+</div>
+
+{# Only when this partial *is* the response to the database step. Included
+   inside the setup page it would emit a fifth copy of the commands, one per
+   step, all sharing an id. #}
+{% if oob is defined and oob and not live %}
+<div id="db-commands" hx-swap-oob="innerHTML">
+  {% include "partials/setup_commands.html" %}
+</div>
+{% endif %}
