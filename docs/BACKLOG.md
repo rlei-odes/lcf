@@ -42,7 +42,8 @@ LLM call, no new vocabulary, no new review surface — the material simply stops
 prompt. [§3](#3-extraction-commands-and-candidate-review) is what makes it powerful, and is separable.
 
 **Inputs.** PDF, `.docx`, `.eml`, images, and paste as it works today. Dropping files onto a field is
-Alpine and a few lines; it is not the editor island and should not grow into it.
+a few lines of vanilla JS beside the other scripts in `static/`; it is not the editor island and
+should not grow into it.
 
 **Parsing.** `docling` or `markitdown` for PDF and Word. Email is the messiest input and the likeliest
 to arrive: quoted reply chains, signatures, disclaimers, nested forwards. How well that one parser

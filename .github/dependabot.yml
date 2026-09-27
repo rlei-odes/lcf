@@ -1,0 +1,31 @@
+# Dependency update pull requests.
+#
+# Dependabot alerts — the notifications about known vulnerabilities — are a
+# repository setting and are already on. This file is only about the pull
+# requests that raise versions.
+#
+# One grouped pull request per ecosystem per week. Nineteen separate PRs for a
+# routine week of upstream releases is how this feature gets muted, and every
+# dependency here is exercised by the same test run anyway, so splitting them
+# buys nothing a single failing suite would not also tell us.
+version: 2
+updates:
+  # "uv", not "pip": they are separate ecosystems to Dependabot, and only this one
+  # reads uv.lock. Under "pip" a bare pyproject.toml whose constraints are all
+  # `>=` has nothing to bump, because every new release already satisfies them —
+  # so it would run weekly and never open anything.
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    groups:
+      python:
+        patterns: ["*"]
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "build"
+
+  # Add a `github-actions` entry here once there are workflows under
+  # .github/workflows. Listing it while that directory is empty makes Dependabot
+  # report a missing manifest on every run.

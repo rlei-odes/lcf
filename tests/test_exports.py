@@ -198,8 +198,13 @@ async def test_an_export_is_kept_and_can_be_fetched_back(published, sample_4d, s
         export, rendered = await exports.create(s, document.id, "markdown")
 
     if export.uri is None:
-        pytest.skip("object storage not configured")
+        pytest.skip("storage not configured")
 
-    assert export.uri.startswith("s3://")
+    # Whichever backend is in force, not S3 specifically: the local disk is the
+    # default, so asserting the scheme here only tested whoever ran it last had an
+    # S3 endpoint in their .env.
+    import lcf.storage as storage
+
+    assert export.uri.startswith(f"{storage.store().scheme}://")
     assert exports.fetch(export) == rendered.data, "what comes back is what went in"
     assert export.size_bytes == len(rendered.data)

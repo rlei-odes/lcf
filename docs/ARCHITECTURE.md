@@ -62,7 +62,7 @@ an HTTP-first mandate did.
 | Language | Python 3.13 | |
 | Web | FastAPI + uvicorn | Routes, templates and JSON from one app |
 | Templates | Jinja2 | Server-rendered HTML is the UI |
-| Interactivity | HTMX 2 + Alpine.js | Swaps and local state; no build step needed |
+| Interactivity | HTMX 2 | Swaps; no build step needed. Vendored, not from a CDN |
 | Editor island | TipTap (ProseMirror), vanilla | Bundled with esbuild — the only JS build |
 | CSS | Tailwind CLI (standalone binary) | No Node project required |
 | Validation | Pydantic v2 | Also the source of every LLM output schema |
@@ -315,8 +315,9 @@ Decorations are the reason for TipTap: they mark ranges *without* altering the d
 precisely a suggestion — visible, hoverable, and not yet content. That maps onto invariant I with
 no impedance mismatch at all.
 
-Everything else in the UI is plain server-rendered HTML with HTMX swaps. Alpine handles local
-toggles that are not worth a round trip.
+Everything else in the UI is plain server-rendered HTML with HTMX swaps. The few behaviours that
+are not worth a round trip — the dirty-form tracker, the scrollspy, the dropdown placement — are
+small vanilla scripts in `static/`, not a framework.
 
 ## 7. Jobs and streaming
 

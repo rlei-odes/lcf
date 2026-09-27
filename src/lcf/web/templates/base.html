@@ -8,8 +8,11 @@
      renders the page unstyled rather than broken, which reads as a design
      failure instead of a caching one. #}
   <link rel="stylesheet" href="{{ asset('app.css') }}">
-  <script src="/static/vendor/htmx.min.js"></script>
-  <script src="/static/vendor/alpine.min.js" defer></script>
+  {# htmx 2.0.11, vendored rather than pulled from a CDN: this runs on a private
+     network with no egress. Nothing tracks it for us — there is no manifest for a
+     committed file — so the version lives here, where it can be grepped, and
+     `asset()` is what stops a browser holding the previous copy after a swap. #}
+  <script src="{{ asset('vendor/htmx.min.js') }}"></script>
   <script src="{{ asset('export.js') }}" defer></script>
   <script src="{{ asset('spec_editor.js') }}" defer></script>
   <script src="{{ asset('dirty.js') }}" defer></script>

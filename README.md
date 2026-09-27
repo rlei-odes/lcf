@@ -1,4 +1,4 @@
-# Lancy Content Flow — create structured documents, assisted by a local LLM
+# Lancy Content Flow - create structured documents, assisted by a local LLM
 
 An open-source, self-hosted solution for filling in structured documents assisted by a local LLM: **8D and 4D problem
 solving reports, product specifications, deviation notices**.
@@ -121,10 +121,13 @@ Requires Python 3.13, a PostgreSQL database, and an LLM endpoint. Files are kept
 unless you point it at an S3-compatible store. All local; nothing leaves the network.
 
 ```bash
-python3.13 -m venv .venv
-.venv/bin/pip install -e ".[dev]"
-.venv/bin/lcf serve      # then open http://localhost:8090
+uv sync --extra dev     # exact versions from uv.lock
+.venv/bin/lcf serve     # then open http://localhost:8090
 ```
+
+`uv.lock` pins all 59 packages, so a deployment installs what was tested rather than whatever PyPI
+served that morning. Without [uv](https://docs.astral.sh/uv/), `python3.13 -m venv .venv` and
+`.venv/bin/pip install -e ".[dev]"` still work — you just resolve your own versions.
 
 That is the whole of it. An installation with no configuration serves a **setup page** instead of
 the app: it asks where PostgreSQL is, tests the connection before saving anything, and hands you the
@@ -132,14 +135,10 @@ the app: it asks where PostgreSQL is, tests the connection before saving anythin
 command and the configuration cannot disagree. Then it runs the migrations, checks storage, and
 tests the model endpoint.
 
-Setup only accepts requests from the machine the application runs on, and it will not repoint a
-database that is already working. It has no login, because it writes a database password to a file
-and a page that does that should not be reachable across a network. If you are on another machine,
-forward the port:
-
-```bash
-ssh -L 8090:localhost:8090 you@the-server
-```
+Setup is reachable from anywhere the app is, because this normally runs on a headless server and the
+administrator is always remote. It has **no login**: what it may write is bounded by an allowlist of
+configuration keys rather than by who is asking, and it will not repoint a database that is already
+working. Run it on a trusted network. Accounts and roles are the next thing it needs.
 
 <details>
 <summary>Prefer to do it by hand?</summary>
