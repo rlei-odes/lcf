@@ -805,8 +805,8 @@ appended; only its header, footer, styles and section properties are kept.
 #### The house style
 
 It is the one template bound to nothing, so it is set for the installation rather than in the
-factory: step 5 of the setup page, guarded like every other writing step there. An upload goes into
-the templates bucket under `house/`, and a `house_style` row records it; the newest row is in force.
+factory: step 5 of the setup page. An upload goes into the templates bucket under `house/`, and a
+`house_style` row records it; the newest row is in force.
 `templates.house_style(session)` resolves the upload first, then `LCF_DOCX_BASE_TEMPLATE`, then
 nothing — the path stays supported for an installation that bakes its branding into an image.
 

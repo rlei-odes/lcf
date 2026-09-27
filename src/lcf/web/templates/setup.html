@@ -37,18 +37,6 @@
   </nav>
 
   <div>
-    {% if not local %}
-    <div class="notice blocker">
-      <h3>Setup is refused from here</h3>
-      <p>
-        This page writes a database password to disk and has no login, so it only
-        accepts requests from the machine the application runs on. Open it at
-        <code>http://localhost:8090/setup</code>, or forward the port over SSH:
-      </p>
-      <pre class="prompt">ssh -L 8090:localhost:8090 you@this-machine</pre>
-    </div>
-    {% endif %}
-
     {% if shadowed %}
     <div class="notice blocker">
       <h3>Some settings are held in the environment</h3>

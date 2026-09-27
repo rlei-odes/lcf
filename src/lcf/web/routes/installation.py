@@ -1,8 +1,9 @@
 """Looking after the installation: first run, and the admin view.
 
-The wizard is reachable from localhost at any time; every route that writes calls
-`setup.guard` first, which refuses a request from another machine and refuses to
-repoint a database that is already live. The admin page writes nothing at all.
+Every route that writes calls `setup.guard` first, which bounds what may be
+written to the allowlist and refuses to repoint a database that is already live.
+It does not care where the request came from: this is deployed headless, so the
+administrator is always remote. The admin page writes nothing at all.
 """
 
 from pathlib import Path
@@ -24,13 +25,9 @@ router = APIRouter()
 EXAMPLES = Path(__file__).resolve().parents[4] / "docs" / "examples"
 
 
-def _client_host(request: Request) -> str | None:
-    return request.client.host if request.client else None
-
-
 @router.get("/setup", response_class=HTMLResponse)
 async def setup_page(request: Request):
-    """Reachable from localhost whether or not setup is finished.
+    """Reachable whether or not setup is finished.
 
     Once the database is live the wizard freezes that step and says so, rather
     than redirecting: storage and the assistant are the settings people come
@@ -52,7 +49,6 @@ async def setup_page(request: Request):
         db=db,
         stored_password=stored_password,
         suggested=setup.SUGGESTED,
-        local=setup.is_local(_client_host(request)),
         env_path=setup.env_file(),
         s3_endpoint=s.s3_endpoint,
         live=await setup.live(),
@@ -92,7 +88,7 @@ async def setup_database(request: Request):
         password=typed or stored,
     )
     try:
-        await setup.guard(_client_host(request), changes_database=True, writes=("LCF_DB_URL",))
+        await setup.guard(changes_database=True, writes=("LCF_DB_URL",))
         ok, detail = await setup.test_database(db.url())
         if ok:
             setup.write({"LCF_DB_URL": db.url()})
@@ -111,7 +107,7 @@ async def setup_database(request: Request):
 @router.post("/setup/migrate", response_class=HTMLResponse)
 async def setup_migrate(request: Request):
     try:
-        await setup.guard(_client_host(request))
+        await setup.guard()
         ok, detail = await setup.migrate()
     except setup.Refused as exc:
         ok, detail = False, str(exc)
@@ -127,7 +123,6 @@ async def setup_storage(request: Request):
     endpoint = str(form.get("endpoint") or "").strip()
     try:
         await setup.guard(
-            _client_host(request),
             writes=("LCF_S3_ENDPOINT", "LCF_S3_ACCESS_KEY", "LCF_S3_SECRET_KEY"),
         )
         values = {"LCF_S3_ENDPOINT": endpoint}
@@ -152,7 +147,6 @@ async def setup_assistant(request: Request):
     key = str(form.get("api_key") or "").strip()
     try:
         await setup.guard(
-            _client_host(request),
             writes=("LCF_LLM_BASE_URL", "LCF_LLM_MODEL", "LCF_LLM_API_KEY"),
         )
         ok, detail = await setup.test_llm(base_url, model, key)
@@ -174,14 +168,13 @@ async def setup_assistant(request: Request):
 async def setup_house_style(request: Request, file: UploadFile | None = None):
     """Take a .docx and make it the installation's branding.
 
-    Guarded like every other writing step: this changes what every export of every
-    untemplated document type looks like, which is not something any browser on
-    the network should be able to do.
+    This changes what every export of every untemplated document type looks like,
+    which makes it the widest-reaching thing the wizard can do.
     """
     error: str | None = None
     lint = None
     try:
-        await setup.guard(_client_host(request))
+        await setup.guard()
         if file is None or not file.filename:
             raise setup.Refused("Choose a .docx file first.")
         async with session() as s:
@@ -197,7 +190,7 @@ async def setup_house_style(request: Request, file: UploadFile | None = None):
 async def setup_house_style_remove(request: Request):
     error: str | None = None
     try:
-        await setup.guard(_client_host(request))
+        await setup.guard()
         async with session() as s:
             await templates_service.remove_house(s)
     except setup.Refused as exc:
@@ -259,7 +252,7 @@ async def _house_card(request: Request, *, lint=None, error: str | None = None) 
 async def setup_seed(request: Request):
     """Publish the example types, so the first screen is not empty."""
     try:
-        await setup.guard(_client_host(request))
+        await setup.guard()
         async with session() as s:
             for name in ("4d-report.yaml", "product-specification.yaml"):
                 await doc_types.publish(s, loader.load(EXAMPLES / name))

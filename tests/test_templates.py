@@ -252,19 +252,6 @@ def _template_with(*lines: str) -> bytes:
 
 
 @pytest.fixture
-def local_client():
-    """A client the setup guard accepts.
-
-    `TestClient`'s default connection host is the string "testclient", which is
-    not a loopback address — so every write guarded by `setup.is_local` is
-    refused. That is the guard working, but it leaves the happy path untestable
-    without saying where the request came from.
-    """
-    with TestClient(app, client=("127.0.0.1", 51000)) as c:
-        yield c
-
-
-@pytest.fixture
 async def no_house(db):
     """No house style, and none left behind. It is installation-wide, so a test
     that forgot to clean up would brand every later test's exports."""
@@ -356,23 +343,23 @@ async def test_only_three_uploads_are_kept(no_house, storage):
 
 
 def test_the_house_style_brands_an_export_that_has_no_template(
-    published, local_client, storage, no_house
+    published, client, storage, no_house
 ):
     """The whole point, end to end: a type with no template of its own exports
     onto company paper, and the base file's own body text does not come with it."""
     base = _house_docx(body="Placeholder.")
-    set_it = local_client.post(
+    set_it = client.post(
         "/setup/house-style",
         files={"file": ("brand.docx", base, templates_service.DOCX_TYPE)},
     )
     assert set_it.status_code == 200
     assert "in force" in set_it.text
 
-    created = local_client.post(
+    created = client.post(
         "/documents", data={"doc_type": published.id, "title": "Branded"}, follow_redirects=False
     )
     document_id = created.headers["location"].rsplit("/", 1)[-1]
-    export = local_client.post(
+    export = client.post(
         f"/documents/{document_id}/export/docx", data={"override_reason": "test"}
     )
     assert export.status_code == 200
@@ -381,19 +368,3 @@ def test_the_house_style_brands_an_export_that_has_no_template(
     assert doc.sections[0].header.paragraphs[0].text == "ACME | Quality"
     assert doc.sections[0].footer.paragraphs[0].text == "Confidential"
     assert "Placeholder." not in "\n".join(p.text for p in doc.paragraphs)
-
-
-async def test_a_caller_that_is_not_this_machine_cannot_set_the_branding(client, no_house):
-    """The admin area is read-only; this is the one write reachable from it, and it
-    changes every future export. It takes setup's localhost guard like every other
-    write there."""
-    from lcf.models.tables import HouseStyle
-
-    refused = client.post(
-        "/setup/house-style",
-        files={"file": ("brand.docx", _house_docx(), templates_service.DOCX_TYPE)},
-    )
-    assert refused.status_code == 200
-    assert "only be run from the machine" in refused.text
-    async with session() as s:
-        assert list(await s.scalars(select(HouseStyle))) == []

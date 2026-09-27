@@ -6,15 +6,19 @@ database to talk to yet. Every step tests before it saves, and the commands it
 offers are generated from what the deployer typed, so a copied command and the
 stored configuration can never disagree.
 
-Two things guard it, and they are deliberately not a login. The wizard refuses
-once the installation is configured, and it refuses a request that did not come
-from this machine. A page that writes a database URL to disk is remote code
-execution wearing a form, and "first run, from localhost" is the smallest rule
-that closes it without inventing accounts this product does not have.
+Two rules guard what it may write, and neither is a login: a key not on the
+`WRITABLE` list cannot be set by an HTTP request at all, and a database that is
+already live cannot be repointed from a browser.
+
+There is deliberately no check on where the request came from. This is normally
+deployed on a headless server, so the administrator is always remote, and a
+localhost-only wizard would be a wizard nobody can reach — usable only through an
+SSH tunnel, which is a workaround, not a control. What this page can do is
+therefore bounded by the allowlist rather than by the network, and the thing that
+will properly close it is a role concept, which this product does not have yet.
 """
 
 import asyncio
-import ipaddress
 import os
 import re
 from dataclasses import dataclass, field
@@ -39,20 +43,6 @@ WRITABLE = (
 
 class Refused(Exception):
     """The wizard declined to act, and the reason is for the deployer to read."""
-
-
-def is_local(host: str | None) -> bool:
-    """Whether a request came from this machine.
-
-    The hostname is taken from the connection, never from a header: an
-    `X-Forwarded-For` a caller controls would make this check decorative.
-    """
-    if not host:
-        return False
-    try:
-        return ipaddress.ip_address(host).is_loopback
-    except ValueError:
-        return host == "localhost"
 
 
 def needed() -> bool:
@@ -85,24 +75,16 @@ async def live() -> bool:
 
 
 async def guard(
-    client_host: str | None,
     *,
     changes_database: bool = False,
     writes: tuple[str, ...] = (),
 ) -> None:
-    """Both rules, and they are not a login.
+    """What the wizard may write, and what it may not. Not a login.
 
-    Locality is checked on every write: this page has no accounts, and a form
-    that writes a database URL to disk must not be reachable across a network.
-    The database itself is frozen once the schema is live, because repointing a
-    running installation at another server from a browser is not setup, it is a
-    migration, and it belongs in the configuration file where it can be reviewed.
+    The database is frozen once the schema is live, because repointing a running
+    installation at another server from a browser is not setup, it is a migration,
+    and it belongs in the configuration file where it can be reviewed.
     """
-    if not is_local(client_host):
-        raise Refused(
-            "Setup can only be run from the machine the application runs on. "
-            f"Open it at http://localhost:{settings().port}, or use an SSH tunnel."
-        )
     # Checked before anything is tested: a step whose result can never be saved
     # should say so immediately, not after a connection attempt that succeeds
     # and then turns out to have been pointless.

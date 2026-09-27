@@ -193,7 +193,27 @@ From [ARCHITECTURE §15.5](ARCHITECTURE.md#155-what-it-cost-and-what-it-bought):
 - **A diff against the version a draft is based on.** People stop thinking in versions once there is
   autosave. A text diff against `based_on` is the honest first version.
 
-## 9. Known issues
+## 9. Accounts and roles
+
+There is no authentication. Anyone who can reach the application can use all of it, including
+`/setup`, which writes the database URL, the S3 credentials, the LLM endpoint and the house style
+into the configuration file.
+
+What bounds that today is the `WRITABLE` allowlist in `services/setup.py` — a key not on it cannot be
+set over HTTP whatever the form contains — and the refusal to repoint a database that is already
+live. Both are limits on *what* can be written, not on *who* may write it.
+
+The deployment this is built for is a private network, which is the assumption the whole design rests
+on ([DESIGN §11](DESIGN.md#11-relationship-to-lancy)): local models, no egress, no cloud. A role
+concept is the thing that would let it be exposed more widely, and the smallest useful version is one
+role — administrator — gating `/setup` and `/admin`, since every other page is already the work
+itself rather than the configuration of it.
+
+Worth noting what it would *not* fix: the LLM endpoint is settable from that page, so an attacker who
+reaches it can point drafting at a server they control and have the author's material sent there.
+That makes the endpoint setting the most sensitive thing on the page, ahead of the database URL.
+
+## 10. Known issues
 
 **LibreOffice warns "non-standard file format" on generated `.docx` files.** The file opens, edits
 and round-trips correctly. Verified about the generated starter: it is a valid OPC package,
@@ -211,7 +231,7 @@ testing against a restyled table before adopting.
 `schemas/`. Some are items on this list; `evidence/` and `jobs/` live inside `services/` instead and
 are unlikely to move. The layout should describe the repository.
 
-## 10. Deliberately deferred
+## 11. Deliberately deferred
 
 Not forgotten — decided against for now, with the condition that would change the answer.
 
