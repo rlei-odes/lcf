@@ -404,3 +404,31 @@ class Event(Base):
     # Numbers worth showing beside the row: duration_ms, tokens, per_second.
     # A column apiece would be mostly nulls, since each kind measures its own.
     meta: Mapped[dict | None] = mapped_column(JSONB)
+
+
+class HouseStyle(Base):
+    """The company .docx every export falls back to, installation-wide.
+
+    One row per upload, newest in force. History exists only so the previous
+    couple can be downloaded and compared — not for reproducibility, which is
+    already covered: exports are kept as bytes, so an old deliverable is
+    retrievable without reassembling what produced it.
+
+    Unlike a document type's template this is not bound to anything, which is the
+    whole point. It brands every type that has no template of its own, so
+    replacing it changes every future export of those types.
+    """
+
+    __tablename__ = "house_style"
+
+    id: Mapped[UUID] = _pk()
+    uri: Mapped[str] = mapped_column(Text, nullable=False)
+    filename: Mapped[str] = mapped_column(String(300), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # `clock_timestamp()`, not the `now()` every other table uses: here the
+    # timestamp is the ordering key that decides which upload is in force, and
+    # `now()` is the *transaction* time, so two rows written in one transaction
+    # tie and "newest" becomes whatever order the index felt like.
+    uploaded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.clock_timestamp(), nullable=False
+    )

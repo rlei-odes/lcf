@@ -6,13 +6,15 @@ repoint a database that is already live. The admin page writes nothing at all.
 """
 
 from pathlib import Path
+from uuid import UUID
 
-from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Request, UploadFile
+from fastapi.responses import HTMLResponse, Response
 
 from lcf.core.config import settings
 from lcf.core.db import session
 from lcf.services import admin, doc_types, events, setup
+from lcf.services import templates as templates_service
 from lcf.spec import loader
 from lcf.web.pages import page, redirect
 
@@ -36,6 +38,7 @@ async def setup_page(request: Request):
     what made this unusable the first time round.
     """
     s = settings()
+    state = await setup.state()
     db = setup.parse_url(s.db_url) if s.db_url else setup.Database()
     # The stored password is never sent back to the browser: it would sit in a
     # form field and, worse, inside a command block built for copying. Only a
@@ -45,7 +48,7 @@ async def setup_page(request: Request):
     return page(
         request,
         "setup.html",
-        state=await setup.state(),
+        state=state,
         db=db,
         stored_password=stored_password,
         suggested=setup.SUGGESTED,
@@ -54,7 +57,22 @@ async def setup_page(request: Request):
         s3_endpoint=s.s3_endpoint,
         live=await setup.live(),
         shadowed=setup.shadowed(),
+        # The house style step's body is the same partial the upload swaps in.
+        **(await _house_context() if state.steps[1].done else _house_blank()),
     )
+
+
+def _house_blank() -> dict:
+    """Before the schema exists there is no table to read, so the step says so."""
+    return {
+        "history": [],
+        "current": None,
+        "configured": settings().docx_base_template,
+        "has_path": False,
+        "untemplated": 0,
+        "lint": None,
+        "error": None,
+    }
 
 
 @router.post("/setup/database", response_class=HTMLResponse)
@@ -150,6 +168,91 @@ async def setup_assistant(request: Request):
         request, "partials/setup_step.html",
         step=setup.Step("assistant", "Assistant", "", ok, detail), saved=ok,
     )
+
+
+@router.post("/setup/house-style", response_class=HTMLResponse)
+async def setup_house_style(request: Request, file: UploadFile | None = None):
+    """Take a .docx and make it the installation's branding.
+
+    Guarded like every other writing step: this changes what every export of every
+    untemplated document type looks like, which is not something any browser on
+    the network should be able to do.
+    """
+    error: str | None = None
+    lint = None
+    try:
+        await setup.guard(_client_host(request))
+        if file is None or not file.filename:
+            raise setup.Refused("Choose a .docx file first.")
+        async with session() as s:
+            _, lint = await templates_service.set_house(s, await file.read(), file.filename)
+    except templates_service.HouseRejected as rejected:
+        lint, error = rejected.lint, str(rejected)
+    except (setup.Refused, templates_service.NoStore) as exc:
+        error = str(exc)
+    return await _house_card(request, lint=lint, error=error)
+
+
+@router.post("/setup/house-style/remove", response_class=HTMLResponse)
+async def setup_house_style_remove(request: Request):
+    error: str | None = None
+    try:
+        await setup.guard(_client_host(request))
+        async with session() as s:
+            await templates_service.remove_house(s)
+    except setup.Refused as exc:
+        error = str(exc)
+    return await _house_card(request, error=error)
+
+
+@router.get("/setup/house-style/card", response_class=HTMLResponse)
+async def setup_house_style_card(request: Request):
+    return await _house_card(request)
+
+
+# After /card: a typed path parameter is validated only after matching, so
+# `{house_id}` would answer "card" with a 422 rather than falling through.
+@router.get("/setup/house-style/{house_id}")
+async def setup_house_style_download(house_id: UUID):
+    """Read one back, so a replaced style can still be compared against the new one."""
+    async with session() as s:
+        row = await templates_service.house_get(s, house_id)
+        if row is None:
+            return HTMLResponse("No such house style.", status_code=404)
+        data = templates_service.house_fetch(row)
+        filename = row.filename
+    if data is None:
+        return HTMLResponse("That house style is no longer stored.", status_code=404)
+    return Response(
+        content=data,
+        media_type=templates_service.DOCX_TYPE,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+async def _house_context(*, lint=None, error: str | None = None) -> dict:
+    """What the house style step renders from, read back from the database.
+
+    Shared with `setup_page`, which includes the same partial inline: the step has
+    to look identical whether it arrived with the page or came back from an upload.
+    """
+    async with session() as s:
+        history = await templates_service.house_history(s)
+        untemplated = await templates_service.house_untemplated(s)
+    return {
+        "history": history,
+        "current": history[0] if history else None,
+        "configured": settings().docx_base_template,
+        "has_path": templates_service.house_path() is not None,
+        "untemplated": untemplated,
+        "lint": lint,
+        "error": error,
+    }
+
+
+async def _house_card(request: Request, *, lint=None, error: str | None = None) -> HTMLResponse:
+    context = await _house_context(lint=lint, error=error)
+    return page(request, "partials/setup_house.html", **context)
 
 
 @router.post("/setup/seed")

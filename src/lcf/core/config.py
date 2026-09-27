@@ -92,9 +92,11 @@ class Settings(BaseSettings):
     worker_in_process: bool = True
 
     # The house style every generated starter template is built onto — a .docx
-    # holding header, footer, logo, fonts and colours, and no content. A path for
-    # now: there is no UI to upload one, and the seam is here so that adding one
-    # later changes where the bytes come from and nothing else.
+    # holding header, footer, logo, fonts and colours, and no content.
+    #
+    # The setup page uploads one into object storage, and that takes precedence
+    # over this. The path remains for an installation that bakes its branding into
+    # an image, where there is nobody to upload anything.
     docx_base_template: str = ""
 
     @property

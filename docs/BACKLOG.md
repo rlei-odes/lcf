@@ -177,16 +177,7 @@ check from [ARCHITECTURE §5.4](ARCHITECTURE.md#exemplar-leakage).
 
 Worth doing only once there is enough accepted content in one deployment to harvest from.
 
-## 8. House style UI
-
-`LCF_DOCX_BASE_TEMPLATE` is a filesystem path set per installation. Replacing it with an upload is
-a route, a well-known bucket key in `lcf-templates`, and a card — `services/templates.py` already
-has the shape from the per-type template.
-
-Open question worth settling first: where it belongs. It is installation-wide, not per document
-type, and there is no settings page to put it on.
-
-## 9. Structured spec editor follow-ups
+## 8. Structured spec editor follow-ups
 
 From [ARCHITECTURE §15.5](ARCHITECTURE.md#155-what-it-cost-and-what-it-bought):
 
@@ -202,7 +193,7 @@ From [ARCHITECTURE §15.5](ARCHITECTURE.md#155-what-it-cost-and-what-it-bought):
 - **A diff against the version a draft is based on.** People stop thinking in versions once there is
   autosave. A text diff against `based_on` is the honest first version.
 
-## 10. Known issues
+## 9. Known issues
 
 **LibreOffice warns "non-standard file format" on generated `.docx` files.** The file opens, edits
 and round-trips correctly. Verified about the generated starter: it is a valid OPC package,
@@ -220,7 +211,7 @@ testing against a restyled table before adopting.
 `schemas/`. Some are items on this list; `evidence/` and `jobs/` live inside `services/` instead and
 are unlikely to move. The layout should describe the repository.
 
-## 11. Deliberately deferred
+## 10. Deliberately deferred
 
 Not forgotten — decided against for now, with the condition that would change the answer.
 

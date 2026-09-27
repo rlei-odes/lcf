@@ -195,7 +195,7 @@ async def template_starter(key: str, version: int):
     """The template to edit, generated from the spec onto the house style."""
     async with session() as s:
         row = await doc_types.get_version(s, key, version)
-        data, filename = templates_service.starter_for(row)
+        data, filename = await templates_service.starter_for(s, row)
     return Response(
         content=data,
         media_type=templates_service.DOCX_TYPE,
@@ -280,5 +280,9 @@ async def _template_card(
         lint=lint,
         attached=attached,
         error=error,
-        house=templates_service.house_style() is not None,
+        # Whether there is one, not what is in it: the card only says "on the
+        # house style", so fetching the bytes to answer that would be a round
+        # trip per render.
+        house=await templates_service.house_current(s) is not None
+        or templates_service.house_path() is not None,
     )

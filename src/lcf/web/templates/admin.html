@@ -109,7 +109,18 @@
       <h4>{{ name }}</h4>
       <table class="config">
         {% for _, key, value in rows %}
-        <tr><td class="k">{{ key }}</td><td class="v">{{ value }}</td></tr>
+        <tr>
+          <td class="k">{{ key }}</td>
+          <td class="v">
+            {{ value }}
+            {# The one row here that is not a .env line. It is a file, set in
+               setup, so point at the step rather than leaving someone to guess
+               which config key to edit. #}
+            {%- if key == 'house style docx' %}
+            <a class="hint" style="display:inline" href="/setup#step-house">change</a>
+            {%- endif %}
+          </td>
+        </tr>
         {% endfor %}
       </table>
       {% endfor %}

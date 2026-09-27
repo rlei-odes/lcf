@@ -761,7 +761,7 @@ was most of it. The estimate was right about the payoff too, and it is worth sta
 be named, a column of the wrong table cannot be chosen, a dependency cycle cannot be clicked, and a
 check of a kind the block cannot satisfy is not on the menu.
 
-What is not built is in [BACKLOG §9](BACKLOG.md).
+What is not built is in [BACKLOG §8](BACKLOG.md).
 
 ## 16. The docx template
 
@@ -796,11 +796,30 @@ heading, every block as a correctly spelled tag, tables and lists already wrappe
 loops. The rule builder downloads it, brands it in Word, and uploads it back — they never type a
 section key, so most lint errors are unreachable rather than reported.
 
-`base` is the house style from `LCF_DOCX_BASE_TEMPLATE`: a company `.docx` holding header, footer,
-logo, fonts and colours, and no content. The starter is built onto it, so branding is set once per
-installation rather than reapplied to every template. `render_plain` uses it too — a document type
-with no template of its own still exports onto company paper. The body of the base file is emptied
-before content is appended; only its header, footer, styles and section properties are kept.
+`base` is the house style: a company `.docx` holding header, footer, logo, fonts and colours, and no
+content. The starter is built onto it, so branding is set once per installation rather than
+reapplied to every template. `render_plain` uses it too — a document type with no template of its
+own still exports onto company paper. The body of the base file is emptied before content is
+appended; only its header, footer, styles and section properties are kept.
+
+#### The house style
+
+It is the one template bound to nothing, so it is set for the installation rather than in the
+factory: step 5 of the setup page, guarded like every other writing step there. An upload goes into
+the templates bucket under `house/`, and a `house_style` row records it; the newest row is in force.
+`templates.house_style(session)` resolves the upload first, then `LCF_DOCX_BASE_TEMPLATE`, then
+nothing — the path stays supported for an installation that bakes its branding into an image.
+
+Three rows are kept. That is not for reproducibility, which is already covered by exports being
+stored as bytes; it is so the previous couple can be downloaded and compared, and so that replacing
+the wrong file is one click to undo. Pruning drops rows, not objects: the `Backend` protocol has no
+delete, and an orphaned `.docx` is cheaper than the operation that would remove it.
+
+`review_house` is deliberately not the template linter. There are no tags to check in a file that
+holds no content, so it reports what will be inherited — header, footer, an embedded image — and
+warns about the predictable mistake, which is uploading a filled-in report and expecting its text to
+survive. Styles are not counted as evidence of a design: every `.docx` carries around 164 of them
+whether anyone touched one or not.
 
 A test asserts over every example spec that a generated starter lints clean *and* complete against
 the spec it came from.
@@ -842,6 +861,11 @@ GET   /doc-types/{key}/versions/{v}/template           what is attached
 POST  /doc-types/{key}/versions/{v}/template           upload; lints, refuses on problems
 POST  /doc-types/{key}/versions/{v}/template/remove    fall back to render_plain
 GET   /doc-types/{key}/versions/{v}/template/card      the card, lazily loaded
+
+POST  /setup/house-style                               upload the installation's branding
+POST  /setup/house-style/remove                        undo, promoting the previous upload
+GET   /setup/house-style/{id}                          read one back, to compare
+GET   /setup/house-style/card                          the step's body
 ```
 
 Attaching a template requires object storage: unlike an export, it is the only copy, so a missing
@@ -850,5 +874,4 @@ store raises rather than degrading.
 ### 16.5 Limits
 
 `image_ref` blocks render captions as text in both paths — placing real images waits on upload and
-captioning ([BACKLOG §1](BACKLOG.md)). The house style is a config path with no UI, and the
-template is the document type's, not the document's.
+captioning ([BACKLOG §1](BACKLOG.md)). A template is the document type's, not the document's.

@@ -307,6 +307,9 @@ nav.stepper .step-next { margin-left: auto; text-align: right; font-weight: 550;
   color: var(--warning); background: var(--warning-soft);
   border-color: color-mix(in srgb, var(--warning) 45%, transparent);
 }
+/* Genuinely take it or leave it. Deliberately the quietest of the three, so it
+   does not read as a third thing the deployer has to go and do. */
+.pill.optional { color: var(--faint); }
 
 /* The author's own words, quoted back to them: what intake filed under a section,
    and what a proposed answer was read from. Distinct from content on purpose:

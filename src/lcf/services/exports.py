@@ -98,7 +98,9 @@ async def render(
         data = (
             docx_render.render_with_template(view, template, title=title)
             if template
-            else docx_render.render_plain(view, title=title, base=templates_service.house_style())
+            else docx_render.render_plain(
+                view, title=title, base=await templates_service.house_style(session)
+            )
         )
 
     return Rendered(data, _filename(view, title, fmt), CONTENT_TYPES[fmt], fmt)

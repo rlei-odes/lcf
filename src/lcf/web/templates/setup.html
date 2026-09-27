@@ -12,18 +12,22 @@
     <div class="rail-head">
       <p class="rail-title">Setting up</p>
       <div class="rail-sub">nothing is stored until a step passes</div>
-      {% set done = state.steps|selectattr('done')|list|length %}
-      <div class="meter {{ 'done' if done == state.steps|length }}">
-        <span style="width: {{ (100 * done / state.steps|length)|round|int }}%"></span>
+      {# Readiness counts the steps the installation cannot work without. An
+         optional one is shown and can be ticked, but leaving it undone is not an
+         unfinished setup, so it must not hold the meter below full. #}
+      {% set needed = state.steps|rejectattr('optional')|list %}
+      {% set done = needed|selectattr('done')|list|length %}
+      <div class="meter {{ 'done' if done == needed|length }}">
+        <span style="width: {{ (100 * done / needed|length)|round|int }}%"></span>
       </div>
-      <div class="meter-note">{{ done }} of {{ state.steps|length }} ready</div>
+      <div class="meter-note">{{ done }} of {{ needed|length }} ready</div>
     </div>
 
     {% for s in state.steps %}
     <a href="#step-{{ s.key }}">
       <span class="step-n">{{ loop.index }}</span>
       <span class="dot {{ 's-complete' if s.done else 's-empty' }}">{{ '✓' if s.done else '·' }}</span>
-      <span class="step-name">{{ s.title }}</span>
+      <span class="step-name">{{ s.title }}{% if s.optional %} <span class="hint" style="display:inline">optional</span>{% endif %}</span>
     </a>
     {% endfor %}
 
@@ -82,8 +86,9 @@
       {% else %}
       <h2>Let's get this running</h2>
       <p class="lead">
-        Four steps to get everything working, and storage has a local default. The LLM is needed for the assistant. Nothing here is
-        saved until it has been tested and answered.
+        Four steps to get everything working, and storage has a local default. The
+        LLM is needed for the assistant. Nothing here is saved until it has been
+        tested and answered. The fifth step is branding, and you can come back to it.
       </p>
       {% endif %}
     </div>
@@ -297,6 +302,23 @@
           {% include "partials/setup_step.html" %}
         {% endwith %}
       </div>
+    </div>
+
+    {# --- 5. house style --- #}
+    <div class="card" id="step-house">
+      <div class="block-head">
+        <span class="step-of">Step 5</span>
+        <span class="pill {{ 'complete' if state.steps[4].done else 'optional' }}">
+          {{ 'set' if state.steps[4].done else 'optional' }}</span>
+      </div>
+      <h2>House style</h2>
+      <p class="lead">
+        One Word document holding your branding, used across the whole
+        installation. Every generated starter template is built onto it, and every
+        document type without a template of its own exports through it — so this is
+        where a logo and a font are set once rather than on each type.
+      </p>
+      {% include "partials/setup_house.html" %}
     </div>
 
     {# --- finish --- #}

@@ -239,3 +239,161 @@ def _template_with(*lines: str) -> bytes:
     buffer = io.BytesIO()
     doc.save(buffer)
     return buffer.getvalue()
+
+
+# --------------------------------------------------------------------------- #
+# the house style
+#
+# The one template bound to nothing. It brands every document type that has no
+# template of its own, which is most of them in a fresh installation, so the
+# thing worth asserting is that an upload reaches a real export — not that a row
+# was written.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def local_client():
+    """A client the setup guard accepts.
+
+    `TestClient`'s default connection host is the string "testclient", which is
+    not a loopback address — so every write guarded by `setup.is_local` is
+    refused. That is the guard working, but it leaves the happy path untestable
+    without saying where the request came from.
+    """
+    with TestClient(app, client=("127.0.0.1", 51000)) as c:
+        yield c
+
+
+@pytest.fixture
+async def no_house(db):
+    """No house style, and none left behind. It is installation-wide, so a test
+    that forgot to clean up would brand every later test's exports."""
+    from lcf.models.tables import HouseStyle
+
+    async with session() as s:
+        await s.execute(delete(HouseStyle))
+    yield
+    async with session() as s:
+        await s.execute(delete(HouseStyle))
+
+
+def _house_docx(*, header: str = "ACME | Quality", body: str = "") -> bytes:
+    from docx import Document as NewDocx
+
+    doc = NewDocx()
+    doc.sections[0].header.paragraphs[0].text = header
+    doc.sections[0].footer.paragraphs[0].text = "Confidential"
+    if body:
+        doc.add_paragraph(body)
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    return buffer.getvalue()
+
+
+def test_a_file_word_cannot_open_is_refused():
+    lint = templates_service.review_house(b"this is not a docx")
+    assert not lint.ok
+    assert "not a .docx" in lint.problems[0]
+
+
+def test_the_review_says_what_will_be_inherited_and_what_will_be_lost():
+    lint = templates_service.review_house(_house_docx(body="Lorem ipsum placeholder."))
+    assert lint.ok
+    assert "a header" in lint.carries
+    assert "a footer" in lint.carries
+    # The predictable mistake, warned about before it happens rather than after.
+    assert any("will not appear in exports" in n for n in lint.notes)
+
+
+def test_styles_alone_do_not_count_as_branding():
+    """Every .docx carries ~164 latent styles. Counting them would report a
+    design on a blank document, which is the one case worth warning about."""
+    from docx import Document as NewDocx
+
+    buffer = io.BytesIO()
+    NewDocx().save(buffer)
+    lint = templates_service.review_house(buffer.getvalue())
+    assert lint.carries == []
+    assert any("No header, footer or logo" in n for n in lint.notes)
+
+
+async def test_the_upload_in_force_beats_the_configured_path(no_house, storage):
+    """Both may be set. The upload is the one a person chose most recently."""
+    from lcf.core.config import settings
+
+    async with session() as s:
+        await templates_service.set_house(s, _house_docx(header="UPLOADED"), "brand.docx")
+        await s.commit()
+    async with session() as s:
+        data = await templates_service.house_style(s)
+    assert data is not None
+    assert "UPLOADED" in ReadDocx(io.BytesIO(data)).sections[0].header.paragraphs[0].text
+    assert settings().docx_base_template == ""  # nothing wrote to the env file
+
+
+async def test_removing_promotes_the_previous_upload(no_house, storage):
+    """"Undo that upload" is the operation people want: the wrong file went up and
+    the right one was already there."""
+    async with session() as s:
+        await templates_service.set_house(s, _house_docx(header="FIRST"), "first.docx")
+        await templates_service.set_house(s, _house_docx(header="SECOND"), "second.docx")
+        await s.commit()
+    async with session() as s:
+        assert (await templates_service.house_current(s)).filename == "second.docx"
+        back = await templates_service.remove_house(s)
+        await s.commit()
+    assert back is not None and back.filename == "first.docx"
+
+
+async def test_only_three_uploads_are_kept(no_house, storage):
+    async with session() as s:
+        for n in range(5):
+            await templates_service.set_house(s, _house_docx(), f"brand-{n}.docx")
+        await s.commit()
+    async with session() as s:
+        kept = await templates_service.house_history(s)
+    assert [h.filename for h in kept] == ["brand-4.docx", "brand-3.docx", "brand-2.docx"]
+
+
+def test_the_house_style_brands_an_export_that_has_no_template(
+    published, local_client, storage, no_house
+):
+    """The whole point, end to end: a type with no template of its own exports
+    onto company paper, and the base file's own body text does not come with it."""
+    base = _house_docx(body="Placeholder.")
+    set_it = local_client.post(
+        "/setup/house-style",
+        files={"file": ("brand.docx", base, templates_service.DOCX_TYPE)},
+    )
+    assert set_it.status_code == 200
+    assert "in force" in set_it.text
+
+    created = local_client.post(
+        "/documents", data={"doc_type": published.id, "title": "Branded"}, follow_redirects=False
+    )
+    document_id = created.headers["location"].rsplit("/", 1)[-1]
+    export = local_client.post(
+        f"/documents/{document_id}/export/docx", data={"override_reason": "test"}
+    )
+    assert export.status_code == 200
+
+    doc = ReadDocx(io.BytesIO(export.content))
+    assert doc.sections[0].header.paragraphs[0].text == "ACME | Quality"
+    assert doc.sections[0].footer.paragraphs[0].text == "Confidential"
+    assert "Placeholder." not in "\n".join(p.text for p in doc.paragraphs)
+
+
+async def test_a_caller_that_is_not_this_machine_cannot_set_the_branding(client, no_house):
+    """The admin area is read-only; this is the one write reachable from it, and it
+    changes every future export. It takes setup's localhost guard like every other
+    write there."""
+    from lcf.models.tables import HouseStyle
+
+    refused = client.post(
+        "/setup/house-style",
+        files={"file": ("brand.docx", _house_docx(), templates_service.DOCX_TYPE)},
+    )
+    assert refused.status_code == 200
+    assert "only be run from the machine" in refused.text
+    async with session() as s:
+        assert list(await s.scalars(select(HouseStyle))) == []

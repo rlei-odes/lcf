@@ -371,6 +371,10 @@ class Step:
     blurb: str
     done: bool = False
     detail: str = ""
+    # An optional step is one the installation works without. It is shown and can
+    # be completed, but it is not counted towards readiness — otherwise the meter
+    # sits at "4 of 5" forever for everyone who does not want the thing.
+    optional: bool = False
 
 
 @dataclass
@@ -379,8 +383,12 @@ class State:
     env_path: Path = field(default_factory=env_file)
 
     @property
+    def required(self) -> list[Step]:
+        return [s for s in self.steps if not s.optional]
+
+    @property
     def done(self) -> bool:
-        return all(s.done for s in self.steps)
+        return all(s.done for s in self.required)
 
 
 async def state() -> State:
@@ -406,6 +414,8 @@ async def state() -> State:
     if s.llm_base_url:
         llm_ok, llm_detail = await test_llm(s.llm_base_url, s.llm_model, s.llm_api_key)
 
+    house_ok, house_detail = await _house_state(schema_ok)
+
     return State(
         steps=[
             Step("database", "Database", "PostgreSQL, for everything the app remembers.",
@@ -416,8 +426,35 @@ async def state() -> State:
                  store_ok, store_detail),
             Step("assistant", "Assistant", "Any OpenAI-compatible endpoint.",
                  llm_ok, llm_detail),
+            Step("house", "House style", "Your Word branding on every export.",
+                 house_ok, house_detail, optional=True),
         ]
     )
+
+
+async def _house_state(schema_ok: bool) -> tuple[bool, str]:
+    """Whether a house style is in force, and how it was set.
+
+    Needs the tables, so it reports its dependency rather than raising on an
+    installation that has not migrated yet.
+    """
+    if not schema_ok:
+        return False, "Waiting on the schema."
+
+    from lcf.core.db import session as db_session
+    from lcf.services import templates as templates_service
+
+    try:
+        async with db_session() as s:
+            current = await templates_service.house_current(s)
+    except Exception as exc:  # noqa: BLE001
+        return False, f"{type(exc).__name__}: {exc}"
+
+    if current is not None:
+        return True, f"{current.filename} is in force."
+    if templates_service.house_path() is not None:
+        return True, f"From LCF_DOCX_BASE_TEMPLATE: {settings().docx_base_template}"
+    return False, "Optional. Without one, exports are plain white paper."
 
 
 async def _schema_state() -> tuple[bool, str]:

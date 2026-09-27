@@ -1,0 +1,115 @@
+{# The house style step's body. Swapped whole on every upload and removal, so
+   what it shows is always read back from the database rather than assembled from
+   what was just posted. #}
+<div id="house-card">
+
+  {% if error %}
+  <div class="probe">
+    <span class="mark s-needs_input">✗</span>
+    <div class="probe-body">
+      <div class="probe-name">Not set</div>
+      <pre class="probe-out">{{ error }}</pre>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if current %}
+  <div class="probe">
+    <span class="mark s-complete">✓</span>
+    <div class="probe-body">
+      <div class="probe-name">
+        {{ current.filename }} <span class="pill complete">in force</span>
+      </div>
+      <pre class="probe-out">{{ '%.0f'|format(current.size_bytes / 1024) }} kB, uploaded {{ current.uploaded_at|localtime }}</pre>
+      <div class="actions" style="margin-top:8px">
+        <a href="/setup/house-style/{{ current.id }}">
+          <button type="button">Download</button></a>
+      </div>
+    </div>
+  </div>
+  {% elif has_path %}
+  <div class="probe">
+    <span class="mark s-complete">✓</span>
+    <div class="probe-body">
+      <div class="probe-name">Set by configuration file</div>
+      <pre class="probe-out">LCF_DOCX_BASE_TEMPLATE={{ configured }}</pre>
+      <div class="hint">
+        Uploading one here takes over from that path. The path stays in the file
+        and is used again if you remove the upload.
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if lint %}
+    {% if lint.carries %}
+    <p class="hint" style="margin-top:var(--s3)">
+      Inherited from it: {% for c in lint.carries %}{{ c }}{% if not loop.last %}, {% endif %}{% endfor %}.
+    </p>
+    {% endif %}
+    {% for note in lint.notes %}
+    <div class="notice" style="margin-top:var(--s3)">
+      <div class="hint">{{ note }}</div>
+    </div>
+    {% endfor %}
+  {% endif %}
+
+  <form method="post" enctype="multipart/form-data" action="/setup/house-style"
+        hx-post="/setup/house-style" hx-target="#house-card" hx-swap="outerHTML"
+        hx-encoding="multipart/form-data" hx-disabled-elt="find button">
+    <div class="actions">
+      <input type="file" name="file" accept=".docx" required>
+      <button class="primary" type="submit">{{ 'Replace it' if current else 'Use this file' }}</button>
+      <span class="htmx-indicator working">Reading the file…</span>
+    </div>
+    <span class="why">
+      A Word document holding your header, footer, logo, fonts and colours, and no
+      content. Only those are kept: anything written in the body is dropped.
+    </span>
+  </form>
+
+  {% if current %}
+  <form method="post" action="/setup/house-style/remove"
+        hx-post="/setup/house-style/remove" hx-target="#house-card" hx-swap="outerHTML"
+        style="margin-top:10px">
+    <button type="submit">
+      {%- if history|length > 1 %}Revert to {{ history[1].filename }}
+      {%- elif has_path %}Remove, and go back to the configured path
+      {%- else %}Remove, and go back to plain paper{% endif %}</button>
+    <span class="why">
+      {% if history|length > 1 %}Drops this upload and puts the previous one back in force.
+      {% else %}Drops this upload. The file stays in storage.{% endif %}
+    </span>
+  </form>
+  {% endif %}
+
+  {% if history|length > 1 %}
+  <details class="quiet-details" style="margin-top:var(--s4)">
+    <summary>{{ count(history|length - 1, 'earlier upload') }}, kept so you can compare</summary>
+    <ul class="plain" style="margin-top:8px">
+      {% for h in history[1:] %}
+      <li>
+        <span class="mark">·</span>
+        <span>
+          <a href="/setup/house-style/{{ h.id }}">{{ h.filename }}</a>
+          <span class="hint" style="display:inline">
+            — {{ '%.0f'|format(h.size_bytes / 1024) }} kB, {{ h.uploaded_at|localtime }}</span>
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+
+  <p class="hint" style="margin-top:var(--s4)">
+    {% if untemplated %}
+      {{ count(untemplated, 'document type') }} {{ 'has' if untemplated == 1 else 'have' }} no
+      Word template of {{ 'its' if untemplated == 1 else 'their' }} own, so every export of
+      {{ 'it' if untemplated == 1 else 'them' }} is branded by this. Generated starter
+      templates are built onto it too.
+    {% else %}
+      Every document type has a Word template of its own, so this is used only when
+      generating a new starter template to brand.
+    {% endif %}
+  </p>
+</div>

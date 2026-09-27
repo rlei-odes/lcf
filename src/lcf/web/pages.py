@@ -13,7 +13,7 @@ from fastapi import Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from lcf.core.text import count
+from lcf.core.text import count, verb
 from lcf.engine.state import Status
 from lcf.services import drafts, events
 from lcf.spec.describe import describe_criterion, describe_requirement, scope_of
@@ -83,6 +83,7 @@ def _asset(path: str) -> str:
 
 
 templates.env.globals["count"] = count
+templates.env.globals["verb"] = verb
 templates.env.globals["asset"] = _asset
 
 # The spec view renders a check with the same function that composes it into the

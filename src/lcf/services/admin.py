@@ -147,10 +147,14 @@ async def probes(session: AsyncSession) -> list[Probe]:
     return [db, storage, llm]
 
 
-def configuration() -> list[tuple[str, str, str]]:
+def configuration(house: str = "none") -> list[tuple[str, str, str]]:
     """The settings worth seeing, as (group, name, value). Secrets never appear:
     a value that would compromise the installation is reported as set or unset,
-    which is the only thing anyone needs from this page anyway."""
+    which is the only thing anyone needs from this page anyway.
+
+    `house` is passed in rather than read here: the house style is a row now, not
+    only a path, and this function is the read-only mirror of what setup sets.
+    """
     s = settings()
     return [
         ("Application", "host", f"{s.host}:{s.port}"),
@@ -173,7 +177,7 @@ def configuration() -> list[tuple[str, str, str]]:
         ("Storage", "uploads bucket", s.s3_bucket_uploads),
         ("Storage", "templates bucket", s.s3_bucket_templates),
         ("Storage", "exports bucket", s.s3_bucket_exports),
-        ("Templates", "house style docx", s.docx_base_template or "none"),
+        ("Templates", "house style docx", house),
     ]
 
 
@@ -186,11 +190,23 @@ class Health:
     checked_at: datetime
 
 
+async def _house_summary(session: AsyncSession) -> str:
+    """Where the house style comes from, said in one line."""
+    from lcf.services import templates as templates_service
+
+    current = await templates_service.house_current(session)
+    if current is not None:
+        return f"uploaded: {current.filename}"
+    if settings().docx_base_template:
+        return f"path: {settings().docx_base_template}"
+    return "none"
+
+
 async def health(session: AsyncSession) -> Health:
     return Health(
         probes=await probes(session),
         counts=await counts(session),
         jobs=await recent_jobs(session),
-        config=configuration(),
+        config=configuration(await _house_summary(session)),
         checked_at=datetime.now().astimezone(),
     )
