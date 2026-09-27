@@ -51,7 +51,6 @@ jobs:
       # the checkout, and a test run reaching somebody's real bucket is worse
       # than a test run skipping six tests.
       LCF_S3_ENDPOINT: ""
-      LCF_STORAGE_DIR: ${{ runner.temp }}/lcf-storage
       LCF_LLM_BASE_URL: ""
 
     steps:
@@ -84,3 +83,10 @@ jobs:
 
       - name: Test
         run: uv run pytest -q
+        env:
+          # Keeps what the tests write out of the checkout. It lives here rather
+          # than in the job's `env` above because the `runner` context is only
+          # available to a step — using it at job level is not an empty string,
+          # it is an invalid workflow file, and the whole run is rejected before
+          # any job starts.
+          LCF_STORAGE_DIR: ${{ runner.temp }}/lcf-storage
