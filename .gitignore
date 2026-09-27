@@ -1,5 +1,8 @@
 .env
 .venv/
+# The local storage backend's default root in a source checkout: see
+# core.config.data_dir. Exports and templates the app wrote, not source.
+var/
 __pycache__/
 *.py[cod]
 *.egg-info/

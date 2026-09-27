@@ -1,0 +1,86 @@
+# Lint and test on every push and pull request.
+#
+# The point of this is to make a dependency bump mergeable on evidence rather
+# than on faith: Dependabot opens a pull request against uv.lock, this runs the
+# whole suite against the new resolution, and the result is the decision.
+#
+# Postgres runs as a service container because most of the suite needs one — 239
+# of 346 tests pass without it and the other 107 skip, which is not enough signal
+# to merge anything on. Object storage does not: the local-disk backend is the
+# default, so only the six tests that specifically exercise S3 skip here, and
+# they are about the S3 client rather than about anything this project decides.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push to the same branch makes the first run's answer worthless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # Matched to the version this is developed and deployed against. A
+        # migration that works on one major and not another is exactly the
+        # failure CI should catch rather than cause.
+        image: postgres:18
+        env:
+          POSTGRES_USER: lcf
+          POSTGRES_PASSWORD: lcf
+          POSTGRES_DB: lcf
+        ports:
+          - 5432:5432
+        # Without this the first test connects before the server is listening.
+        options: >-
+          --health-cmd "pg_isready -U lcf"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      LCF_DB_URL: postgresql+asyncpg://lcf:lcf@localhost:5432/lcf
+      # Empty selects the local-disk backend. Set deliberately rather than left
+      # unset: `settings()` would otherwise read a .env if one ever appears in
+      # the checkout, and a test run reaching somebody's real bucket is worse
+      # than a test run skipping six tests.
+      LCF_S3_ENDPOINT: ""
+      LCF_STORAGE_DIR: ${{ runner.temp }}/lcf-storage
+      LCF_LLM_BASE_URL: ""
+
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      # Pinned exactly because this action stopped publishing a moving `v10`
+      # tag. Dependabot's github-actions ecosystem is what keeps it current.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.2.0
+        with:
+          # The version this is developed and deployed on. uv provisions it, so
+          # there is no separate setup-python step. Raise it here when the
+          # deployment moves, not before — CI testing a different Python from
+          # the one that runs in production is a test of something else.
+          python-version: "3.13"
+
+      # --frozen, never --upgrade: the lock is the thing under test. Resolving
+      # afresh here would mean CI passing on versions the commit does not pin.
+      - name: Install the locked dependencies
+        run: uv sync --frozen --extra dev
+
+      - name: Lint
+        run: uv run ruff check src tests
+
+      # The test fixtures check the database is reachable, not that it has any
+      # tables in it, so the schema has to exist before pytest starts. This also
+      # means every migration is exercised on every run.
+      - name: Migrate
+        run: uv run alembic upgrade head
+
+      - name: Test
+        run: uv run pytest -q

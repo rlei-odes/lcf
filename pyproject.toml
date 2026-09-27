@@ -51,4 +51,8 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-pythonpath = ["src"]
+# "." as well as "src": seven modules import helpers from tests.conftest, and the
+# repo root is only on sys.path implicitly when pytest is started as
+# `python -m pytest`. Without it, a plain `pytest` — which is what `uv run pytest`
+# and most CI recipes do — fails at collection.
+pythonpath = ["src", "."]

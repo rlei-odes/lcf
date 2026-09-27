@@ -26,6 +26,16 @@ updates:
     commit-message:
       prefix: "build"
 
-  # Add a `github-actions` entry here once there are workflows under
-  # .github/workflows. Listing it while that directory is empty makes Dependabot
-  # report a missing manifest on every run.
+  # The workflow's own actions. Worth having precisely because they are pinned
+  # exactly — setup-uv no longer publishes a moving major tag, so without this
+  # nothing would ever move it.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "build"
