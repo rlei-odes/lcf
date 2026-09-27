@@ -225,6 +225,13 @@ def cmd_serve(args) -> int:
         host=args.host or s.host,
         port=args.port or s.port,
         reload=args.reload,
+        # Watch the package, not the working directory. The default is the
+        # directory the command was run from, which here also means .venv — so
+        # the reloader registers a watch per directory across every installed
+        # dependency, and a `pip install` mid-session restarts the server.
+        # Naming the package instead also means --reload behaves the same
+        # wherever it is run from.
+        reload_dirs=[str(Path(__file__).resolve().parent)] if args.reload else None,
         log_level=s.log_level.lower(),
     )
     return 0
