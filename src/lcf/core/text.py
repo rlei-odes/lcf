@@ -7,7 +7,7 @@ lives once here rather than as "(s)" in thirty format strings.
 
 
 def count(n: int, singular: str, plural: str | None = None) -> str:
-    """"1 check", "20 checks".
+    """ "1 check", "20 checks".
 
     "check(s)" is not something anyone says out loud; it reads as a form field
     rather than a sentence. English is regular enough that one helper covers

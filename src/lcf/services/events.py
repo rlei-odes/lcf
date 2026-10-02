@@ -135,9 +135,7 @@ async def prune(session: AsyncSession, keep: int = 5000) -> int:
     the admin page rather than on a timer: an installation nobody looks at is
     also one nobody is generating events on.
     """
-    cutoff = await session.scalar(
-        select(Event.at).order_by(Event.at.desc()).offset(keep).limit(1)
-    )
+    cutoff = await session.scalar(select(Event.at).order_by(Event.at.desc()).offset(keep).limit(1))
     if cutoff is None:
         return 0
     result = await session.execute(delete(Event).where(Event.at < cutoff))

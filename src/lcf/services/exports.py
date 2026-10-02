@@ -210,9 +210,7 @@ def _store(document_id: UUID, rendered: Rendered) -> str | None:
 
     key = f"{document_id}/{datetime.now(UTC):%Y%m%dT%H%M%S}-{rendered.filename}"
     try:
-        return storage.put(
-            settings().s3_bucket_exports, key, rendered.data, rendered.content_type
-        )
+        return storage.put(settings().s3_bucket_exports, key, rendered.data, rendered.content_type)
     except Exception as exc:
         logger.error("could not store export: {}", exc)
         return None

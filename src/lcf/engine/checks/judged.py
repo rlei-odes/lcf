@@ -84,8 +84,11 @@ async def _mentions(
 
     try:
         completion = await complete_json(
-            prompt("judge_mentions"), user, mentions_schema(must_mention), "mentions",
-            purpose="judge_mentions"
+            prompt("judge_mentions"),
+            user,
+            mentions_schema(must_mention),
+            "mentions",
+            purpose="judge_mentions",
         )
     except (LLMUnavailable, LLMMalformed) as exc:
         return errored(check_id, severity, str(exc), evidence=evidence, section_key=section_key)
@@ -140,8 +143,7 @@ async def _rubric(
 
     try:
         completion = await complete_json(
-            prompt("judge_rubric"), user, JUDGEMENT_SCHEMA, "judgement",
-            purpose="judge_rubric"
+            prompt("judge_rubric"), user, JUDGEMENT_SCHEMA, "judgement", purpose="judge_rubric"
         )
     except (LLMUnavailable, LLMMalformed) as exc:
         return errored(check_id, severity, str(exc), evidence=evidence, section_key=section_key)

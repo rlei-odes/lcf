@@ -376,9 +376,7 @@ def test_plain_render_can_use_the_house_style_too(filled):
     out = docx_render.render_plain(filled, title="A 4D", base=_house_style())
     doc = ReadDocx(io.BytesIO(out))
     assert doc.sections[0].header.paragraphs[0].text == "NORDWERK | Supplier Quality"
-    assert "Nordwerk Fahrzeugtechnik reported cracking" in "\n".join(
-        p.text for p in doc.paragraphs
-    )
+    assert "Nordwerk Fahrzeugtechnik reported cracking" in "\n".join(p.text for p in doc.paragraphs)
 
 
 # --------------------------------------------------------------------------- #

@@ -98,9 +98,13 @@ async def setup_database(request: Request):
     # so a password already on disk cannot reappear in a copyable block.
     shown = setup.Database(db.host, db.port, db.name, db.user, typed)
     return page(
-        request, "partials/setup_step.html",
+        request,
+        "partials/setup_step.html",
         step=setup.Step("database", "Database", "", ok, detail),
-        db=shown, saved=ok, live=await setup.live(), oob=True,
+        db=shown,
+        saved=ok,
+        live=await setup.live(),
+        oob=True,
     )
 
 
@@ -112,8 +116,10 @@ async def setup_migrate(request: Request):
     except setup.Refused as exc:
         ok, detail = False, str(exc)
     return page(
-        request, "partials/setup_step.html",
-        step=setup.Step("schema", "Schema", "", ok, detail), saved=False,
+        request,
+        "partials/setup_step.html",
+        step=setup.Step("schema", "Schema", "", ok, detail),
+        saved=False,
     )
 
 
@@ -134,8 +140,10 @@ async def setup_storage(request: Request):
     except setup.Refused as exc:
         ok, detail = False, str(exc)
     return page(
-        request, "partials/setup_step.html",
-        step=setup.Step("storage", "Storage", "", ok, detail), saved=ok,
+        request,
+        "partials/setup_step.html",
+        step=setup.Step("storage", "Storage", "", ok, detail),
+        saved=ok,
     )
 
 
@@ -151,16 +159,20 @@ async def setup_assistant(request: Request):
         )
         ok, detail = await setup.test_llm(base_url, model, key)
         if ok:
-            setup.write({
-                "LCF_LLM_BASE_URL": base_url,
-                "LCF_LLM_MODEL": model,
-                "LCF_LLM_API_KEY": key or "not-needed",
-            })
+            setup.write(
+                {
+                    "LCF_LLM_BASE_URL": base_url,
+                    "LCF_LLM_MODEL": model,
+                    "LCF_LLM_API_KEY": key or "not-needed",
+                }
+            )
     except setup.Refused as exc:
         ok, detail = False, str(exc)
     return page(
-        request, "partials/setup_step.html",
-        step=setup.Step("assistant", "Assistant", "", ok, detail), saved=ok,
+        request,
+        "partials/setup_step.html",
+        step=setup.Step("assistant", "Assistant", "", ok, detail),
+        saved=ok,
     )
 
 

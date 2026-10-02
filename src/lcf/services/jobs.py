@@ -98,14 +98,21 @@ async def _run(job_id: UUID, kind: str, document_id: UUID | None, scope: str | N
         # it finished, which is worth having when reading a row back later.
         await _update(job_id, status="succeeded", result=result, finished_at=datetime.now(UTC))
         await events.record(
-            "job.finished", f"{title}{where}", category="job",
-            document_id=document_id, meta=took() | (result or {}),
+            "job.finished",
+            f"{title}{where}",
+            category="job",
+            document_id=document_id,
+            meta=took() | (result or {}),
         )
     except asyncio.CancelledError:
         await _update(job_id, status="failed", error="cancelled", finished_at=datetime.now(UTC))
         await events.record(
-            "job.cancelled", f"{title}{where} was cancelled", category="job",
-            ok=False, document_id=document_id, meta=took(),
+            "job.cancelled",
+            f"{title}{where} was cancelled",
+            category="job",
+            ok=False,
+            document_id=document_id,
+            meta=took(),
         )
         raise
     except Exception as exc:
@@ -117,8 +124,12 @@ async def _run(job_id: UUID, kind: str, document_id: UUID | None, scope: str | N
             finished_at=datetime.now(UTC),
         )
         await events.record(
-            "job.failed", f"{title}{where} failed: {type(exc).__name__}: {exc}",
-            category="job", ok=False, document_id=document_id, meta=took(),
+            "job.failed",
+            f"{title}{where} failed: {type(exc).__name__}: {exc}",
+            category="job",
+            ok=False,
+            document_id=document_id,
+            meta=took(),
         )
 
 

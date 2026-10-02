@@ -84,6 +84,12 @@ async def guard(
     The database is frozen once the schema is live, because repointing a running
     installation at another server from a browser is not setup, it is a migration,
     and it belongs in the configuration file where it can be reviewed.
+
+    `writes` names the configuration keys the step will save, and only those are
+    checked. A step that saves nothing — migrating, seeding, uploading the house
+    style — passes none, and a key set in the environment is then none of its
+    business: what it does lands in the database or the bucket, where no env var
+    can shadow it.
     """
     # Checked before anything is tested: a step whose result can never be saved
     # should say so immediately, not after a connection attempt that succeeds
@@ -121,8 +127,13 @@ def shadowed(keys: list[str] | None = None) -> list[str]:
     written here. Without this check the wizard would save, report success, and
     the application would go on using a different database — the worst kind of
     failure, because nothing looks wrong.
+
+    `None` asks about every writable key, which is what the admin page wants. An
+    empty list asks about none, which is what a step that writes nothing wants —
+    the two must stay distinguishable, because `keys or WRITABLE` once turned
+    "writes nothing" into "is blocked by any key set anywhere".
     """
-    return [k for k in (keys or WRITABLE) if k in os.environ]
+    return [k for k in (WRITABLE if keys is None else keys) if k in os.environ]
 
 
 def write(values: dict[str, str]) -> Path:
@@ -199,7 +210,7 @@ class Database:
                 "If PostgreSQL is already running on this machine",
                 "Create the role and the database inside it. Needs an account that "
                 "may create databases — usually the postgres superuser:",
-                f'sudo -u postgres psql -c "CREATE ROLE {self.user} LOGIN PASSWORD \'{pw}\';" '
+                f"sudo -u postgres psql -c \"CREATE ROLE {self.user} LOGIN PASSWORD '{pw}';\" "
                 f'\\\n  -c "CREATE DATABASE {self.name} OWNER {self.user};"',
             ),
             (
@@ -400,16 +411,36 @@ async def state() -> State:
 
     return State(
         steps=[
-            Step("database", "Database", "PostgreSQL, for everything the app remembers.",
-                 db_ok, db_detail),
-            Step("schema", "Schema", "The tables, brought to the current version.",
-                 schema_ok, schema_detail),
-            Step("storage", "Storage", "Where exports and Word templates are kept.",
-                 store_ok, store_detail),
-            Step("assistant", "Assistant", "Any OpenAI-compatible endpoint.",
-                 llm_ok, llm_detail),
-            Step("house", "House style", "Your Word branding on every export.",
-                 house_ok, house_detail, optional=True),
+            Step(
+                "database",
+                "Database",
+                "PostgreSQL, for everything the app remembers.",
+                db_ok,
+                db_detail,
+            ),
+            Step(
+                "schema",
+                "Schema",
+                "The tables, brought to the current version.",
+                schema_ok,
+                schema_detail,
+            ),
+            Step(
+                "storage",
+                "Storage",
+                "Where exports and Word templates are kept.",
+                store_ok,
+                store_detail,
+            ),
+            Step("assistant", "Assistant", "Any OpenAI-compatible endpoint.", llm_ok, llm_detail),
+            Step(
+                "house",
+                "House style",
+                "Your Word branding on every export.",
+                house_ok,
+                house_detail,
+                optional=True,
+            ),
         ]
     )
 

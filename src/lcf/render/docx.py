@@ -158,9 +158,7 @@ def render_with_template(view: DocumentView, template: bytes, *, title: str) -> 
     return buffer.getvalue()
 
 
-def context(
-    view: DocumentView, *, title: str, tpl: DocxTemplate | None = None
-) -> dict[str, Any]:
+def context(view: DocumentView, *, title: str, tpl: DocxTemplate | None = None) -> dict[str, Any]:
     """What a template can reference: `{{ section_key.block_key }}`.
 
     Values are flattened to text here rather than in the template, so the simplest
@@ -213,10 +211,7 @@ def _value(block: Block, value: Any, tpl: DocxTemplate | None) -> BlockValue:
         return BlockValue(text, rows=rows, columns=columns)
 
     if block.kind is BlockKind.IMAGE_REF:
-        rows = [
-            ref if isinstance(ref, dict) else {"caption": str(ref)}
-            for ref in value
-        ]
+        rows = [ref if isinstance(ref, dict) else {"caption": str(ref)} for ref in value]
         return BlockValue(text, rows=rows)
 
     return BlockValue(text)

@@ -31,15 +31,20 @@ def client():
 
 @pytest.fixture
 def storage():
-    """Skip rather than fail when the bucket from .env is unreachable.
+    """Somewhere to put bytes, or a skip if the configured store cannot be reached.
 
-    Same bargain as the database fixture: the parts that must always run are the
-    ones that need nothing.
+    The local-disk backend is the default and needs nothing but a writable
+    directory, so these tests run wherever the database does. That includes CI,
+    which matters because three of them drive the upload routes rather than the
+    service underneath — and a route is where `guard` is called.
+
+    A configured S3 endpoint is the only way to have no storage at all, and then
+    the bargain is the database fixture's: skip rather than fail.
     """
     from lcf.core.config import settings
 
     if not settings().s3_endpoint:
-        pytest.skip("object storage not configured")
+        return
     try:
         from lcf.storage.s3 import client as s3
 
@@ -319,7 +324,7 @@ async def test_the_upload_in_force_beats_the_configured_path(no_house, storage):
 
 
 async def test_removing_promotes_the_previous_upload(no_house, storage):
-    """"Undo that upload" is the operation people want: the wrong file went up and
+    """ "Undo that upload" is the operation people want: the wrong file went up and
     the right one was already there."""
     async with session() as s:
         await templates_service.set_house(s, _house_docx(header="FIRST"), "first.docx")
@@ -359,9 +364,7 @@ def test_the_house_style_brands_an_export_that_has_no_template(
         "/documents", data={"doc_type": published.id, "title": "Branded"}, follow_redirects=False
     )
     document_id = created.headers["location"].rsplit("/", 1)[-1]
-    export = client.post(
-        f"/documents/{document_id}/export/docx", data={"override_reason": "test"}
-    )
+    export = client.post(f"/documents/{document_id}/export/docx", data={"override_reason": "test"})
     assert export.status_code == 200
 
     doc = ReadDocx(io.BytesIO(export.content))

@@ -4,11 +4,11 @@
 # than on faith: Dependabot opens a pull request against uv.lock, this runs the
 # whole suite against the new resolution, and the result is the decision.
 #
-# Postgres runs as a service container because most of the suite needs one — 239
-# of 346 tests pass without it and the other 107 skip, which is not enough signal
+# Postgres runs as a service container because most of the suite needs one — 246
+# of 353 tests pass without it and the other 107 skip, which is not enough signal
 # to merge anything on. Object storage does not: the local-disk backend is the
-# default, so only the six tests that specifically exercise S3 skip here, and
-# they are about the S3 client rather than about anything this project decides.
+# default and needs nothing but a writable directory, so the whole suite runs
+# here with nothing skipped.
 name: CI
 
 on:
@@ -74,6 +74,12 @@ jobs:
 
       - name: Lint
         run: uv run ruff check src tests
+
+      # Checked rather than merely available: a half-formatted tree puts
+      # reformatting noise into the next unrelated diff, which is where a review
+      # stops being able to see what changed.
+      - name: Format
+        run: uv run ruff format --check src tests
 
       # The test fixtures check the database is reachable, not that it has any
       # tables in it, so the schema has to exist before pytest starts. This also

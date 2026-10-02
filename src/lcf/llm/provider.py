@@ -154,8 +154,16 @@ async def complete_json(
             chars += len(raw)
         except Exception as exc:  # network, timeout, refusal
             await _emit(
-                CallRecord(label, s.llm_model, False, elapsed(), attempt, chunks, chars,
-                           f"{type(exc).__name__}: {exc}")
+                CallRecord(
+                    label,
+                    s.llm_model,
+                    False,
+                    elapsed(),
+                    attempt,
+                    chunks,
+                    chars,
+                    f"{type(exc).__name__}: {exc}",
+                )
             )
             raise LLMUnavailable(f"{type(exc).__name__}: {exc}") from exc
 
