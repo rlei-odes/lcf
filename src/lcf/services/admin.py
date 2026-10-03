@@ -18,6 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lcf.core.config import settings
+from lcf.core.text import count
 from lcf.models.tables import (
     DocType,
     DocTypeDraft,
@@ -32,13 +33,20 @@ from lcf.models.tables import (
 
 @dataclass
 class Probe:
-    """One external dependency, and whether it answered."""
+    """One external dependency, and whether it answered.
+
+    `remedy` is what to do about this one, set only when it failed. It belongs to
+    the probe rather than to the page because only the probe knows which failure
+    it hit: advice covering every dependency at once ends up telling the reader
+    to create buckets that are already there.
+    """
 
     name: str
     target: str
     ok: bool
     detail: str
     items: list[tuple[str, str]] = field(default_factory=list)
+    remedy: str = ""
 
 
 @dataclass
@@ -90,26 +98,63 @@ async def probe_database(session: AsyncSession) -> Probe:
         version = await session.scalar(select(func.version()))
         return Probe("Database", _redact(s.db_url), True, str(version).split(" on ")[0])
     except Exception as exc:  # noqa: BLE001 — a probe reports every failure the same way
-        return Probe("Database", _redact(s.db_url), False, f"{type(exc).__name__}: {exc}")
+        return Probe(
+            "Database",
+            _redact(s.db_url),
+            False,
+            f"{type(exc).__name__}: {exc}",
+            remedy="Check LCF_DB_URL, and that the server is up and reachable from here.",
+        )
 
 
 async def probe_storage() -> Probe:
-    """Which of the three buckets exist. Never creates one: `lcf buckets` does
-    that, and a status page that provisions is a status page that lies."""
+    """Which of the buckets exist. Never creates one: `lcf buckets` does that,
+    and a status page that provisions is a status page that lies.
+
+    What a missing one means depends on the backend, so this does not call both
+    the same. An absent S3 bucket is a fault — `put` fails against it, and only
+    `lcf buckets` or the setup page will create it. An absent directory on the
+    local backend is a fault nowhere: `put` creates it, so all it says is that
+    nothing has been written there yet.
+    """
     import lcf.storage as storage
 
     s = settings()
     backend = storage.store()
-    name = "Object storage" if backend.scheme == "s3" else "Storage (local disk)"
+    on_s3 = backend.scheme == "s3"
+    name = "Object storage" if on_s3 else "Storage (local disk)"
     try:
         present = await asyncio.to_thread(backend.existing)
     except Exception as exc:  # noqa: BLE001
-        return Probe(name, backend.describe(), False, f"{type(exc).__name__}: {exc}")
+        return Probe(
+            name,
+            backend.describe(),
+            False,
+            f"{type(exc).__name__}: {exc}",
+            remedy="The store itself did not answer. Check the endpoint and the credentials.",
+        )
 
-    items = [(b, "present" if b in present else "missing") for b in s.buckets]
-    missing = [b for b, state in items if state == "missing"]
-    detail = "all three buckets present" if not missing else f"missing: {', '.join(missing)}"
-    return Probe(name, backend.describe(), not missing, detail, items)
+    unit = ("bucket", "buckets") if on_s3 else ("directory", "directories")
+    items = [
+        (b, "present" if b in present else "missing" if on_s3 else "on first write")
+        for b in s.buckets
+    ]
+    absent = [b for b, state in items if state != "present"]
+
+    if not absent:
+        detail = f"all {count(len(items), *unit)} present"
+    elif on_s3:
+        detail = f"missing: {', '.join(absent)}"
+    else:
+        detail = f"created on first write: {', '.join(absent)}"
+    return Probe(
+        name,
+        backend.describe(),
+        not absent or not on_s3,
+        detail,
+        items,
+        remedy="Run `lcf buckets`, or open /setup and test the storage step." if absent else "",
+    )
 
 
 async def probe_llm() -> Probe:
@@ -119,15 +164,29 @@ async def probe_llm() -> Probe:
     from openai import AsyncOpenAI
 
     s = settings()
+    # Not configured is a different thing from not answering, and the remedy says
+    # so: nothing is broken here, there is simply no assistant yet, and only the
+    # two features that need one are affected.
+    unset = "Set the endpoint and model on /setup. Drafting and the quality gate "
+    unset += "need them; everything else works without."
     if not s.llm_base_url:
-        return Probe("Assistant", "not configured", False, "LCF_LLM_BASE_URL is empty")
+        return Probe(
+            "Assistant", "not configured", False, "LCF_LLM_BASE_URL is empty", remedy=unset
+        )
 
     target = f"{s.llm_base_url} · {s.llm_model}"
     try:
         client = AsyncOpenAI(base_url=s.llm_base_url, api_key=s.llm_api_key or "not-needed")
         served = [m.id async for m in (await client.models.list())]
     except Exception as exc:  # noqa: BLE001
-        return Probe("Assistant", target, False, f"{type(exc).__name__}: {exc}")
+        return Probe(
+            "Assistant",
+            target,
+            False,
+            f"{type(exc).__name__}: {exc}",
+            remedy="The endpoint did not answer. Check it is up and that LCF_LLM_BASE_URL "
+            "ends in /v1.",
+        )
 
     if s.llm_model in served:
         return Probe("Assistant", target, True, f"serving {s.llm_model}")
@@ -137,6 +196,8 @@ async def probe_llm() -> Probe:
         False,
         f"reachable, but {s.llm_model!r} is not served. "
         f"It offers: {', '.join(served) or 'nothing'}",
+        remedy="Point LCF_LLM_MODEL at one of the models it serves. Until then, drafting "
+        "and the quality gate fail at the first call.",
     )
 
 

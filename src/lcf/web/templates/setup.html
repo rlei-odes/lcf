@@ -46,8 +46,7 @@
         {{ 'an environment variable' if shadowed|length == 1 else 'environment variables' }},
         and the environment outranks the configuration file. This page will
         refuse to save
-        {{ 'it' if shadowed|length == 1 else 'them' }}, because saving would look
-        like it worked and change nothing.
+        {{ 'it' if shadowed|length == 1 else 'them' }}.
       </p>
       <div class="hint">
         Change

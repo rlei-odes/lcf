@@ -74,21 +74,28 @@
           {% if p.items %}
           <div class="probe-items">
             {% for name, state in p.items %}
-            <span class="chip {{ 'good' if state == 'present' else 'bad' }}">{{ name }} · {{ state }}</span>
+            {# Three states, not two: a local directory that does not exist yet is
+               neither there nor wrong, so it gets the plain chip. #}
+            <span class="chip {% if state == 'present' %}good{% elif state == 'missing' %}bad{% endif %}">{{ name }} · {{ state }}</span>
             {% endfor %}
           </div>
           {% endif %}
         </div>
       </div>
       {% endfor %}
-      {% if health.probes|rejectattr('ok')|list %}
+      {# One line per dependency that is actually unhappy, carrying the advice for
+         the failure it hit. The previous version listed every remedy at once, so
+         a page with three present buckets still said to go and create some. #}
+      {% set unhappy = health.probes|rejectattr('ok')|list %}
+      {% if unhappy %}
       <div class="notice" style="margin-top:var(--s4)">
-        <strong>Something is not answering.</strong>
+        <strong>{{ count(unhappy|length, 'thing') }} to look at.</strong>
         <div class="hint">
-          Missing buckets: run <code>lcf buckets</code>. A database that refuses:
-          check <code>LCF_DB_URL</code> and that the server is up. An assistant
-          serving a different model: the drafting and quality gate features will
-          fail at the first call, everything else works.
+          <ul class="plain" style="margin:var(--s2) 0 0">
+            {% for p in unhappy %}
+            <li><strong>{{ p.name }}</strong> — {{ p.remedy or p.detail }}</li>
+            {% endfor %}
+          </ul>
         </div>
       </div>
       {% endif %}

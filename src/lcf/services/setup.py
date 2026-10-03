@@ -26,6 +26,7 @@ from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 from lcf.core.config import env_file, reload, settings
+from lcf.core.text import count
 
 # Everything the wizard is allowed to write. A key not on this list cannot be set
 # by an HTTP request, whatever the form contains.
@@ -271,15 +272,86 @@ def _explain(exc: Exception) -> str:
     return text
 
 
+TABLES = (
+    "SELECT table_name FROM information_schema.tables "
+    "WHERE table_schema = current_schema() AND table_type = 'BASE TABLE' "
+    "ORDER BY table_name"
+)
+
+
+async def snapshot() -> tuple[str | None, list[str]]:
+    """Where the schema stands: the migration it is at, and the tables it holds.
+
+    Both in one connection, because the migration step asks this twice — before
+    the upgrade and after — and the difference between the two answers is what it
+    reports.
+
+    A revision of `None` means never migrated, established by the absence of
+    `alembic_version` rather than by catching the error reading it would raise:
+    a failed statement would also have to be rolled back before the table list
+    could be asked for. `alembic_version` itself is left out of the list — it is
+    Alembic's ledger, not part of the schema it keeps.
+    """
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    engine = create_async_engine(settings().db_url, poolclass=NullPool)
+    try:
+        async with engine.connect() as conn:
+            names = list(await conn.scalars(text(TABLES)))
+            revision = None
+            if "alembic_version" in names:
+                revision = await conn.scalar(text("SELECT version_num FROM alembic_version"))
+        return revision, [n for n in names if n != "alembic_version"]
+    finally:
+        await engine.dispose()
+
+
+def summarise(before: str | None, after: str | None, had: list[str], now: list[str]) -> str:
+    """What the migration step says it did, and what the database holds now.
+
+    Alembic's own output is a log of how it went, not a statement of where the
+    schema ended up: against a database that is already current it prints two
+    lines about the dialect and nothing at all about the schema, which reads as
+    though something failed quietly.
+    """
+    created = sorted(set(now) - set(had))
+
+    if before == after:
+        done = f"Already current — nothing to apply. The schema stays at {after}."
+    elif before is None:
+        done = f"Migrated an empty database to {after}."
+    else:
+        done = f"Migrated {before} → {after}."
+
+    parts = [done]
+    if created:
+        parts.append(f"Created {count(len(created), 'table')}: {', '.join(created)}.")
+    parts.append(
+        f"{count(len(now), 'table')} in the database: {', '.join(now)}."
+        if now
+        else "No tables in the database."
+    )
+    return "\n\n".join(parts)
+
+
 async def migrate() -> tuple[bool, str]:
     """Bring the schema to head, exactly as `alembic upgrade head` would.
 
     Run in a thread: Alembic drives a synchronous engine of its own, and calling
     it straight from the event loop deadlocks against the running server.
     """
+    import io
 
-    def run() -> str:
-        import io
+    try:
+        before, had = await snapshot()
+    except Exception as exc:  # noqa: BLE001 — the step reports it, nothing crashes
+        return False, _explain(exc)
+
+    log = io.StringIO()
+
+    def run() -> None:
         from contextlib import redirect_stderr, redirect_stdout
 
         from alembic import command
@@ -290,16 +362,21 @@ async def migrate() -> tuple[bool, str]:
         cfg.set_main_option("script_location", str(root / "alembic"))
         cfg.set_main_option("sqlalchemy.url", settings().db_url)
 
-        out = io.StringIO()
-        with redirect_stdout(out), redirect_stderr(out):
+        with redirect_stdout(log), redirect_stderr(log):
             command.upgrade(cfg, "head")
-        return out.getvalue().strip()
 
     try:
-        output = await asyncio.to_thread(run)
-        return True, output or "Schema is at head."
+        await asyncio.to_thread(run)
     except Exception as exc:  # noqa: BLE001
-        return False, f"{type(exc).__name__}: {exc}"
+        # Alembic's log is noise on success and the only evidence on failure: its
+        # last "Running upgrade" line names the migration that broke, which the
+        # exception on its own does not.
+        trail = log.getvalue().strip()
+        detail = f"{type(exc).__name__}: {exc}"
+        return False, f"{detail}\n\n{trail}" if trail else detail
+
+    after, now = await snapshot()
+    return True, summarise(before, after, had, now)
 
 
 # --- step two: storage -------------------------------------------------------
@@ -318,7 +395,10 @@ async def test_storage() -> tuple[bool, str]:
             raise RuntimeError("; ".join(failed))
         uri = backend.put(settings().s3_bucket_exports, ".lcf-write-test", b"ok", "text/plain")
         backend.get(settings().s3_bucket_exports, ".lcf-write-test")
-        return f"{backend.describe()} — buckets ready, write verified ({uri})"
+        # Named for what the backend actually has, so this page and the admin
+        # page do not call the same three things by two different words.
+        kind = "buckets" if backend.scheme == "s3" else "directories"
+        return f"{backend.describe()} — {kind} ready, write verified ({uri})"
 
     try:
         return True, await asyncio.to_thread(run)
@@ -396,12 +476,12 @@ async def state() -> State:
         if db_ok:
             schema_ok, schema_detail = await _schema_state()
 
-    import lcf.storage as storage
-
-    backend = storage.store()
-    store_ok, store_detail = True, f"{backend.describe()} (local disk, nothing to set up)"
-    if backend.scheme == "s3":
-        store_ok, store_detail = await test_storage()
+    # Tested for both backends. The local one needs nothing configured, which is
+    # not the same as working: a storage directory that is read-only or owned by
+    # another user fails at the first export instead of here. Testing it also
+    # creates the directories, so this page and the admin page stop disagreeing
+    # about whether storage is ready.
+    store_ok, store_detail = await test_storage()
 
     llm_ok, llm_detail = False, "Optional. Drafting and the quality gate need it."
     if s.llm_base_url:
@@ -479,9 +559,6 @@ async def _schema_state() -> tuple[bool, str]:
     installation and reported it as a broken schema.
     """
     from alembic.script import ScriptDirectory
-    from sqlalchemy import text
-    from sqlalchemy.ext.asyncio import create_async_engine
-    from sqlalchemy.pool import NullPool
 
     try:
         root = Path(__file__).resolve().parents[3]
@@ -491,17 +568,17 @@ async def _schema_state() -> tuple[bool, str]:
     except Exception as exc:  # noqa: BLE001
         return False, f"Could not read the migration history: {exc}"
 
-    engine = create_async_engine(settings().db_url, poolclass=NullPool)
     try:
-        async with engine.connect() as conn:
-            current = await conn.scalar(text("SELECT version_num FROM alembic_version"))
+        current, tables = await snapshot()
     except Exception as exc:  # noqa: BLE001
-        if "alembic_version" in str(exc) and "does not exist" in str(exc):
-            return False, "No tables yet. Run the migrations."
-        return False, f"{type(exc).__name__}: {exc}"
-    finally:
-        await engine.dispose()
+        return False, _explain(exc)
 
+    if current is None:
+        return False, "No tables yet. Run the migrations."
     if current == head:
-        return True, f"At head ({current})."
-    return False, f"At {current or 'nothing'}, head is {head}. Run the migrations."
+        # A bare revision answers a question nobody has at this point. What the
+        # step is read for is whether there is anything to do here, so it says
+        # that and how much schema it is talking about. The revision stays for
+        # the one time it is the point: comparing two installations.
+        return True, f"Up to date: {count(len(tables), 'table')}, revision {head}."
+    return False, f"The database is at {current}, not {head}. Run the migrations."
