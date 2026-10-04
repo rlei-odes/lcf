@@ -141,14 +141,43 @@
         </span>
       </div>
 
+      {# The heading is the question's name; this is the sentence the assistant
+         was actually given. Shown only when they differ, which is exactly when
+         the heading alone would not explain the findings under it. #}
+      {% if entry.asked %}
+      <div class="asked-as">
+        asked as {% for a in entry.asked %}“{{ a }}”{% if not loop.last %} and {% endif %}{% endfor %}
+      </div>
+      {% endif %}
+
+      {% if entry.orphaned %}
+      {# A finding whose way of being found is no longer on the question. Kept,
+         because a decision is a person's and an edited pattern does not undo it,
+         but said out loud: the provenance under it cites a command that is gone,
+         and silence there reads as a search that ignored the edit. #}
+      <div class="notice">
+        <strong>{{ count(entry.orphaned|length, 'accepted value') }}
+          {{ verb(entry.orphaned|length, 'was', 'were') }} found by a way this question
+          no longer has.</strong>
+        <div class="hint">
+          The pattern that produced
+          {{ 'it' if entry.orphaned|length == 1 else 'them' }} was edited or
+          dropped. The finding stands until you undo it.
+        </div>
+      </div>
+      {% endif %}
+
       {% if entry.accepted %}
       <ul class="plain accepted">
         {% for row in entry.accepted %}
-        <li>
+        <li class="{{ 'orphaned' if row in entry.orphaned }}">
           <div class="candidate-head">
-            <span class="mark">✓</span>
+            <span class="mark">{{ '!' if row in entry.orphaned else '✓' }}</span>
             <span class="value">{{ row.value }}</span>
-            <span class="where">{{ count(row.places, 'place') }}</span>
+            <span class="where">
+              {{ count(row.places, 'place') }}
+              {%- if row in entry.orphaned %} · its way of being found is gone{% endif %}
+            </span>
             <span class="rowtools-right">
               <form hx-post="/evidence/candidates/{{ row.id }}/reopen"
                     hx-target="#findings-card" hx-swap="outerHTML" class="inline-form">

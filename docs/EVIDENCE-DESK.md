@@ -584,6 +584,20 @@ person will actually work: gather some, look, gather more. An accepted value als
 seen* refreshed by a later run, because more material legitimately finds the same batch number in
 more places and a finding should say so.
 
+A decision survives the question being re-authored, too, but not silently. An
+accepted value **no way now on the question could still produce** is kept and
+flagged: its provenance line cites a pattern that was edited or dropped, and the
+finding reads as though the search ignored the change. The finding stands,
+because a decision is a person's and an edited pattern does not undo it.
+
+The check is deliberately deterministic and asked only of the deterministic
+tier: do any of the question's current patterns still match this value? *Not
+found again* and *no longer findable* are different claims, and only the second
+is checkable. A model offering `12,00 +0,02` this run and `12,00 +0,02 mm` last
+run has found the same thing and changed nothing, so the two asked tiers are
+left alone — flagging their ordinary variance would put a warning on every
+assistant-backed question, which is the opposite of what the flag is for.
+
 One more rule falls out of `multiple` ([§5.1](#51-a-question-has-a-type)). A question with one answer
 that accepts a second value **demotes the first back to a candidate** rather than quietly holding
 two answers to *"what is the part number?"*. Demoted, not dismissed: the person changed their mind

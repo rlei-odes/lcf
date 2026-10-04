@@ -94,6 +94,44 @@ async def test_the_same_value_in_two_passages_is_one_card(case):
     assert rows[0].score >= 2
 
 
+async def test_the_same_value_twice_in_one_passage_is_one_place(case):
+    """Chunks overlap by a unit on purpose, so a value in the overlap is found
+    twice in the same passage. That is one place, and printing it twice makes a
+    finding look like two."""
+    async with session() as s:
+        await evidence.add_paste(s, case, "Charge LOT-2026-0417. Nochmals LOT-2026-0417.")
+
+    await _question(
+        case, "Which batch?", "identifier", Command(kind="pattern", pattern=r"LOT-2026-0417")
+    )
+    await extraction.run(case)
+
+    async with session() as s:
+        reviewed = await extraction.review(s, case)
+    row = [r for g in reviewed[0].groups for r in g.rows][0]
+    places = [(o["where"], o["quote"]) for o in row.occurrences]
+    assert len(places) == len(set(places)), places
+
+
+async def test_the_same_value_in_two_copies_of_a_file_is_two_places(case):
+    """A mail's attachment and the same file dropped in directly carry the same
+    label. Merging on the label alone would throw away a real hit."""
+    async with session() as s:
+        await evidence.add_paste(s, case, "Charge LOT-2026-0417 betroffen.")
+        await evidence.add_paste(s, case, "Charge LOT-2026-0417 betroffen.")
+
+    await _question(
+        case, "Which batch?", "identifier", Command(kind="pattern", pattern=r"LOT-2026-0417")
+    )
+    await extraction.run(case)
+
+    async with session() as s:
+        reviewed = await extraction.review(s, case)
+    row = [r for g in reviewed[0].groups for r in g.rows][0]
+    # Identical text in two sources: same `where`, same quote, still two places.
+    assert row.places >= 2, row.occurrences
+
+
 async def test_a_pattern_too_slow_is_reported_against_its_question(case, monkeypatch):
     """Not a missing candidate and not a crashed run — a named, fixable problem.
 
@@ -355,6 +393,86 @@ async def test_a_single_answer_question_demotes_the_previous_answer(case):
     assert len(after[0].accepted) == 1
     assert after[0].accepted[0].value == "LOT-2026-0418"
     assert after[0].pending == 1, "the demoted one is a candidate again, not dismissed"
+
+
+async def test_a_finding_whose_pattern_is_gone_is_flagged(case):
+    """Swapping the way a question is found does not undo a decision, but it
+    does leave a finding citing a pattern the question no longer has."""
+    question_id = await _question(
+        case,
+        "Which identifier?",
+        "identifier",
+        Command(kind="pattern", pattern=r"LOT-\d{4}-\d{4}"),
+        multiple=True,
+    )
+    await extraction.run(case)
+    async with session() as s:
+        reviewed = await extraction.review(s, case)
+        await extraction.decide(s, reviewed[0].groups[0].rows[0].id, "accepted")
+        assert not reviewed[0].orphaned
+
+    async with session() as s:
+        await evidence.set_commands(
+            s, question_id, [Command(kind="pattern", pattern=r"NW-CL-\d{5}")]
+        )
+        reviewed = await extraction.review(s, case)
+
+    entry = reviewed[0]
+    assert len(entry.accepted) == 1, "a decision is not undone by an edited pattern"
+    assert entry.orphaned == entry.accepted
+
+
+async def test_a_finding_its_pattern_still_matches_is_not_flagged(case):
+    """A pattern loosened rather than replaced still finds what it found."""
+    question_id = await _question(
+        case,
+        "Which batch?",
+        "identifier",
+        Command(kind="pattern", pattern=r"LOT-2026-0417"),
+    )
+    await extraction.run(case)
+    async with session() as s:
+        reviewed = await extraction.review(s, case)
+        await extraction.decide(s, reviewed[0].groups[0].rows[0].id, "accepted")
+
+    async with session() as s:
+        await evidence.set_commands(
+            s, question_id, [Command(kind="pattern", pattern=r"LOT-\d{4}-\d{4}")]
+        )
+        reviewed = await extraction.review(s, case)
+    assert reviewed[0].accepted and not reviewed[0].orphaned
+
+
+async def test_an_assistant_answer_is_never_flagged_for_varying(case, monkeypatch):
+    """The flag is for *no longer findable*, which is only checkable on the
+    deterministic tier.
+
+    A model offering a slightly different string this time has found the same
+    thing and changed nothing. Flagging that would put a warning on every
+    assistant-backed question, which is the opposite of what it is for.
+    """
+    monkeypatch.setattr(
+        "lcf.llm.calls.answer_from_chunk",
+        _answers({"Toleranz": ("12,00 +0,02 mm", "Toleranz 12,00 +0,02 mm")}),
+    )
+    await _question(
+        case, "What tolerance?", "text", Command(kind="ask", ask="What tolerance was agreed?")
+    )
+    await extraction.run(case)
+    async with session() as s:
+        reviewed = await extraction.review(s, case)
+        await extraction.decide(s, reviewed[0].groups[0].rows[0].id, "accepted")
+
+    # A second run that says it differently, with the question untouched.
+    monkeypatch.setattr(
+        "lcf.llm.calls.answer_from_chunk",
+        _answers({"Toleranz": ("12,00 +0,02", "Toleranz 12,00 +0,02 mm")}),
+    )
+    await extraction.run(case)
+
+    async with session() as s:
+        reviewed = await extraction.review(s, case)
+    assert not reviewed[0].orphaned, "variance in a model's wording is not a change"
 
 
 async def test_a_pending_value_the_new_run_cannot_find_is_dropped(case):

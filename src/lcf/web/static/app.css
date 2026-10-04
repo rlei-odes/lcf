@@ -1075,14 +1075,23 @@ ul.findings > li.finding { padding: var(--s5) 0; border-top: 1px solid var(--lin
 ul.findings > li.finding:first-child { border-top: 0; }
 
 ul.accepted { margin: var(--s3) 0 0; padding-left: calc(22px + var(--s3)); }
-ul.accepted > li { padding: var(--s2) 0; display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap; }
+/* Block, not flex. These rows were flat spans once; they now hold a head and a
+   provenance block, and under `flex-wrap` those sit side by side when the
+   provenance happens to be short and stack when it happens to be long — so the
+   layout moved with the length of a sentence. */
+ul.accepted > li { padding: var(--s2) 0; display: block; }
 ul.accepted .mark { font-family: var(--mono); color: var(--ok); }
-ul.accepted .quote { flex-basis: 100%; margin: var(--s1) 0 0; }
+ul.accepted .quote { margin: var(--s1) 0 0; }
+
+.asked-as {
+  margin-top: var(--s1); padding-left: calc(22px + var(--s3));
+  color: var(--muted); font-size: 12px;
+}
 
 .tier-group { margin: var(--s4) 0 0; padding-left: calc(22px + var(--s3)); }
 .tier-group h5 { margin: 0 0 var(--s2); font-size: 12px; font-weight: 600; }
 
-ul.candidates > li { padding: var(--s2) 0; border-top: 1px solid var(--line-2); }
+ul.candidates > li { padding: var(--s2) 0; display: block; border-top: 1px solid var(--line-2); }
 .candidate-head { display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap; }
 .candidate-head .value { flex: 1; min-width: 8ch; }
 
@@ -1245,6 +1254,11 @@ dialog.lightbox img {
 }
 .lightbox-close:hover { background: rgb(0 0 0 / .8); }
 figure.asset a { cursor: zoom-in; display: block; }
+
+/* A finding whose way of being found is gone. Marked, not greyed: it is still a
+   decision somebody made, and still true until they say otherwise. */
+ul.accepted > li.orphaned { border-left: 2px solid var(--warning); padding-left: var(--s3); }
+ul.accepted > li.orphaned .mark { color: var(--warning); font-weight: 700; }
 
 button.tool.accept { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, transparent); }
 button.tool.accept:hover { background: var(--ok-soft); }

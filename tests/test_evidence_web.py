@@ -513,8 +513,10 @@ async def test_how_a_question_is_found_is_one_form(client, case):
         },
     )
     assert "3 ways to find it" in saved.text
-    # Written once in the form, stored on both ways that ask anything.
-    assert saved.text.count("What is the complaint number?") == 2
+    # Written once in the form, stored on both ways that ask anything. The
+    # findings panel rides along and names it once more, since it differs from
+    # the question's own heading.
+    assert saved.text.count("What is the complaint number?") >= 2
     assert r"\bNW-CL-\d{5}\b" in saved.text
 
 
@@ -673,10 +675,10 @@ async def test_an_accepted_finding_keeps_every_place_it_was_found(client, case):
     """A value backed by four passages is not the same claim as one backed by
     one, and accepting it must not reduce the finding to whichever quote
     happened to score best."""
-    client.post(
-        f"/evidence/{case}/paste",
-        data={"text": "Reklamation NW-CL-88213.\n\nBezug: NW-CL-88213 vom 04.03.2026."},
-    )
+    # Two sources, so the two places are genuinely different ones: the same value
+    # twice inside one passage is one place, and is collapsed.
+    client.post(f"/evidence/{case}/paste", data={"text": "Reklamation NW-CL-88213."})
+    client.post(f"/evidence/{case}/paste", data={"text": "Bezug: NW-CL-88213 vom 04.03.2026."})
     client.post(
         f"/evidence/{case}/questions",
         data={"prompt": "Complaint number", "type": "identifier"},

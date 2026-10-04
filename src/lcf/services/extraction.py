@@ -73,8 +73,13 @@ class Scoped:
 
     @property
     def where(self) -> str:
-        """Which file, which page, who said it, in one readable line."""
-        bits = [self.source.label]
+        """Which file, which page, who said it, in one readable line.
+
+        An attachment says so. The measurement PDF that came with the complaint
+        and the same PDF dropped in directly have the same filename, and two
+        passages labelled identically read as one passage printed twice.
+        """
+        bits = [self.source.label + (" (attached)" if self.source.parent_id else "")]
         if self.chunk.page_from:
             bits.append(
                 f"p. {self.chunk.page_from}"
@@ -610,10 +615,26 @@ async def _store_candidates(
         for norm, entries in groups.items():
             entries.sort(key=lambda h: (TIER_ORDER.get(h.tier, 9), -h.score))
             best = entries[0]
-            occurrences = [
-                {"where": e.where, "quote": e.quote, "tier": e.tier, "kind": e.kind}
-                for e in entries
-            ]
+            # One entry per *place*, not per hit. Chunks overlap by a unit on
+            # purpose (§4.5), so a value sitting in the overlap is found twice in
+            # one passage of one file, which is one place — and printing it twice
+            # makes a finding look like two.
+            #
+            # The source is part of the key, not just the text of `where`. Two
+            # copies of one document in a case — the mail's attachment and the
+            # same file dropped in directly — carry the same label, and merging
+            # them on that would throw away a hit in a file the person really
+            # does have twice.
+            occurrences = []
+            seen_places: set[tuple[UUID, str, str]] = set()
+            for e in entries:
+                place = (e.source_id, e.where, e.quote)
+                if place in seen_places:
+                    continue
+                seen_places.add(place)
+                occurrences.append(
+                    {"where": e.where, "quote": e.quote, "tier": e.tier, "kind": e.kind}
+                )
 
             existing = decided.get(norm)
             if existing is not None and existing.status in ("accepted", "dismissed"):
@@ -716,10 +737,33 @@ class QuestionReview:
     accepted: list[EvidenceCandidate]
     groups: list[Group]
     dismissed: int = 0
+    # Accepted values whose way of being found is no longer on the question: the
+    # pattern that produced them was edited or dropped. The finding stands, but
+    # its provenance line cites a command that is gone, and saying nothing about
+    # that is how an edited question looks like a search that ignored it.
+    orphaned: list[EvidenceCandidate] = field(default_factory=list)
 
     @property
     def commands(self) -> list[Command]:
         return parse_commands(self.question.commands)
+
+    @property
+    def asked(self) -> list[str]:
+        """What the assistant was actually asked, where that is not the heading.
+
+        A question's prompt is its name; a command's `ask` is the sentence sent
+        to the model, and it starts as a copy of the prompt. Once somebody edits
+        one of them the panel is reporting findings under a heading that is not
+        the question that produced them, and there is nowhere to see the real
+        one.
+        """
+        prompt = (self.question.prompt or "").strip()
+        out: list[str] = []
+        for command in self.commands:
+            text = (command.ask or "").strip()
+            if text and text != prompt and text not in out:
+                out.append(text)
+        return out
 
     @property
     def pending(self) -> int:
@@ -760,6 +804,7 @@ async def review(session: AsyncSession, case_id: UUID) -> list[QuestionReview]:
         accepted = [r for r in mine if r.status == "accepted"]
         dismissed = sum(1 for r in mine if r.status == "dismissed")
         pending = [r for r in mine if r.status == "pending"]
+        orphaned = _orphaned(question, accepted)
 
         groups: list[Group] = []
         for tier in sorted({r.tier for r in pending}, key=lambda t: TIER_ORDER.get(t, 9)):
@@ -770,8 +815,53 @@ async def review(session: AsyncSession, case_id: UUID) -> list[QuestionReview]:
                     rows=[r for r in pending if r.tier == tier],
                 )
             )
-        out.append(QuestionReview(question, accepted, groups, dismissed))
+        out.append(QuestionReview(question, accepted, groups, dismissed, orphaned))
     return out
+
+
+def _orphaned(
+    question: EvidenceQuestion, accepted: list[EvidenceCandidate]
+) -> list[EvidenceCandidate]:
+    """Accepted values no way now on the question could still produce.
+
+    Asked deterministically, and only of the deterministic tier. A pattern hit
+    is reproducible by definition: if none of the question's current patterns
+    matches the value any more, the way that found it is gone, and that is worth
+    saying.
+
+    The two asked tiers are deliberately left alone. A model offering
+    `12,00 +0,02` this time and `12,00 +0,02 mm` last time has found the same
+    thing and changed nothing; flagging that would put a warning on every
+    assistant-backed question for no reason, which is the opposite of what the
+    flag is for. *Not found again* and *no longer findable* are different claims,
+    and only the second one is checkable here.
+    """
+    commands = parse_commands(question.commands)
+    kinds = {c.kind for c in commands}
+    patterns = [c.pattern for c in commands if c.kind == "pattern" and c.pattern]
+
+    out: list[EvidenceCandidate] = []
+    for row in accepted:
+        if row.tier not in kinds:
+            # The whole way is gone — the only `ask` was removed, say.
+            out.append(row)
+            continue
+        if row.tier != "pattern":
+            continue
+        if not any(_still_matches(p, row) for p in patterns):
+            out.append(row)
+    return out
+
+
+def _still_matches(pattern: str, row: EvidenceCandidate) -> bool:
+    """Would this pattern find this value again? Never raises."""
+    try:
+        return any(
+            hit.value == row.value or values.normalise(hit.value) == values.normalise(row.value)
+            for hit in retrieval.matches(pattern, row.value or "", timeout=0.5, limit=5)
+        )
+    except Exception:  # noqa: BLE001 — an unusable pattern cannot vouch for anything
+        return False
 
 
 async def decide(session: AsyncSession, candidate_id: UUID, status: str) -> EvidenceCandidate:
