@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Searches · {{ case.title }}{% endblock %}
+{% block subtitle %}how the searches went{% endblock %}
+
+{% block content %}
+{# The funnel.
+
+   Six candidates out of 48 passages is either a precise instrument or a broken
+   one, and the difference is invisible unless the run says which. Every number
+   here is one the run had to compute anyway.
+
+   The last column of each row is the one worth having: a question that returned
+   nothing because all four of its candidates failed the date format is a fixable
+   authoring problem, and a question that returned nothing because the material
+   does not contain the answer is not. Without the dropped counts those two look
+   identical, and the person concludes the tool does not work. #}
+<div class="stack">
+  <div class="card">
+    <h2>Searches of {{ case.title }}</h2>
+    <p class="lead">
+      Kept so two searches either side of a change can be compared. Fewer calls
+      for the same findings is the whole point of writing the questions down.
+    </p>
+    <div class="actions">
+      <a href="/evidence/{{ case.id }}"><button type="button">Back to the case</button></a>
+    </div>
+  </div>
+
+  {% for run in runs %}
+  <div class="card">
+    <h3>
+      {{ run.created_at|localtime }}
+      <span class="where">
+        · {{ count(run.sources, 'file') }} · {{ count(run.chunks, 'passage') }} ·
+        {{ count(run.calls, 'assistant call') }} ·
+        {{ (run.duration_ms / 1000)|round(1) }}s
+      </span>
+    </h3>
+
+    {% for e in (run.stats or {}).get('questions', []) %}
+    <div class="run-question">
+      <div class="question-head">
+        <span class="row-title">{{ e['prompt'] }}</span>
+        <span class="where">
+          {{ count(e['values'], 'distinct value') }}
+        </span>
+      </div>
+      <table class="config">
+        <tbody>
+          {% for s in e['steps'] %}
+          <tr>
+            <td><span class="chip tier-{{ s['kind'] }}">{{ s['kind'] }}</span></td>
+            <td class="why">
+              {%- if s['kind'] == 'pattern' -%}
+                {{ s['scanned'] }} scanned → {{ count(s['matches'], 'match', 'matches') }}
+              {%- elif s['kind'] == 'keyword_ask' -%}
+                {{ s['hit'] }} of {{ s['scanned'] }} hit → {{ s['asked'] }} asked → {{ s['found'] }} found
+              {%- else -%}
+                {{ s['scanned'] }} ranked → {{ s['asked'] }} asked → {{ s['found'] }} found
+              {%- endif -%}
+              {%- if s['ranked_not_asked'] %} · {{ s['ranked_not_asked'] }} matched but not asked{% endif -%}
+              {%- if s['arbitrary'] %}
+              <br><span class="s-stale">nothing in the question matched any passage, so the
+                first {{ s['asked'] }} were read in order — the ranking said nothing here</span>
+              {%- endif -%}
+            </td>
+            <td class="why">
+              {%- set dropped = [] -%}
+              {%- if s['not_stated'] %}{% set _ = dropped.append(s['not_stated'] ~ ' not stated') %}{% endif -%}
+              {%- if s['quote_rejected'] %}{% set _ = dropped.append(s['quote_rejected'] ~ ' quote not in its passage') %}{% endif -%}
+              {%- if s['type_rejected'] %}{% set _ = dropped.append(s['type_rejected'] ~ ' wrong shape for the question') %}{% endif -%}
+              {{ dropped|join(' · ') }}
+              {%- if s['error'] %}<span class="s-needs_input">{{ s['error'] }}</span>{% endif -%}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endfor %}
+
+    <p class="hint">
+      {% if (run.stats or {}).get('merged') %}
+      {{ count(run.stats['merged'], 'duplicate') }} merged — the same value found in
+      more than one passage is one card, with the places listed under it.
+      {% endif %}
+    </p>
+
+    {% for error in run.errors or [] %}
+    <div class="check blocker"><span class="mark">✗</span><span>{{ error }}</span></div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card">
+    <div class="empty"><span class="empty-mark">·</span> Nothing searched yet.</div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

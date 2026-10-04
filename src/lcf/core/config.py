@@ -91,6 +91,22 @@ class Settings(BaseSettings):
 
     worker_in_process: bool = True
 
+    # The evidence desk. `auto` prefers docling for PDFs when the extra is
+    # installed and falls back to the built-in parser without complaint when it
+    # is not; `builtin` never reaches for it even if it is there.
+    ingest_parser: str = "auto"
+    # Characters, not tokens, and knowingly so: nothing in the application counts
+    # tokens yet, so the bound is set low enough that the difference cannot
+    # matter. When a tokenizer lands it replaces this rather than wrapping it.
+    ingest_chunk_chars: int = 1800
+    ingest_max_file_mb: int = 25
+    # How many chunks one question may spend on the assistant. The cost dial:
+    # a case of forty chunks and four questions costs at most four times this.
+    extract_top_k: int = 6
+    # A model-written pattern runs over megabytes of somebody else's text, and
+    # `re` has no timeout. This is the backtracking guard, in seconds.
+    extract_pattern_timeout_s: float = 2.0
+
     # The house style every generated starter template is built onto — a .docx
     # holding header, footer, logo, fonts and colours, and no content.
     #

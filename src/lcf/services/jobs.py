@@ -76,6 +76,9 @@ _TITLES = {
     "draft_section": "Drafted a section",
     "intake": "Sorted pasted material",
     "assess": "Ran the quality gate",
+    "parse_source": "Read a file",
+    "extract": "Searched the pile",
+    "caption_assets": "Described images",
 }
 
 
@@ -144,6 +147,40 @@ async def latest_for(document_id: UUID, scope: str | None = None) -> Job | None:
         query = select(Job).where(Job.document_id == document_id)
         if scope is not None:
             query = query.where(Job.scope == scope)
+        return await s.scalar(query.order_by(Job.created_at.desc()).limit(1))
+
+
+async def latest_for_scope(scope: str, kind: str | None = None) -> Job | None:
+    """The most recent job for something that is not a document.
+
+    The evidence desk's work belongs to a case, and a case is not a document, so
+    those jobs carry the case id in `scope` with a null `document_id`. That needed
+    no schema change and keeps one job table — and one progress card — for the
+    whole application.
+    """
+    async with session() as s:
+        query = select(Job).where(Job.scope == scope, Job.document_id.is_(None))
+        if kind is not None:
+            query = query.where(Job.kind == kind)
+        return await s.scalar(query.order_by(Job.created_at.desc()).limit(1))
+
+
+async def running_for_scope(scope: str, kind: str | None = None) -> Job | None:
+    """The job somebody is waiting on, or nothing.
+
+    Separate from `latest_for_scope` because the two answer different questions:
+    *what happened last* and *is something happening now*. Parsing several
+    dropped files queues several jobs at once, so "the latest" is routinely a
+    finished one while another is still going.
+    """
+    async with session() as s:
+        query = select(Job).where(
+            Job.scope == scope,
+            Job.document_id.is_(None),
+            Job.status.in_(("queued", "running")),
+        )
+        if kind is not None:
+            query = query.where(Job.kind == kind)
         return await s.scalar(query.order_by(Job.created_at.desc()).limit(1))
 
 

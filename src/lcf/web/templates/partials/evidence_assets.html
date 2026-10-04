@@ -1,0 +1,120 @@
+{# The image tray.
+
+   Images come out of the files whether anybody asked or not. What makes this
+   usable is what happens before the cards: the same letterhead on twenty pages
+   is one asset, and anything under 80×80 is a bullet or a rule and was dropped.
+
+   Assignment is by clicking, never dragging — the tray holds what was found and a
+   person decides what is worth keeping. #}
+{% if assets %}
+<div class="card" id="assets-card">
+  <h3>Images found · {{ assets|length }}</h3>
+
+  {% set pending = assets|selectattr('status', 'equalto', 'pending')|list %}
+  {% set kept = assets|selectattr('status', 'equalto', 'accepted')|list %}
+  {% set gone = assets|selectattr('status', 'equalto', 'dismissed')|list %}
+  {% set uncaptioned = assets|rejectattr('caption')|list %}
+
+  <p class="lead">
+    {{ count(kept|length, 'image') }} kept, {{ pending|length }} still to look at.
+    Repeats and page furniture were dropped before they got here.
+  </p>
+
+  <div id="assets-slot">
+    {% if captioning %}
+      {% with job = captioning,
+              done_url = "/evidence/" ~ case.id ~ "/assets",
+              done_target = "#assets-card",
+              working_title = "Looking at the images" %}
+        {% include "partials/job.html" %}
+      {% endwith %}
+    {% endif %}
+  </div>
+
+  {% if uncaptioned and not captioning %}
+  <form hx-post="/evidence/{{ case.id }}/caption" hx-target="#assets-slot" hx-swap="innerHTML"
+        hx-disabled-elt="find button">
+    <div class="actions">
+      <button type="submit">Describe the {{ count(uncaptioned|length, 'image') }}</button>
+      <span class="why">
+        One assistant call per {{ max_images }} images. Needs a model that accepts
+        pictures — if yours does not, the thumbnails and the page numbers still
+        work and you can type a label yourself.
+      </span>
+    </div>
+  </form>
+  {% endif %}
+
+  <div class="tray">
+    {% for a in pending + kept %}
+    <figure class="asset {{ 'asset-kept' if a.status == 'accepted' }}">
+      <a href="/evidence/images/{{ a.id }}" target="_blank" rel="noopener">
+        <img src="/evidence/images/{{ a.id }}/thumb" alt="{{ a.caption or 'image from the pile' }}"
+             loading="lazy" width="160">
+      </a>
+      <figcaption>
+        {% if a.label %}
+          <span class="value">{{ a.label }}</span>
+        {% elif a.caption %}
+          {{ a.caption }}
+        {% else %}
+          <span class="hint">no description yet</span>
+        {% endif %}
+        <span class="where">
+          {%- if a.page %}p. {{ a.page }} · {% endif -%}
+          {{ a.width }}×{{ a.height }}
+        </span>
+      </figcaption>
+      <div class="asset-tools">
+        {% if a.status == 'accepted' %}
+        <form hx-post="/evidence/assets/{{ a.id }}/reopen" hx-target="#assets-card"
+              hx-swap="outerHTML" class="inline-form">
+          <button class="tool" type="submit">undo</button>
+        </form>
+        {% else %}
+        <form hx-post="/evidence/assets/{{ a.id }}/accept" hx-target="#assets-card"
+              hx-swap="outerHTML" class="inline-form">
+          <button class="tool accept" type="submit">✓ keep</button>
+        </form>
+        <form hx-post="/evidence/assets/{{ a.id }}/dismiss" hx-target="#assets-card"
+              hx-swap="outerHTML" class="inline-form">
+          <button class="tool" type="submit">✗ drop</button>
+        </form>
+        {% endif %}
+      </div>
+      <form hx-post="/evidence/assets/{{ a.id }}/label" hx-target="#assets-card"
+            hx-swap="outerHTML" class="asset-label">
+        <input type="text" name="label" value="{{ a.label or '' }}"
+               placeholder="what it shows" aria-label="your own description">
+      </form>
+    </figure>
+    {% endfor %}
+  </div>
+
+  {% if gone %}
+  <details class="quiet-details">
+    <summary>Dropped ({{ gone|length }})</summary>
+    <div class="tray">
+      {% for a in gone %}
+      <figure class="asset asset-gone">
+        <img src="/evidence/images/{{ a.id }}/thumb" alt="dropped image" loading="lazy" width="90">
+        <figcaption>
+          <span class="hint">{{ a.caption|truncate(70) if a.caption else 'no description' }}</span>
+        </figcaption>
+        <div class="asset-tools">
+          <form hx-post="/evidence/assets/{{ a.id }}/reopen" hx-target="#assets-card"
+                hx-swap="outerHTML" class="inline-form">
+            <button class="tool" type="submit">put back</button>
+          </form>
+        </div>
+      </figure>
+      {% endfor %}
+    </div>
+  </details>
+  {% endif %}
+</div>
+{% else %}
+{# No images: an empty card would be a panel about nothing. The id stays so a
+   swap after a parse has somewhere to land. #}
+<div id="assets-card"></div>
+{% endif %}

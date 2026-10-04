@@ -241,6 +241,147 @@ def prefill_schema(questions: list[Any]) -> dict[str, Any]:
     }
 
 
+def chunk_answer_schema(question_type: str, options: list[str] | None = None) -> dict[str, Any]:
+    """Does this one passage answer this one question, and where exactly?
+
+    The same three-part shape as `prefill_schema` — `found`, `quote`, `value` —
+    because it is the same contract: the model must say which words support the
+    answer, and an answer whose quote is not in the passage is discarded. What
+    differs is the scope. This is asked of one chunk at a time, so `value` is
+    typed by the question rather than by a spec field, and `confidence` is here
+    because a candidate is ranked against its siblings and a prefilled answer is
+    not.
+    """
+    value: dict[str, Any] = {"type": "string"}
+    kind = (question_type or "text").lower()
+    if kind == "number":
+        # Still a string: a measured value in a document is `12,05 mm`, and a
+        # JSON number would force the model to strip the unit and convert the
+        # decimal comma — losing the form the document actually uses, which is
+        # what a person checks the finding against.
+        value = {"type": "string", "description": "The value as the document writes it, with units"}
+    elif kind == "date":
+        value = {"type": "string", "description": _DATE_HINT}
+    elif kind == "boolean":
+        value = {"type": "string", "enum": ["true", "false"]}
+    elif kind == "choice" and options:
+        value = {"type": "string", "enum": list(options)}
+    elif kind == "identifier":
+        value = {
+            "type": "string",
+            "description": "The identifier alone, exactly as written, with nothing around it",
+        }
+
+    return {
+        "type": "object",
+        "properties": {
+            "found": {
+                "type": "boolean",
+                "description": "True only if this passage actually answers the question",
+            },
+            "quote": {
+                "type": "string",
+                "description": (
+                    "The words from this passage that answer it, copied exactly."
+                    " Empty string if it is not answered here."
+                ),
+            },
+            "value": value,
+            "confidence": {"type": "number", "description": "0 to 1"},
+        },
+        "required": ["found", "quote", "value", "confidence"],
+        "additionalProperties": False,
+    }
+
+
+PATTERN_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "pattern": {
+            "type": "string",
+            "description": (
+                "A Python regular expression, with no delimiters and no flags."
+                " It must match every supplied example from start to end."
+            ),
+        },
+        "note": {
+            "type": "string",
+            "description": "What it matches, in one line, for somebody who does not read regexes",
+        },
+    },
+    "required": ["pattern", "note"],
+    "additionalProperties": False,
+}
+
+
+KEYWORDS_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "terms": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "term": {"type": "string", "description": "One word or short phrase"},
+                    "why": {"type": "string", "description": "Why it is worth searching for"},
+                },
+                "required": ["term", "why"],
+                "additionalProperties": False,
+            },
+            # Twelve, not thirty. Every term costs a person a decision, and a
+            # keyword list long enough to match everything has narrowed nothing.
+            "maxItems": 12,
+        }
+    },
+    "required": ["terms"],
+    "additionalProperties": False,
+}
+
+
+def captions_schema(count: int) -> dict[str, Any]:
+    """One caption per image, in the order the images were sent.
+
+    Indexed rather than keyed, because the images have no names worth using —
+    they came out of page 4 of a PDF. `minItems` and `maxItems` are both the
+    count, so a batch of four cannot come back as three and leave the fourth
+    image silently uncaptioned.
+    """
+    return {
+        "type": "object",
+        "properties": {
+            "captions": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "n": {
+                            "type": "integer",
+                            "description": "Which image this describes, 1-based, as supplied",
+                        },
+                        "caption": {
+                            "type": "string",
+                            "description": "One or two sentences describing what is in the image",
+                        },
+                        "evidence": {
+                            "type": "boolean",
+                            "description": (
+                                "False for a logo, letterhead, signature, rule or other"
+                                " page furniture rather than something photographed"
+                            ),
+                        },
+                    },
+                    "required": ["n", "caption", "evidence"],
+                    "additionalProperties": False,
+                },
+                "minItems": count,
+                "maxItems": count,
+            }
+        },
+        "required": ["captions"],
+        "additionalProperties": False,
+    }
+
+
 JUDGEMENT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {

@@ -14,7 +14,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from lcf.services import doc_types, documents, drafts, events, setup
+from lcf.services import doc_types, documents, drafts, events, evidence, setup
 from lcf.web.pages import HERE, templates
 from lcf.web.routes import ROUTERS
 
@@ -46,6 +46,7 @@ async def unconfigured(request: Request, call_next):
 
 @app.exception_handler(doc_types.NotFound)
 @app.exception_handler(drafts.NotFound)
+@app.exception_handler(evidence.NotFound)
 async def gone(request: Request, exc: Exception) -> HTMLResponse:
     """Something that was asked for by URL is not there.
 

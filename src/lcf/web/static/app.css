@@ -912,3 +912,246 @@ a.pill.needs_input:hover { background: var(--blocker-soft); }
   border-radius: 0 4px 4px 0;
 }
 .field-problem::before { content: "✗ "; font-family: var(--mono); }
+
+/* ===========================================================================
+   The evidence desk.
+
+   One page, three moves down it: gather, formulate, find. The layout is a single
+   column rather than the flow area's rail-and-lane, because the moves are
+   sequential and each one's panel is wide — a table of files, a list of
+   questions, a tray of photographs. A rail would shrink all three to say nothing
+   the step numbers do not.
+   =========================================================================== */
+
+.desk { max-width: var(--measure); margin: 0 auto; padding: var(--s5) var(--s4) var(--s7); }
+
+.desk-head {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: var(--s5); margin-bottom: var(--s5); flex-wrap: wrap;
+}
+.desk-head h1 { font-size: 24px; margin: 0 0 var(--s2); }
+.desk-head .hint { max-width: 52ch; margin: 0; }
+
+/* The three moves, as links rather than as a wizard: somebody who has already
+   gathered wants to jump to the questions, and the panels are all on the page. */
+.desk-steps { display: flex; gap: var(--s2); flex: none; }
+.desk-steps a {
+  display: flex; align-items: center; gap: var(--s2);
+  padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--panel); font-size: 13px; text-decoration: none; color: var(--ink-2);
+}
+.desk-steps a:hover { border-color: var(--accent-line); color: var(--accent-ink); }
+
+.desk > section { scroll-margin-top: var(--s5); }
+.desk h3 .step-n, .desk-steps .step-n { margin-right: var(--s2); }
+
+/* --- Gather ------------------------------------------------------------- */
+
+/* The drop zone. A dashed outline is the one place in this design language that
+   earns a dashed border: it says "incomplete, waiting for something" exactly. */
+.dropzone {
+  position: relative; display: block; margin: var(--s4) 0;
+  border: 2px dashed var(--line); border-radius: var(--radius);
+  background: var(--panel-2); text-align: center; transition: border-color .12s, background .12s;
+}
+.dropzone.dragging { border-color: var(--accent); background: var(--accent-soft); }
+.dropzone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.dropzone label { display: block; padding: var(--s6) var(--s4); cursor: pointer; }
+.dropzone label strong { display: block; font-size: 15px; color: var(--ink); }
+.dropzone label .hint { margin: var(--s1) 0 0; }
+.dropzone .working { position: absolute; right: var(--s3); bottom: var(--s2); }
+
+details.paste-more > summary {
+  cursor: pointer; color: var(--muted); font-size: 13px; padding: var(--s1) 0;
+}
+
+table.sources { width: 100%; border-collapse: collapse; margin: var(--s4) 0 var(--s3); font-size: 13.5px; }
+table.sources th {
+  text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--faint); font-weight: 600; padding: 0 var(--s3) var(--s2) 0;
+  border-bottom: 1px solid var(--line);
+}
+table.sources td { padding: var(--s2) var(--s3) var(--s2) 0; border-bottom: 1px solid var(--line-2); vertical-align: top; }
+table.sources tr.s-failed td { background: color-mix(in srgb, var(--blocker-soft) 55%, transparent); }
+table.sources tr.row-note td { border-bottom: 1px solid var(--line-2); padding-top: 0; }
+table.sources select { padding: 2px var(--s2); font-size: 12px; }
+table.sources .inline-form { display: inline-flex; align-items: center; gap: var(--s2); }
+
+/* An attachment is a source in its own right, and the arrow is what says it came
+   out of the mail above rather than being dropped separately. */
+.attached { color: var(--faint); font-family: var(--mono); margin-right: var(--s1); }
+
+/* Who sent it. The domain rather than the address, because that is the part that
+   answers "is this the customer's word or ours?" at a glance. */
+.sender {
+  display: inline-block; margin-left: var(--s2); padding: 1px var(--s2);
+  font-family: var(--mono); font-size: 11.5px;
+  background: var(--sunken); border-radius: 4px; color: var(--muted);
+}
+
+/* --- Formulate ---------------------------------------------------------- */
+
+/* `ul.plain li` is a flex row, which is right for a list of one-line entries and
+   wrong for these: a question is a heading, then its commands, then a disclosure.
+   Those stack. Said explicitly rather than by not using `.plain`, because the
+   list still wants that rule's separators and spacing. */
+ul.questions > li.question,
+ul.findings > li.finding,
+ul.candidates > li,
+ul.matches > li,
+ul.places > li,
+ul.passages-list > li {
+  display: block;
+}
+
+ul.questions > li.question {
+  padding: var(--s4) 0; border-top: 1px solid var(--line-2);
+}
+ul.questions > li.question:first-child { border-top: 0; }
+
+.question-head { display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap; }
+.question-head .row-title { flex: 1; min-width: 12ch; font-weight: 600; }
+.qkey {
+  flex: none; width: 22px; height: 22px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--sunken); color: var(--muted);
+  font-family: var(--mono); font-size: 11.5px;
+}
+
+ul.commands { margin: var(--s3) 0 0; padding-left: calc(22px + var(--s3)); }
+ul.commands > li {
+  display: flex; align-items: baseline; gap: var(--s3);
+  padding: var(--s2) 0; font-size: 13px;
+}
+.command-body { flex: 1; color: var(--ink-2); }
+.command-body code { font-size: 12px; }
+
+/* The three tiers, side by side, because choosing between them is the decision
+   and a person has to see the cost of each to make it. */
+.tiers { display: grid; gap: var(--s4); grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.tier-form {
+  padding: var(--s4); background: var(--panel-2);
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+}
+.tier-form h4 { margin: 0 0 var(--s2); font-size: 13px; }
+.tier-form .hint { margin: 0 0 var(--s3); }
+.tier-form .field { margin-bottom: var(--s3); }
+
+/* Tier colour is a label, never the only signal: the chip always carries words,
+   and the group heading says what the tier means in a sentence. */
+.chip.tier-pattern { background: var(--ok-soft); color: var(--ok); border-color: color-mix(in srgb, var(--ok) 30%, transparent); }
+.chip.tier-keyword_ask { background: var(--accent-soft); color: var(--accent-ink); border-color: var(--accent-line); }
+.chip.tier-ask { background: var(--warning-soft); color: var(--warning); border-color: color-mix(in srgb, var(--warning) 30%, transparent); }
+
+/* A proposal is not data yet. The surface says so by sitting inside the question
+   it belongs to, with its own ground. */
+.proposal {
+  margin: var(--s3) 0; padding: var(--s4);
+  background: var(--accent-soft); border: 1px solid var(--accent-line);
+  border-radius: var(--radius-sm);
+}
+.proposal.proposal-bad { background: var(--blocker-soft); border-color: color-mix(in srgb, var(--blocker) 30%, transparent); }
+.proposal .lead { font-size: 14px; margin-top: 0; }
+.proposal input.mono { font-family: var(--mono); font-size: 13px; }
+ul.matches > li { padding: var(--s2) 0; font-size: 13px; border-top: 1px solid var(--accent-line); }
+ul.matches > li code { font-weight: 600; }
+ul.matches .quote { margin: var(--s1) 0 0; font-size: 12.5px; }
+
+/* --- Find --------------------------------------------------------------- */
+
+/* The plan, beside the button that spends it. Showing the cost first is the
+   difference between a feature people trust and a button people avoid. */
+.plan {
+  display: flex; justify-content: space-between; align-items: center; gap: var(--s4);
+  margin: var(--s4) 0; padding: var(--s4);
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-sm);
+  flex-wrap: wrap;
+}
+.plan-sum strong { display: block; font-size: 15px; }
+.plan-sum .hint { margin: var(--s1) 0 0; }
+.plan form { flex: none; display: flex; align-items: center; gap: var(--s3); }
+
+ul.findings > li.finding { padding: var(--s5) 0; border-top: 1px solid var(--line-2); }
+ul.findings > li.finding:first-child { border-top: 0; }
+
+ul.accepted { margin: var(--s3) 0 0; padding-left: calc(22px + var(--s3)); }
+ul.accepted > li { padding: var(--s2) 0; display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap; }
+ul.accepted .mark { font-family: var(--mono); color: var(--ok); }
+ul.accepted .quote { flex-basis: 100%; margin: var(--s1) 0 0; }
+
+.tier-group { margin: var(--s4) 0 0; padding-left: calc(22px + var(--s3)); }
+.tier-group h5 { margin: 0 0 var(--s2); font-size: 12px; font-weight: 600; }
+
+ul.candidates > li { padding: var(--s2) 0; border-top: 1px solid var(--line-2); }
+.candidate-head { display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap; }
+.candidate-head .value { flex: 1; min-width: 8ch; }
+
+/* The value itself, in the monospace the identifiers and measurements deserve:
+   `NW-CL-88213` and `NWCL88213` have to be told apart at a glance, and a
+   proportional font is where that difference goes to hide. */
+.value { font-family: var(--mono); font-size: 13.5px; font-weight: 600; color: var(--ink); }
+
+/* How a candidate was found, folded away. Open it and it is the audit trail;
+   closed, it is one line that says which tier and how sure. */
+details.route > summary {
+  cursor: pointer; color: var(--muted); font-size: 12px; padding: var(--s1) 0;
+}
+details.route[open] > summary { color: var(--ink-2); }
+ul.places > li { padding: var(--s2) 0 var(--s2) var(--s3); border-left: 2px solid var(--line); }
+ul.places .quote { margin: var(--s1) 0 0; font-size: 12.5px; }
+
+/* --- Images ------------------------------------------------------------- */
+
+.tray { display: flex; flex-wrap: wrap; gap: var(--s4); margin: var(--s4) 0; }
+figure.asset {
+  width: 176px; margin: 0; padding: var(--s3);
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-sm);
+  display: flex; flex-direction: column; gap: var(--s2);
+}
+figure.asset.asset-kept { border-color: var(--accent-line); background: var(--accent-soft); }
+figure.asset.asset-gone { width: 104px; opacity: .62; }
+figure.asset img {
+  display: block; width: 100%; height: auto; border-radius: 4px;
+  background: var(--sunken);
+}
+figure.asset figcaption { font-size: 12.5px; color: var(--ink-2); line-height: 1.4; }
+figure.asset figcaption .where { display: block; margin-top: var(--s1); }
+figure.asset figcaption .value { font-size: 12.5px; }
+.asset-tools { display: flex; gap: var(--s2); }
+.asset-label input { width: 100%; padding: 3px var(--s2); font-size: 12px; }
+
+button.tool.accept { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, transparent); }
+button.tool.accept:hover { background: var(--ok-soft); }
+
+/* --- What the parser read ---------------------------------------------- */
+
+ul.passages-list > li { padding: var(--s4) 0; border-top: 1px solid var(--line-2); }
+ul.passages-list > li:first-child { border-top: 0; }
+.passage-head { display: flex; align-items: baseline; gap: var(--s3); }
+
+/* The heading trail is what tells a model, and a reader, what a bare row of
+   numbers is about. It belongs above the text, in the text's own register. */
+.trail { margin: var(--s1) 0 var(--s2) calc(22px + var(--s3)); font-size: 12px; color: var(--muted); }
+
+pre.passage {
+  margin: var(--s2) 0 0; padding: var(--s3);
+  background: var(--sunken); border-radius: var(--radius-sm);
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.55;
+  white-space: pre-wrap; word-break: break-word; max-height: 24em; overflow: auto;
+}
+
+.run-question { padding: var(--s4) 0; border-top: 1px solid var(--line-2); }
+.run-question:first-of-type { border-top: 0; }
+
+/* A form that is only a button, sitting in a row of other tools. Without this it
+   would take a line of its own and the row would be four rows. */
+form.inline-form { display: inline; margin: 0; }
+
+/* A single column of full-width cards. `.layout` is a rail and a lane, which is
+   right for a page you navigate and wrong for one you read straight down: the
+   run report and the parser's output are both wide tables of detail with nothing
+   to put in a rail. */
+.stack {
+  display: flex; flex-direction: column; gap: var(--s5);
+  max-width: var(--measure); margin: 0 auto;
+}

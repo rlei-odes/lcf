@@ -359,7 +359,16 @@ A pre-filled answer is stored with `source: proposed` and **does not count as an
 the field in, shows the words it was read from, and drafting stays locked until a person saves it.
 An answer the creator typed themselves is never overwritten by one the model derived.
 
-Parsing uploaded PDF/DOCX files is a later convenience, not the primary path.
+#### When the material is a pile rather than a paste
+
+Paste assumes the material fits one prompt, and a real complaint does not: a dozen-page defect
+report, a mail thread four forwards deep, a measurement PDF, photographs. That is the
+[**evidence desk**](EVIDENCE-DESK.md) — its own area, which reads files into provenance-carrying
+passages and answers an authored list of questions out of them with candidates a person accepts.
+
+The two are deliberately not joined. The desk hands over an export, and its Markdown form pastes
+into this box with every quotation intact — which is all the coupling either feature needs, because
+both were built around the same rule: *point at the author's own words.*
 
 ### 6.2 The section working surface
 
@@ -575,8 +584,14 @@ wanted, it is a feature then — not scaffolding now.
 - **Auth.** No users, no login. Role boundaries modelled, not enforced.
 - **Collaborative editing.** One creator per document at a time. No locking, no CRDT.
 - **Approval workflows.** Status field exists; no routing, no signatures.
-- **Retrieval.** Evidence in context, summarised when large. No embeddings, no chunking.
-- **File import.** Paste and images are the entry point; PDF/DOCX parsing comes later.
+- **Retrieval.** No embeddings and no vector store. Material is chunked, and found by pattern,
+  keyword and lexical ranking in the evidence desk
+  ([EVIDENCE-DESK §6.4](EVIDENCE-DESK.md#64-ranking-the-chunks)); a corpus is never searched
+  semantically, and nothing is retrieved across cases.
+- ~~**File import.**~~ Built, and not as an afterthought to paste: the
+  [evidence desk](EVIDENCE-DESK.md) is a fourth area of the application that reads PDFs, Word files
+  and mail threads, because a complaint arrives as a pile of files rather than as something anybody
+  would paste.
 - **Multi-tenancy.** Single installation.
 - **Translation.** One language per document type, end to end.
 - **Doc type migration.** Documents pin their spec version; upgrading in-flight is later.

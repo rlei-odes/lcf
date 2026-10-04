@@ -20,6 +20,7 @@ from loguru import logger
 from openai import AsyncOpenAI
 
 from lcf.core.config import settings
+from lcf.ingest.text import clean_data
 
 PROMPTS = Path(__file__).parent / "prompts"
 
@@ -119,7 +120,7 @@ def client() -> AsyncOpenAI:
 
 async def complete_json(
     system: str,
-    user: str,
+    user: str | list[dict[str, Any]],
     schema: dict[str, Any],
     schema_name: str = "response",
     purpose: str = "",
@@ -128,11 +129,18 @@ async def complete_json(
 
     `purpose` names the call in the event log. It defaults to the schema name,
     which is already a decent description of what was asked for.
+
+    `user` is normally a string. It may be the OpenAI content-part list, which is
+    how an image-bearing call is expressed; `complete_json_with_images` builds
+    that form and everything else here is shared.
     """
     import time
 
     s = settings()
-    messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user},
+    ]
     started = time.monotonic()
     last_error = ""
     chunks = chars = 0
@@ -168,7 +176,11 @@ async def complete_json(
             raise LLMUnavailable(f"{type(exc).__name__}: {exc}") from exc
 
         try:
-            data = json.loads(raw) if problem is None else None
+            # `clean_data` because a model's reply is untrusted text like any
+            # other: `\ud800` is well-formed JSON, decodes to a lone surrogate,
+            # and fails on the way into Postgres rather than here, which puts the
+            # error a long way from its cause (`ingest/text.py`).
+            data = clean_data(json.loads(raw)) if problem is None else None
         except json.JSONDecodeError as exc:
             problem = f"not JSON: {exc}"
 
@@ -199,7 +211,7 @@ async def complete_json(
         return Completion(
             data=data,
             raw=raw,
-            prompt=f"{system}\n\n---\n\n{user}",
+            prompt=f"{system}\n\n---\n\n{_readable(user)}",
             model=s.llm_model,
             duration_ms=elapsed(),
             attempts=attempt,
@@ -210,8 +222,55 @@ async def complete_json(
     raise LLMMalformed(last_error)
 
 
+def _readable(user: str | list[dict[str, Any]]) -> str:
+    """The user message as something worth storing on the call record.
+
+    A content-part list holds base64 image data. Storing that would put
+    megabytes of it on the row and make the prompt view unopenable, so an image
+    is recorded as the fact that it was sent and its size.
+    """
+    if isinstance(user, str):
+        return user
+    parts: list[str] = []
+    for part in user:
+        if part.get("type") == "text":
+            parts.append(str(part.get("text") or ""))
+        else:
+            url = str((part.get("image_url") or {}).get("url") or "")
+            parts.append(f"[image attached, {len(url)} characters of data URL]")
+    return "\n\n".join(parts)
+
+
+async def complete_json_with_images(
+    system: str,
+    user: str,
+    images: list[tuple[bytes, str]],
+    schema: dict[str, Any],
+    schema_name: str = "response",
+    purpose: str = "",
+) -> Completion:
+    """`complete_json`, with images attached to the user message.
+
+    The only call that sends image content. Everything that makes the text path
+    survive this deployment — the streaming guards, the whitespace abort, the
+    single retry on unusable output — is unchanged and shared; the difference is
+    entirely in how the user message is built.
+
+    Images travel as inline data URLs rather than as links. The LLM host has no
+    route into this application's storage and must not be given one
+    (ARCHITECTURE §1), so a presigned URL would either fail or be a hole in the
+    thing the whole design is built on.
+    """
+    from lcf.ingest.images import as_data_url
+
+    parts: list[dict[str, Any]] = [{"type": "text", "text": user}]
+    for data, media_type in images:
+        parts.append({"type": "image_url", "image_url": {"url": as_data_url(data, media_type)}})
+    return await complete_json(system, parts, schema, schema_name=schema_name, purpose=purpose)
+
+
 async def _stream_one_object(
-    messages: list[dict[str, str]], schema: dict[str, Any], schema_name: str
+    messages: list[dict[str, Any]], schema: dict[str, Any], schema_name: str
 ) -> tuple[str, int]:
     """Stream the response and stop the moment the JSON object closes.
 

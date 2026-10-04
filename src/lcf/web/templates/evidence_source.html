@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}{{ source.label }}{% endblock %}
+{% block subtitle %}what was read{% endblock %}
+
+{% block content %}
+{# The one debugging surface a parser needs.
+
+   Without it, a question that finds nothing is indistinguishable from a file
+   that was never really read — and the person has no way to tell which. Every
+   passage shows its offsets into the text above it, which is the same
+   relationship the engine relies on to verify a quotation. #}
+<div class="stack">
+  <div class="card">
+    <h2>{{ source.label }}</h2>
+    <p class="lead">
+      {% if source.status == 'failed' %}
+        This could not be read.
+      {% else %}
+        Read as {{ source.kind }}{% if source.pages %} · {{ count(source.pages, 'page') }}{% endif %}
+        {%- if source.parser %} · parser: {{ source.parser }}{% endif %}
+        {%- if source.language %} · {{ languages.get(source.language, source.language) }}
+          {%- if source.language_set %} (you set this)
+          {%- elif source.language_confidence %} ({{ (source.language_confidence * 100)|round|int }}% sure){% endif %}
+        {%- endif %}
+        · {{ count(chunks|length, 'passage') }}
+      {% endif %}
+    </p>
+
+    {% if source.error %}
+    <div class="notice blocker">{{ source.error }}</div>
+    {% endif %}
+
+    {% if source.sender %}
+    <table class="config">
+      <tbody>
+        <tr><td>From</td><td>{{ source.sender_name or '' }} &lt;{{ source.sender }}&gt;</td></tr>
+        <tr><td>Domain</td><td><code>{{ source.sender_domain }}</code></td></tr>
+        {% if source.sent_at %}<tr><td>Sent</td><td>{{ source.sent_at|localtime }}</td></tr>{% endif %}
+        {% if source.subject %}<tr><td>Subject</td><td>{{ source.subject }}</td></tr>{% endif %}
+        {% if source.meta and source.meta.get('to') %}
+        <tr><td>To</td><td>{{ source.meta['to']|join(', ') }}</td></tr>
+        {% endif %}
+        {% if source.meta and source.meta.get('cc') %}
+        <tr><td>Cc</td><td>{{ source.meta['cc']|join(', ') }}</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    <div class="actions">
+      <a href="/evidence/{{ source.case_id }}"><button type="button">Back to the case</button></a>
+      {% if source.uri %}
+      <a href="/evidence/sources/{{ source.id }}/file">
+        <button class="quiet" type="button">Download the original</button></a>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if chunks %}
+  <div class="card">
+    <h3>The passages</h3>
+    <p class="hint">
+      A passage is what one question gets asked about. Boundaries fall where the
+      document already had them — a heading, a page, a new message in a thread —
+      and only then on length.
+    </p>
+    <ul class="plain passages-list">
+      {% for c in chunks %}
+      <li>
+        <div class="passage-head">
+          <span class="qkey">{{ c.seq + 1 }}</span>
+          <span class="where">
+            {%- if c.page_from %}
+              {%- if c.page_to and c.page_to != c.page_from %}pp. {{ c.page_from }}–{{ c.page_to }}
+              {%- else %}p. {{ c.page_from }}{% endif %} ·
+            {%- endif %}
+            {{ c.kind }} · chars {{ c.char_from }}–{{ c.char_to }}
+            {%- if c.meta and c.meta.get('sender') %} · {{ c.meta['sender'] }}{% endif %}
+            {%- if c.meta and c.meta.get('sent_at') %} · {{ c.meta['sent_at'] }}{% endif %}
+          </span>
+        </div>
+        {% if c.path %}<div class="trail">{{ c.path }}</div>{% endif %}
+        <pre class="passage">{{ c.text }}</pre>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% elif source.text %}
+  <div class="card">
+    <h3>What was read</h3>
+    <pre class="passage">{{ source.text }}</pre>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

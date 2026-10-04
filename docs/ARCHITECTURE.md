@@ -103,6 +103,8 @@ lcf/
 │   │   ├── proposals.py    #   propose, accept, reject, revise
 │   │   ├── assessment.py   #   run checks, gate, report
 │   │   ├── intake.py       #   evidence: paste, map, prefill
+│   │   ├── evidence.py     #   the desk: cases, sources, questions, sets
+│   │   ├── extraction.py   #   the desk: plan, run, candidates, findings
 │   │   ├── exports.py      #   render, gate, store, record
 │   │   ├── templates.py    #   docx template: starter, lint, attach
 │   │   ├── drafts.py       #   the structured spec editor's draft
@@ -110,22 +112,29 @@ lcf/
 │   ├── spec/               # spec model, YAML round-trip, linter, describe
 │   ├── engine/             # state machine, staleness, composition
 │   │   └── checks/         #   deterministic.py  judged.py
+│   ├── ingest/             # parse, chunk, detect language, rank, normalise
 │   ├── llm/                # provider, typed calls, schemas, quoting
 │   ├── render/             # neutral (json), markdown, docx + template linter
-│   ├── storage/            # S3
+│   ├── storage/            # S3 and the local disk
 │   └── web/                # routes, templates/, static/
 ├── alembic/
 ├── tests/
 ├── docs/
-│   ├── DESIGN.md · ARCHITECTURE.md · BACKLOG.md
+│   ├── DESIGN.md · ARCHITECTURE.md · BACKLOG.md · EVIDENCE-DESK.md
 │   └── examples/*.yaml
 ├── .env.example
 └── docker-compose.yml
 ```
 
-`spec/`, `engine/` and `render/` **know nothing of each other beyond data**. `engine/` never
-imports `render/`; `render/` never imports `engine/`. That boundary is the code-level expression of
-[DESIGN §4](DESIGN.md#4-three-artifacts-kept-apart) and is worth a test that asserts it.
+`spec/`, `engine/`, `ingest/` and `render/` **know nothing of each other beyond data**. `engine/`
+never imports `render/`; `render/` never imports `engine/`; none of them imports a database, a
+storage backend or a service. That boundary is the code-level expression of
+[DESIGN §4](DESIGN.md#4-three-artifacts-kept-apart), and `tests/test_boundaries.py` asserts it per
+package rather than leaving it to be remembered.
+
+`ingest/` is the newest of the four and the rule earns the most there: a parser, a chunker and a
+ranker that take a bytestring and return dataclasses are testable without a database, a web server
+or a model, which is where almost everything that can go wrong in them lives.
 
 ## 4. Data model
 
@@ -148,6 +157,20 @@ document ───────────────────────�
    ├──< llm_call             call_type, prompt, response, tokens, ms
    ├──< job
    └──< export               format, uri
+
+                                           (the evidence desk — its own root,
+                                            deliberately not joined to document)
+evidence_case ──┬──< evidence_source ──< evidence_chunk
+                │      file|paste; parsed      seq, pages, heading trail,
+                │      text, language,         offsets into source.text, meta
+                │      sender, sender_domain
+                ├──< evidence_asset       image: uri, thumb, sha256, caption
+                ├──< evidence_run         per-stage counts — the funnel
+                └──< evidence_question ──< evidence_candidate
+                       key, prompt, type,       value, value_norm, quote, tier,
+                       multiple, commands       score, provenance, status
+
+question_set         key, title, questions JSONB   (unpinned, mutable, copied on load)
 ```
 
 ### Notable decisions
@@ -172,6 +195,16 @@ suggested and what the human did about it is the audit trail.
 
 **Versions are immutable; documents pin one.** Publishing freezes a version. Without this, editing
 a rule silently invalidates every document in progress.
+
+**A question set is the one authored thing that is *not* versioned**, and the contrast is the
+reason. A `doc_type_version` is frozen because documents pin it and a rule must not move under work
+in progress. Nothing pins a question set: loading one copies its questions into a case, and from
+that moment the case owns them. A set is a convenience, not a contract, and versioning it would be
+ceremony around a template.
+
+**A candidate carries its own dedupe key.** `value_norm` is stored rather than recomputed because a
+unique constraint on `(question_id, value_norm)` is what makes *"never offer a dismissed value
+again"* a database guarantee instead of a query everybody has to remember to write.
 
 ## 5. LLM integration
 
@@ -238,12 +271,29 @@ returns one schema. The complete set:
 | `evaluate_check` | one LLM check + referenced blocks | pass/fail + reason + confidence |
 | `evaluate_consistency` | one criterion across 2–n sections | pass/fail + reason + evidence refs |
 | `summarize` | one section or the evidence pool | compact standing summary for later context |
+| `answer_from_chunk` | one authored question + one chunk | found, value, quote, confidence |
+| `propose_pattern` | real example values + the question | a regular expression, and what it matches |
+| `propose_keywords` | the question + the material's language | terms to search for, each with a reason |
 
-Eight call types. Each has a fixed Pydantic response model, a prompt template in `llm/prompts/`,
-and test fixtures. **A ninth requires a design decision** — the pressure to add "just one more
+Eleven call types. Each has a fixed response schema, a prompt frame in `llm/prompts/`, and test
+fixtures. **A twelfth requires a design decision** — the pressure to add "just one more
 general-purpose call" is exactly what this table exists to resist.
 
-Composition lives in `engine/`, in ordinary Python.
+The last three belong to the evidence desk, and they split into two species that the table above
+does not distinguish but the rule does:
+
+| Species | Calls | Bound by |
+|---|---|---|
+| **Finding** | everything above, plus `answer_from_chunk` and `caption_images` | `never_invent.md`, composed last; a quotation verified against its source before anything is stored |
+| **Authoring** | `propose_pattern`, `propose_keywords` | Verification or confirmation *before the output is data* — `fullmatch` against the supplied examples, or a person ticking the terms |
+
+The distinction matters because the contracts are genuinely different. A finding call's output
+becomes a candidate, so it is held to the author's own words. An authoring call's output becomes a
+**parameter** — a regex, a word list — which is inert until a run uses it and which a person has
+looked at in between. Listing all eleven as peers would invite the next authoring call to be
+quote-verified for symmetry, and the next finding call to skip verification for the same reason.
+
+Composition lives in `engine/` and in the services, in ordinary Python.
 
 ### 5.3 Context budget
 
@@ -404,6 +454,14 @@ POST  /documents/{id}/assess                                    → job
 GET   /documents/{id}/blame
 POST  /documents/{id}/export/{format}     json | markdown | docx
 
+# Evidence desk — the full surface is in EVIDENCE-DESK.md §10
+GET   /evidence                           cases, and opening one
+GET   /evidence/{case}                    the desk: gather · formulate · find
+POST  /evidence/{case}/sources            multipart, many files → a parse job each
+POST  /evidence/questions/{id}/pattern    examples → a verified pattern → its matches here
+POST  /evidence/{case}/run                                        → job
+GET   /evidence/{case}/export.json|.md    the accepted findings, with provenance
+
 # Jobs
 GET   /jobs/{id}/card                     one poll (see the jobs section)
 ```
@@ -523,11 +581,31 @@ Nothing here should be written by hand if a proven library exists.
 | Test async | **pytest-asyncio** | |
 | LLM fixtures | Monkeypatched typed calls | `llm/calls.py` is the seam; substituting there tests composition without asserting anything about HTTP |
 
+### Ingest — the evidence desk
+
+Reasoning in [EVIDENCE-DESK §4.2](EVIDENCE-DESK.md#42-the-parsing-decision) and
+[§6.4](EVIDENCE-DESK.md#64-ranking-the-chunks). The common thread: every one of these resolves from
+a wheel at install time and fetches nothing at runtime, which is what [§1](#1-shape-one-service)
+requires of a service on a network with no egress.
+
+| Need | Library | Why this one |
+|---|---|---|
+| PDF text and images | **pypdf** | Pure Python, per-page text, `page.images`. No model weights |
+| Word | **python-docx** | Already here for rendering; read as well as written |
+| Email | stdlib `email` + **mail-parser-reply** | Thread splitting and signature/disclaimer stripping in thirteen languages, German tested. The messiest input and the likeliest |
+| Pattern matching | **regex** | It takes a `timeout` and `re` does not. A model-written pattern runs over megabytes of somebody else's text |
+| Lexical ranking | **bm25s** | Needs only `numpy`; bundles stopword lists for fourteen languages rather than fetching NLTK's |
+| Stemming | **PyStemmer** | Snowball. German compounds and plurals are the normal case here |
+| Language detection | **py3langid** | Model is a file in the package — nothing to download, nothing to pre-fetch |
+| Images | **Pillow** | Thumbnails, EXIF orientation, and shrinking before a vision call |
+| Layout, tables, OCR | **docling** | Better than the above at PDFs, and **not declared as a dependency or an extra**: it downloads model weights on first use, and declaring the extra moved locked versions for installations that would never install it. Added by the deployer with `uv pip install docling` |
+
 ### Later, if ever
 
 | Need | Library | When |
 |---|---|---|
-| PDF/DOCX import | **docling**, **markitdown** | Only when file import stops being optional (DESIGN §6.1) |
+| Tokenizer | **tiktoken** or the model's own | A real context budget, and a chunk budget in tokens rather than characters ([BACKLOG §4](BACKLOG.md#4-context-budget)) |
+| `.msg`, `.xlsx` | **extract-msg**, **openpyxl** | Somebody is sent one. Each is a module behind the existing dispatch |
 | Git sync | **dulwich** | Pure-Python, no libgit2 — if export/import ever proves insufficient |
 
 ## 13. Testing
@@ -542,11 +620,14 @@ Nothing here should be written by hand if a proven library exists.
 | Composition | Recorded LLM responses via respx; assert merge logic and proposal creation |
 | Live LLM | Small suite against the real host, run on demand, not in CI |
 | Rendering | Render a known document; assert docx contains expected text and images |
-| Boundaries | Assert `render/` does not import `engine/`, and vice versa |
+| Parsers | Fixture files **generated in Python**, so the content asserted against is known; a committed binary is a file nobody can read in a diff |
+| Chunking | Property tests: nothing lost, `source.text[char_from:char_to]` is exactly the chunk, the budget holds |
+| Extraction | Monkeypatched `answer_from_chunk`; tier order, dedupe, re-run semantics, and a funnel whose numbers reconcile |
+| Boundaries | Assert `spec/`, `engine/` and `ingest/` import no database, storage or service, and that `render/` and `engine/` do not import each other |
 
-The parts that must be right — deterministic checks, the state machine, composition — are all
-testable without a model. That is by design. If the flow can only be tested by talking to an LLM,
-the architecture has failed.
+The parts that must be right — deterministic checks, the state machine, composition, the parser, the
+chunker, the pattern tier — are all testable without a model. That is by design. If the flow can only
+be tested by talking to an LLM, the architecture has failed.
 
 ## 14. Build order
 
@@ -562,9 +643,13 @@ the architecture has failed.
 9. Export: JSON, then Markdown, then docx with template linting.
 10. Spec editor UI for the rule builder.
 
-Steps 1–5 and 7–10 are done; drafting, assessment and intake all run as background jobs. Step 7's
-text half is complete — paste, `map_evidence_to_sections`, `prefill_answers` — and its image half
-(upload and captioning) is not. What remains is images and the editor island (step 6).
+Steps 1–5 and 7–10 are done; drafting, assessment and intake all run as background jobs. What
+remains of the original ten is the editor island (step 6).
+
+Step 7 grew an eleventh step the list did not anticipate, because paste turned out to be the wrong
+gesture for the material people are actually sent: the **evidence desk**
+([§17](#17-the-evidence-desk)), which reads files, and which is where image upload and captioning
+landed as well.
 
 **A spec has two editors, and one model.** The YAML editor is the direct one: a textarea, and an
 honest answer to *is this valid?* before publishing. `doc_types.review()` runs the same parse, the
@@ -876,3 +961,80 @@ store raises rather than degrading.
 
 `image_ref` blocks render captions as text in both paths — placing real images waits on upload and
 captioning ([BACKLOG §1](BACKLOG.md)). A template is the document type's, not the document's.
+
+## 17. The evidence desk
+
+The fourth area of the application, and the only part that reads files. Described in full in
+[EVIDENCE-DESK.md](EVIDENCE-DESK.md); what belongs here is how it sits in the rest of the system.
+
+### 17.1 What it is for
+
+A quality complaint arrives as a flood — the customer's form, a measurement report, photographs, a
+mail thread four forwards deep — and before anybody writes a 4D, somebody has to find six numbers in
+it. Intake takes a paste and assumes it fits one prompt ([DESIGN §6.1](DESIGN.md#61-intake)), which
+is the right gesture for a handful of notes and the wrong one for a corpus.
+
+The desk is three moves: **gather** the pile, **formulate** what has to come out of it, **find**
+candidates a person accepts. The middle move is the one that compounds — the questions and the
+patterns that answer them are saved as a *question set*, so the second complaint from the same
+customer starts pre-wired.
+
+### 17.2 How it attaches
+
+Deliberately loosely. Its own tables, its own two service modules, its own area in the app bar, and
+**no foreign key to `document`**. Two reasons, both load-bearing:
+
+- It is useful on its own. Pulling six numbers out of a document flood is worth doing even if
+  nothing is written afterwards, and a feature that only pays off once a second feature exists is
+  one that gets abandoned halfway.
+- Wiring extraction commands into a document type's questions means a type author can make every
+  document in the organisation spend forty model calls. That seam is named in
+  [EVIDENCE-DESK §11](EVIDENCE-DESK.md#11-the-seam-to-the-rest-of-the-app) and deliberately not
+  built; today the bridge is an export, and the Markdown form pastes into a document's intake box
+  with its quotes intact.
+
+What it *shares* is everything structural: `services/` as the contract, the `job` table for slow
+work, `storage/` for bytes, `llm/provider.py` for calls, and `llm/quoting.py` for the rule that a
+model may only point at words a person supplied.
+
+Jobs carry a document id, and a case is not a document — so the desk's jobs put the case id in
+`job.scope` with a null `document_id`. That needed no schema change and keeps one job table, one
+progress card and one event log for the whole application.
+
+### 17.3 The three things it adds to the engine's grain
+
+Each is the same bias the rest of the application already has, applied to a new problem.
+
+**Deterministic first, and it runs to completion.** A complaint number has a shape, so a regular
+expression finds it exactly and the result is testable without a model — the same reasoning that
+splits `Requirement` into two species ([DESIGN §5.4](DESIGN.md#54-requirements--two-species)). The
+pattern tier runs before any call is made, so a run that cannot reach the assistant still produces
+every exact hit rather than nothing.
+
+**A model's output is verified before it is data.** A proposed regular expression must `fullmatch`
+every example it was built from, must not match the empty string, and must finish inside a timeout on
+real material. A proposed keyword list is confirmed by a person ticking it. A quoted answer is
+checked against the passage it was drawn from by the function the judged checks already use. This is
+what makes asking a model to write *code* the right move in the one place the desk does it.
+
+**Certainties and guesses are never ranked together.** A pattern hit, a keyword-narrowed answer and
+an answer read out of a passage are three different kinds of claim, so candidates are grouped by tier
+under headings that say so, and a pattern hit shows no confidence number at all — printing `1.00`
+beside a regex match would invite the reading that the other numbers are on the same scale
+([EVIDENCE-DESK §6.6](EVIDENCE-DESK.md#66-score-and-the-question-the-backlog-left-open)).
+
+### 17.4 A run shows its work
+
+Six candidates out of 48 passages is either a precise instrument or a broken one, and the difference
+is invisible unless the run says which. So a run is a row — `evidence_run`, with per-stage counts —
+for the same reason `llm_call` is one: *why did it say that* has to be answerable weeks later.
+
+The counts that matter most are the ones for what was **dropped**: a quote that was not in its
+passage, a value the question's type could not hold, a duplicate merged. A question returning nothing
+because all four of its candidates failed a date format is a fixable authoring problem; a question
+returning nothing because the material is silent is not. Without those counts the two look identical,
+and the person concludes the tool does not work.
+
+A test asserts the funnel reconciles — every passage asked about is accounted for as found or dropped
+with a reason — because a funnel whose numbers do not add up is how a silently-dropped candidate
+presents itself.

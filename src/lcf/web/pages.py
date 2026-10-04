@@ -15,6 +15,7 @@ from fastapi.templating import Jinja2Templates
 
 from lcf.core.text import count, verb
 from lcf.engine.state import Status
+from lcf.ingest import commands as ingest_commands
 from lcf.services import drafts, events
 from lcf.spec.describe import describe_criterion, describe_requirement, scope_of
 from lcf.web import builder
@@ -47,6 +48,7 @@ templates.env.filters["event_label"] = events.label
 # never means remembering to label it.
 AREAS = (
     ("flow", "Doc flow", "/"),
+    ("evidence", "Evidence desk", "/evidence"),
     ("factory", "Doctype factory", "/doc-types"),
     ("admin", "Admin", "/admin"),
 )
@@ -57,6 +59,8 @@ def _area_of(path: str) -> str:
         return "setup"
     if path.startswith("/doc-types"):
         return "factory"
+    if path.startswith("/evidence"):
+        return "evidence"
     if path.startswith("/admin"):
         return "admin"
     return "flow"
@@ -98,6 +102,13 @@ templates.env.filters["scope"] = scope_of
 # the templates offer choices rather than free text.
 templates.env.globals["builder"] = builder
 templates.env.globals["drafts"] = drafts
+
+# The evidence desk stores a question's commands as JSONB and validates them on
+# read, the same way a spec is read back. The panel needs the validated form to
+# render each one through `Command.describe()` — the same function the candidate's
+# provenance line uses, so what somebody reads while authoring is what they read
+# afterwards.
+templates.env.globals["builder_commands"] = ingest_commands.parse_commands
 
 
 def page(request: Request, name: str, **ctx) -> HTMLResponse:

@@ -11,9 +11,27 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from lcf.engine.view import DocumentView
-from lcf.llm.provider import Completion, complete_json, prompt
+from lcf.llm.provider import (
+    Completion,
+    complete_json,
+    complete_json_with_images,
+)
+
+# The desk's calls take the author's question as a parameter called `prompt`,
+# which is the word the spec model and the UI both use for it. Importing the
+# prompt-frame loader under its own name keeps that readable rather than making
+# every one of those functions rename its argument.
+from lcf.llm.provider import prompt as prompt_text
 from lcf.llm.quoting import quoted_from
-from lcf.llm.schemas import draft_response_schema, mapping_schema, prefill_schema
+from lcf.llm.schemas import (
+    KEYWORDS_SCHEMA,
+    PATTERN_SCHEMA,
+    captions_schema,
+    chunk_answer_schema,
+    draft_response_schema,
+    mapping_schema,
+    prefill_schema,
+)
 from lcf.spec.describe import describe_requirement
 from lcf.spec.models import Block, DocTypeSpec, Section
 
@@ -53,12 +71,12 @@ def draft_system_message(section: Section, block: Block, style: str) -> str:
     """
     return "\n\n".join(
         [
-            prompt("draft_block"),  # 1. task frame — ours, fixed
+            prompt_text("draft_block"),  # 1. task frame — ours, fixed
             "## How to write\n\n" + style,  # 2. resolved style
             _section_context(section, block),  # 3. section spec
             _requirement_targets(section, block),  # 4. the checks, as targets
             # 5. exemplars would go here once there is accepted content to harvest
-            prompt("never_invent"),  # 8. composed last, so nothing softens it
+            prompt_text("never_invent"),  # 8. composed last, so nothing softens it
         ]
     )
 
@@ -115,9 +133,9 @@ async def map_evidence_to_sections(spec: DocTypeSpec, material: str) -> Mapping:
     titles = {s.key: s.title for s in spec.sections}
     system = "\n\n".join(
         [
-            prompt("map_evidence"),
+            prompt_text("map_evidence"),
             _sections_overview(spec),
-            prompt("never_invent"),
+            prompt_text("never_invent"),
         ]
     )
     user = f"## The author's material\n\n{material}"
@@ -187,11 +205,11 @@ async def prefill_answers(
     )
     system = "\n\n".join(
         [
-            prompt("prefill_answers"),
+            prompt_text("prefill_answers"),
             f"## The section\n\n**{section.title}**"
             + (f"\n\n{section.description}" if section.description else ""),
             f"## The questions\n\n{asked}",
-            prompt("never_invent"),
+            prompt_text("never_invent"),
         ]
     )
     parts = []
@@ -228,6 +246,256 @@ async def prefill_answers(
         if not _fits(question, value):
             continue
         out.append(Prefilled(question.key, value, quote))
+    return out
+
+
+@dataclass
+class ChunkAnswer:
+    """What one passage had to say about one question."""
+
+    found: bool
+    value: str = ""
+    quote: str = ""
+    confidence: float = 0.0
+    completion: Completion | None = None
+
+
+async def answer_from_chunk(
+    prompt: str,
+    chunk_text: str,
+    question_type: str = "text",
+    options: list[str] | None = None,
+    where: str = "",
+) -> ChunkAnswer:
+    """Ask one authored question of one chunk (EVIDENCE-DESK §8).
+
+    A *finding* call: its output becomes a candidate, so it carries the
+    never-invent frame and its quotation is verified against the chunk it was
+    given before anything is kept. A quote that is not there is discarded and
+    counted, which is the same contract intake has — and the count is reported,
+    because a model inventing half its quotes is a fact the person should hear.
+
+    Scoped to one chunk rather than to a whole source, which is what makes the
+    cost predictable and the provenance exact: the answer belongs to a slice of a
+    file with a page number on it.
+    """
+    body = (chunk_text or "").strip()
+    if not prompt.strip() or not body:
+        return ChunkAnswer(found=False)
+
+    system = "\n\n".join(
+        [
+            prompt_text("answer_from_chunk"),
+            f"## The question\n\n{prompt}" + _expected(question_type, options),
+            prompt_text("never_invent"),
+        ]
+    )
+    user = "## The passage\n\n" + (f"From {where}.\n\n" if where else "") + body
+
+    completion = await complete_json(
+        system,
+        user,
+        chunk_answer_schema(question_type, options),
+        schema_name="chunk_answer",
+        purpose="answer_from_chunk",
+    )
+    data = completion.data
+    quote = str(data.get("quote") or "").strip()
+    value = str(data.get("value") or "").strip()
+
+    if not data.get("found") or not value or not quote:
+        return ChunkAnswer(found=False, completion=completion)
+    if not quoted_from(quote, body):
+        # The model answered with words that are not in the passage it was
+        # shown. Not a candidate: counted, and dropped.
+        return ChunkAnswer(found=False, quote=quote, completion=completion)
+
+    return ChunkAnswer(
+        found=True,
+        value=value,
+        quote=quote,
+        confidence=float(data.get("confidence") or 0.0),
+        completion=completion,
+    )
+
+
+def _expected(question_type: str, options: list[str] | None) -> str:
+    """What shape of answer this question takes, said in the prompt too.
+
+    The schema already constrains the JSON, but the shape *inside* a string is
+    not something a grammar can hold — which is why `ingest/values.py` validates
+    the result afterwards. Saying it here as well costs a line and reduces how
+    often that validation has to throw an answer away.
+    """
+    kind = (question_type or "text").lower()
+    if kind == "identifier":
+        return "\n\nThe answer is an identifier: a code or reference, not a sentence."
+    if kind == "number":
+        return "\n\nThe answer is a measured value. Keep its units and its decimal separator."
+    if kind == "date":
+        return "\n\nThe answer is a date. Give it as YYYY-MM-DD."
+    if kind == "choice" and options:
+        return "\n\nThe answer is one of: " + ", ".join(options)
+    if kind == "boolean":
+        return "\n\nThe answer is either `true` or `false`."
+    return ""
+
+
+@dataclass
+class ProposedPattern:
+    pattern: str
+    note: str = ""
+    completion: Completion | None = None
+
+
+async def propose_pattern(prompt: str, examples: list[str]) -> ProposedPattern:
+    """Write a regular expression that matches these example values.
+
+    An *authoring* call. Its output is a **parameter**, not a candidate — inert
+    until a run uses it, and verified by execution in between: it must `fullmatch`
+    every example, must not match the empty string, and must finish inside a
+    timeout on real material (`ingest/retrieval.py`). That verification is why
+    this is the one place in the product where asking a model for code is the
+    right move, and it is also why this call does not compose `never_invent`:
+    there is no evidence to stay faithful to, and the rule it must obey is
+    enforced by a function rather than by wording.
+    """
+    wanted = [e.strip() for e in examples if e and e.strip()]
+    if not wanted:
+        raise ValueError("there are no examples to build a pattern from")
+
+    system = prompt_text("propose_pattern")
+    listed = "\n".join(f"- `{e}`" for e in wanted)
+    user = (
+        f"## What is being looked for\n\n{prompt or 'a value of this kind'}\n\n"
+        f"## Real examples, every one of which your pattern must match\n\n{listed}"
+    )
+
+    completion = await complete_json(
+        system, user, PATTERN_SCHEMA, schema_name="pattern", purpose="propose_pattern"
+    )
+    return ProposedPattern(
+        pattern=str(completion.data.get("pattern") or "").strip(),
+        note=" ".join(str(completion.data.get("note") or "").split()),
+        completion=completion,
+    )
+
+
+@dataclass
+class ProposedTerm:
+    term: str
+    why: str = ""
+
+
+async def propose_keywords(
+    prompt: str, language: str = "en", already: list[str] | None = None
+) -> list[ProposedTerm]:
+    """Suggest the words a passage answering this question is likely to contain.
+
+    The other *authoring* call, and verified differently: by a person ticking the
+    terms to keep. Doing it here rather than expanding the query at run time is
+    what keeps a run deterministic and keeps the cost estimate honest — a term
+    nobody saw could quietly turn a narrowed question into an unnarrowed one, and
+    three calls into forty (EVIDENCE-DESK §5.4).
+    """
+    if not prompt.strip():
+        return []
+
+    known = [t for t in (already or []) if t.strip()]
+    system = prompt_text("propose_keywords")
+    user = "\n\n".join(
+        part
+        for part in [
+            f"## The question\n\n{prompt}",
+            f"## The material is in\n\n{_language_name(language)}",
+            ("## Already on the list — do not repeat these\n\n" + ", ".join(known))
+            if known
+            else "",
+        ]
+        if part
+    )
+
+    completion = await complete_json(
+        system, user, KEYWORDS_SCHEMA, schema_name="keywords", purpose="propose_keywords"
+    )
+    out: list[ProposedTerm] = []
+    seen = {t.casefold() for t in known}
+    for entry in completion.data.get("terms") or []:
+        term = " ".join(str(entry.get("term") or "").split())
+        if not term or term.casefold() in seen:
+            continue
+        seen.add(term.casefold())
+        out.append(ProposedTerm(term=term, why=" ".join(str(entry.get("why") or "").split())))
+    return out
+
+
+_LANGUAGE_NAMES = {
+    "de": "German",
+    "en": "English",
+    "fr": "French",
+    "it": "Italian",
+    "es": "Spanish",
+    "nl": "Dutch",
+}
+
+
+def _language_name(code: str) -> str:
+    return _LANGUAGE_NAMES.get((code or "").lower(), "English and possibly other languages")
+
+
+@dataclass
+class Caption:
+    n: int
+    caption: str
+    evidence: bool = True
+
+
+async def caption_images(images: list[tuple[bytes, str]]) -> list[Caption]:
+    """Describe a batch of images, within the per-call budget.
+
+    The last of the eight calls ARCHITECTURE §5.2 named and never built, and the
+    only one that sends image content. Batched by the caller to
+    `LCF_LLM_MAX_IMAGES_PER_CALL`, because that is a property of the model rather
+    than of the code.
+
+    The caption is evidence about an image, not a judgement on a part: the prompt
+    forbids saying whether something is within tolerance, because one photograph
+    with no drawing and no specification cannot support that and a caption
+    reading "within tolerance" would be quoted back as if it could.
+    """
+    if not images:
+        return []
+
+    # `never_invent` last, as every finding call composes it. A caption is not
+    # prose, but reading the numbers off a photograph is exactly the act the rule
+    # governs: a partly obscured batch number completed into a plausible one is
+    # the same failure as an invented measurement, and harder to catch, because
+    # nobody re-reads a thumbnail.
+    system = "\n\n".join([prompt_text("caption_images"), prompt_text("never_invent")])
+    user = (
+        f"## The images\n\nThere are {len(images)}, in order. Answer with one entry"
+        " for each, numbered from 1."
+    )
+    completion = await complete_json_with_images(
+        system,
+        user,
+        images,
+        captions_schema(len(images)),
+        schema_name="captions",
+        purpose="caption_images",
+    )
+
+    out: list[Caption] = []
+    for entry in completion.data.get("captions") or []:
+        try:
+            n = int(entry.get("n"))
+        except (TypeError, ValueError):
+            continue
+        if not 1 <= n <= len(images):
+            continue
+        caption = " ".join(str(entry.get("caption") or "").split())
+        if caption:
+            out.append(Caption(n=n, caption=caption, evidence=bool(entry.get("evidence", True))))
     return out
 
 
@@ -354,7 +622,7 @@ def _render(value: Any) -> str:
 
 def resolve_style(spec: DocTypeSpec, section: Section) -> str:
     """System default → document type → section (DESIGN §5.6)."""
-    layers = [prompt("style_default")]
+    layers = [prompt_text("style_default")]
     if spec.style:
         layers.append(spec.style.strip())
     if section.style:

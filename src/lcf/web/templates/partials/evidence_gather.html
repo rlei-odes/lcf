@@ -1,0 +1,142 @@
+{# Move one: the pile.
+
+   The drop zone is a few lines of vanilla JS in static/drop.js — not the editor
+   island, and it must not grow into one. Everything else here is server-rendered
+   and swapped: a finished parse replaces this whole card, so what the page shows
+   is always what the database holds. #}
+<div class="card" id="gather-card">
+  <h3><span class="step-n">1</span> Gather</h3>
+  <p class="lead">
+    Drop the files in — PDF, Word, email, photographs — or paste text. Each one
+    is read, split into passages, and kept exactly as it arrived.
+  </p>
+
+  {% for problem in problems %}
+  <div class="notice blocker">{{ problem }}</div>
+  {% endfor %}
+
+  <form class="dropzone" id="dropzone"
+        hx-post="/evidence/{{ case.id }}/sources"
+        hx-encoding="multipart/form-data"
+        hx-target="#gather-card" hx-swap="outerHTML">
+    <input type="file" name="files" id="dropzone-input" multiple
+           accept=".pdf,.docx,.eml,.txt,.md,.csv,.tsv,.png,.jpg,.jpeg,.webp,.tif,.tiff">
+    <label for="dropzone-input">
+      <strong>Drop files here</strong>
+      <span class="hint">or click to choose · PDF, Word, .eml, images, text</span>
+    </label>
+    <span class="htmx-indicator working">Reading…</span>
+  </form>
+
+  <details class="paste-more" {% if not sources %}open{% endif %}>
+    <summary>{{ 'Paste more text' if sources else 'Or paste text instead' }}</summary>
+    <form hx-post="/evidence/{{ case.id }}/paste"
+          hx-target="#gather-card" hx-swap="outerHTML">
+      <div class="field" style="margin-top:var(--s3)">
+        <textarea name="text" rows="6"
+                  placeholder="Paste the mail, the notes, the measurements."></textarea>
+      </div>
+      <div class="actions">
+        <button type="submit">Add it to the pile</button>
+        <span class="htmx-indicator working">Reading…</span>
+      </div>
+    </form>
+  </details>
+
+  {# A parse still running from this visit or an earlier one. Picked back up
+     rather than offering a second one. #}
+  <div id="gather-slot">
+    {% if parsing %}
+      {% with job = parsing,
+              done_url = "/evidence/" ~ case.id ~ "/gather",
+              done_target = "#gather-card",
+              working_title = "Reading what you dropped in" %}
+        {% include "partials/job.html" %}
+      {% endwith %}
+    {% endif %}
+  </div>
+
+  {% if sources %}
+  <table class="sources">
+    <thead>
+      <tr><th>What</th><th>Read as</th><th>Passages</th><th>Language</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for s in sources %}
+      <tr class="{{ 's-failed' if s.status == 'failed' }}">
+        <td>
+          {% if s.parent_id %}<span class="attached" title="came attached to the mail above">↳</span>{% endif %}
+          <a href="/evidence/sources/{{ s.id }}/text">{{ s.label }}</a>
+          {% if s.sender %}
+          <span class="sender" title="{{ s.sender_name or s.sender }}">{{ s.sender_domain }}</span>
+          {% endif %}
+          {% if s.sent_at %}<span class="where">{{ s.sent_at|localtime }}</span>{% endif %}
+        </td>
+        <td>
+          {%- if s.status == 'failed' -%}
+            <span class="s-needs_input">could not be read</span>
+          {%- elif s.status == 'queued' -%}
+            <span class="working">waiting</span>
+          {%- else -%}
+            {{ s.kind }}{% if s.pages %} · {{ count(s.pages, 'page') }}{% endif %}
+            {#- The parser is worth naming only when it is not the one every
+                installation has. `image` is the kind, not a parser. -#}
+            {%- if s.parser == 'docling' %} · docling{% endif %}
+          {%- endif -%}
+        </td>
+        <td>{{ passages.get(s.id, 0) if s.status == 'parsed' else '—' }}</td>
+        <td>
+          {% if s.status == 'parsed' and s.kind != 'image' %}
+          <form hx-post="/evidence/sources/{{ s.id }}/language"
+                hx-target="#gather-card" hx-swap="outerHTML" class="inline-form">
+            <select name="language" onchange="this.form.requestSubmit()"
+                    title="{{ 'you set this' if s.language_set else 'detected' }}">
+              {% for code, name in languages.items() %}
+              <option value="{{ code }}" {{ 'selected' if code == s.language }}>{{ code }}</option>
+              {% endfor %}
+            </select>
+            {%- if not s.language_set and s.language_confidence %}
+            <span class="where">{{ (s.language_confidence * 100)|round|int }}%</span>
+            {%- elif s.language_set %}<span class="where">set</span>{% endif %}
+          </form>
+          {% else %}
+          <span class="where">—</span>
+          {% endif %}
+        </td>
+        <td class="rowtools-right">
+          {% if s.status == 'failed' or s.language_set %}
+          <form hx-post="/evidence/sources/{{ s.id }}/reparse"
+                hx-target="#gather-card" hx-swap="outerHTML" class="inline-form">
+            <button class="tool" type="submit" title="read it again">again</button>
+          </form>
+          {% endif %}
+          <form hx-post="/evidence/sources/{{ s.id }}/remove"
+                hx-target="#gather-card" hx-swap="outerHTML" class="inline-form"
+                hx-confirm="Remove {{ s.label }} and everything found in it?">
+            <button class="tool" type="submit">remove</button>
+          </form>
+        </td>
+      </tr>
+      {% if s.error %}
+      <tr class="row-note"><td colspan="5"><span class="why">{{ s.error }}</span></td></tr>
+      {% endif %}
+      {% if s.meta and s.meta.get('images_dropped') %}
+      <tr class="row-note">
+        <td colspan="5"><span class="why">Images: {{ s.meta['images_dropped'] }}</span></td>
+      </tr>
+      {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <p class="hint">
+    {{ count(plan.chunks, 'passage') }} across {{ count(plan.sources, 'file') }} ready to search.
+    A passage is a slice of a file that keeps its page and, for mail, who wrote it.
+  </p>
+  {% else %}
+  <div class="empty">
+    <span class="empty-mark">·</span>
+    Nothing in the pile yet.
+  </div>
+  {% endif %}
+</div>

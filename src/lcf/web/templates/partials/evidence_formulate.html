@@ -1,0 +1,252 @@
+{# Move two: what has to come out of the pile.
+
+   A question, its type, and the commands that find its answer. The three command
+   kinds are a closed vocabulary — there is no free-text field here in which
+   "write it more formally" could be expressed, which is what keeps DESIGN §5.8
+   intact (EVIDENCE-DESK §9). #}
+<div class="card" id="formulate-card">
+  <h3><span class="step-n">2</span> Formulate</h3>
+  <p class="lead">
+    What has to come out of this pile? One question per thing — the part number,
+    the batch, the complaint number, the measured deviation — and for each, how to
+    find it.
+  </p>
+
+  {% for problem in problems %}
+  <div class="notice blocker">{{ problem }}</div>
+  {% endfor %}
+
+  {% if questions %}
+  <ul class="plain questions">
+    {% for q in questions %}
+    {% set commands = builder_commands(q.commands) %}
+    <li class="question">
+      <div class="question-head">
+        <span class="qkey">{{ loop.index }}</span>
+        <span class="row-title">{{ q.prompt }}</span>
+        <span class="where">
+          {{ q.type }}{% if q.multiple %} · several{% endif %}
+          {%- if commands %} · {{ count(commands|length, 'command') }}
+          {%- else %} · <span class="s-needs_input">no way to find it</span>{% endif %}
+        </span>
+        <span class="rowtools-right">
+          <form hx-post="/evidence/questions/{{ q.id }}/move" hx-target="#formulate-card"
+                hx-swap="outerHTML" class="inline-form">
+            <input type="hidden" name="delta" value="-1">
+            <button class="tool" type="submit" title="earlier" {{ 'disabled' if loop.first }}>↑</button>
+          </form>
+          <form hx-post="/evidence/questions/{{ q.id }}/move" hx-target="#formulate-card"
+                hx-swap="outerHTML" class="inline-form">
+            <input type="hidden" name="delta" value="1">
+            <button class="tool" type="submit" title="later" {{ 'disabled' if loop.last }}>↓</button>
+          </form>
+          <form hx-post="/evidence/questions/{{ q.id }}/remove" hx-target="#formulate-card"
+                hx-swap="outerHTML" class="inline-form"
+                hx-confirm="Remove this question and everything found for it?">
+            <button class="tool" type="submit">remove</button>
+          </form>
+        </span>
+      </div>
+
+      {% if commands %}
+      <ul class="plain commands">
+        {% for c in commands %}
+        <li>
+          <span class="chip tier-{{ c.kind }}">{{ c.label }}</span>
+          <span class="command-body">{{ c.describe() }}</span>
+          <form hx-post="/evidence/questions/{{ q.id }}/commands/{{ loop.index0 }}/remove"
+                hx-target="#formulate-card" hx-swap="outerHTML" class="inline-form">
+            <button class="tool" type="submit">drop</button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+
+      {# The pattern or keyword proposal, if one was just made for this question.
+         Rendered inside the question it belongs to rather than at the top of the
+         panel, because it is about this question and nothing else. #}
+      {% if proposal and proposal.question_id == q.id|string %}
+        {% include "partials/evidence_proposal.html" %}
+      {% endif %}
+
+      <details class="add-check">
+        <summary>How should this be found?</summary>
+
+        <div class="tiers">
+          {# Pattern: the deterministic tier. A complaint number has a shape, a
+             regex finds it exactly, and nothing about it needs a model at run
+             time (EVIDENCE-DESK §5.2). #}
+          <form hx-post="/evidence/questions/{{ q.id }}/pattern"
+                hx-target="#formulate-card" hx-swap="outerHTML" class="tier-form">
+            <h4><span class="chip tier-pattern">Found exactly</span></h4>
+            <p class="hint">
+              For something with a shape: <code>NW-CL-88213</code>,
+              <code>LOT-2026-0417</code>. Paste one or two real examples and the
+              assistant writes the pattern — it is then checked against your
+              examples and run over this pile before you keep it. Costs no
+              assistant calls at search time.
+            </p>
+            <div class="field">
+              <label for="ex-{{ q.id }}">Real examples, comma separated</label>
+              <input type="text" id="ex-{{ q.id }}" name="examples"
+                     placeholder="NW-CL-88213, NW-CL-90104">
+            </div>
+            <button type="submit">Write me a pattern</button>
+            <span class="htmx-indicator working">Writing…</span>
+          </form>
+
+          {# keyword_ask: narrowed. The tier that makes the cost bearable. #}
+          <form hx-post="/evidence/questions/{{ q.id }}/commands"
+                hx-target="#formulate-card" hx-swap="outerHTML" class="tier-form">
+            <input type="hidden" name="kind" value="keyword_ask">
+            <h4><span class="chip tier-keyword_ask">Found near a word</span></h4>
+            <p class="hint">
+              For something described in words near a word you know —
+              <em>Toleranz</em>, <em>spec</em>, <em>Sollmaß</em>. Only passages
+              mentioning one of them are read, so this is the cheap way to use the
+              assistant. Matching is stemmed: <em>Toleranz</em> finds
+              <em>Toleranzen</em>.
+            </p>
+            <div class="field">
+              <label for="kw-{{ q.id }}">Words to look near</label>
+              <input type="text" id="kw-{{ q.id }}" name="keywords"
+                     placeholder="Toleranz, tolerance, Sollmaß">
+            </div>
+            <div class="field">
+              <label for="kwask-{{ q.id }}">What to ask of those passages</label>
+              <input type="text" id="kwask-{{ q.id }}" name="ask"
+                     placeholder="{{ q.prompt }}">
+            </div>
+            <div class="actions">
+              <button type="submit">Add it</button>
+              <button class="quiet" type="submit"
+                      hx-post="/evidence/questions/{{ q.id }}/keywords"
+                      hx-target="#formulate-card" hx-swap="outerHTML"
+                      hx-include="closest form">Suggest more words</button>
+              <span class="htmx-indicator working">Working…</span>
+            </div>
+          </form>
+
+          {# ask: the last resort, and the most expensive. #}
+          <form hx-post="/evidence/questions/{{ q.id }}/commands"
+                hx-target="#formulate-card" hx-swap="outerHTML" class="tier-form">
+            <input type="hidden" name="kind" value="ask">
+            <h4><span class="chip tier-ask">Read from the text</span></h4>
+            <p class="hint">
+              For something with neither a shape nor a reliable neighbour. The
+              best-matching passages in the whole pile are read — at most
+              {{ top_k }} per question, which is the cost you are agreeing to.
+            </p>
+            <div class="field">
+              <label for="ask-{{ q.id }}">What to ask</label>
+              <input type="text" id="ask-{{ q.id }}" name="ask"
+                     placeholder="{{ q.prompt }}">
+            </div>
+            <button type="submit">Add it</button>
+            <span class="htmx-indicator working">Working…</span>
+          </form>
+        </div>
+      </details>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="empty">
+    <span class="empty-mark">·</span>
+    No questions yet. Write the first one below.
+  </div>
+  {% endif %}
+
+  <details class="add-check" {% if not questions %}open{% endif %}>
+    <summary>Add a question</summary>
+    <form hx-post="/evidence/{{ case.id }}/questions"
+          hx-target="#formulate-card" hx-swap="outerHTML">
+      <div class="field">
+        <label for="new-prompt">What has to come out of the pile?</label>
+        <input type="text" id="new-prompt" name="prompt" required
+               placeholder="What is the customer's complaint number?">
+      </div>
+      <div class="field">
+        <label for="new-type">What kind of answer is it?</label>
+        <select id="new-type" name="type">
+          <option value="identifier">An identifier — a code or reference</option>
+          <option value="text" selected>Text — a word or a sentence</option>
+          <option value="number">A number — a measured value</option>
+          <option value="date">A date</option>
+          <option value="boolean">Yes or no</option>
+          <option value="choice">One of a fixed list</option>
+        </select>
+        <span class="hint">
+          This is checked: an answer the field could not hold is dropped rather
+          than shown, and it decides how two answers are told apart.
+        </span>
+      </div>
+      <div class="field">
+        <label for="new-options">If it is a fixed list, what are the choices?</label>
+        <input type="text" id="new-options" name="options" placeholder="open, closed, rejected">
+      </div>
+      <label class="inline-check">
+        <input type="checkbox" name="multiple" value="1">
+        There may be several answers
+        <span class="hint">
+          Tick this for "which batches are affected?" — four answers are four
+          batches, not three mistakes. Leave it for "what is the part number?",
+          where a second answer means the first is in doubt.
+        </span>
+      </label>
+      <div class="actions">
+        <button class="primary" type="submit">Add the question</button>
+      </div>
+    </form>
+  </details>
+
+  <details class="quiet-details">
+    <summary>Saved sets of questions</summary>
+    <p class="hint">
+      A set is these questions and their commands, kept for the next case of the
+      same kind. Loading one copies the questions in; from then on this case owns
+      them, so editing them here never changes the set.
+    </p>
+    <form hx-post="/evidence/{{ case.id }}/sets" hx-target="#formulate-card" hx-swap="outerHTML">
+      <input type="hidden" name="action" value="save">
+      <div class="field">
+        <label for="set-title">Save these {{ count(questions|length, 'question') }} as</label>
+        <input type="text" id="set-title" name="title" required
+               placeholder="Nordwerk — Reklamation">
+      </div>
+      <div class="field">
+        <label for="set-desc">What is it for?</label>
+        <input type="text" id="set-desc" name="description"
+               placeholder="Complaints from Nordwerk; their form never changes.">
+      </div>
+      <button type="submit" {{ 'disabled' if not questions }}>Save the set</button>
+    </form>
+
+    {% if sets %}
+    <ul class="plain rows" style="margin-top:var(--s4)">
+      {% for s in sets %}
+      <li>
+        <span class="row-title">{{ s.title }}</span>
+        <span class="row-of">{{ count(s.questions|length, 'question') }}</span>
+        <span class="rowtools-right">
+          <form hx-post="/evidence/{{ case.id }}/sets" hx-target="#formulate-card"
+                hx-swap="outerHTML" class="inline-form">
+            <input type="hidden" name="action" value="load">
+            <input type="hidden" name="key" value="{{ s.key }}">
+            <button class="tool" type="submit">load</button>
+          </form>
+          <form hx-post="/evidence/{{ case.id }}/sets" hx-target="#formulate-card"
+                hx-swap="outerHTML" class="inline-form"
+                hx-confirm="Forget the set {{ s.title }}? Cases already using it keep their questions.">
+            <input type="hidden" name="action" value="forget">
+            <input type="hidden" name="key" value="{{ s.key }}">
+            <button class="tool" type="submit">forget</button>
+          </form>
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </details>
+</div>

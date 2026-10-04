@@ -406,6 +406,319 @@ class Event(Base):
     meta: Mapped[dict | None] = mapped_column(JSONB)
 
 
+class EvidenceCase(Base):
+    """One pile of material about one problem.
+
+    The evidence desk's root. Deliberately not related to `document`: a case may
+    feed several documents, or none, and the desk is useful before anything is
+    written. The bridge between the two is an export a person reads
+    (EVIDENCE-DESK §11), so there is no foreign key to add here until that is
+    built deliberately.
+    """
+
+    __tablename__ = "evidence_case"
+
+    id: Mapped[UUID] = _pk()
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    # The question set this case was seeded from, by key rather than by id: a set
+    # is mutable and may be deleted, and losing the record of which one a case
+    # started from would be worse than the key going stale.
+    from_set: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime] = _created()
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    sources: Mapped[list["EvidenceSource"]] = relationship(
+        back_populates="case", cascade="all, delete-orphan"
+    )
+    questions: Mapped[list["EvidenceQuestion"]] = relationship(
+        back_populates="case", cascade="all, delete-orphan", order_by="EvidenceQuestion.seq"
+    )
+
+
+class EvidenceSource(Base):
+    """One file, one paste, or one image dropped on the desk.
+
+    `text` is what the parser read, kept verbatim, because every chunk's offsets
+    index into it and because *show me what you actually read* is the one
+    debugging surface a parser needs.
+
+    The mail columns are columns rather than keys in `meta` on purpose: who sent
+    a passage changes what the passage is worth — the same sentence means one
+    thing from the customer's domain and the opposite from a colleague — so it
+    has to be filterable and displayable, not merely stored (EVIDENCE-DESK §4.3).
+    """
+
+    __tablename__ = "evidence_source"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    case_id: Mapped[UUID] = mapped_column(
+        ForeignKey("evidence_case.id", ondelete="CASCADE"), index=True
+    )
+    # An attachment's parent mail. SET NULL rather than CASCADE: removing the
+    # mail should not silently take the measurement report that came with it.
+    parent_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("evidence_source.id", ondelete="SET NULL")
+    )
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="file")
+    filename: Mapped[str] = mapped_column(String(400), nullable=False, default="")
+    media_type: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    uri: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued")
+    error: Mapped[str | None] = mapped_column(Text)
+    text: Mapped[str | None] = mapped_column(Text)
+    pages: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    parser: Mapped[str | None] = mapped_column(String(30))
+    language: Mapped[str | None] = mapped_column(String(10))
+    language_confidence: Mapped[float | None] = mapped_column(Float)
+    # True once a person has corrected the detection, so a re-parse does not
+    # overwrite their answer with the detector's.
+    language_set: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    sender: Mapped[str | None] = mapped_column(String(320))
+    sender_name: Mapped[str | None] = mapped_column(String(300))
+    sender_domain: Mapped[str | None] = mapped_column(String(300), index=True)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    subject: Mapped[str | None] = mapped_column(Text)
+    meta: Mapped[dict | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = _created()
+
+    case: Mapped[EvidenceCase] = relationship(back_populates="sources")
+    chunks: Mapped[list["EvidenceChunk"]] = relationship(
+        back_populates="source", cascade="all, delete-orphan", order_by="EvidenceChunk.seq"
+    )
+
+    @property
+    def label(self) -> str:
+        """What to call this where it is listed.
+
+        An `.eml` filename is usually meaningless — `RE RE FW 2026-03.eml` — and
+        the subject is what a person recognises it by.
+        """
+        return (self.subject or "").strip() or self.filename or "pasted text"
+
+
+class EvidenceChunk(Base):
+    """An ordered, provenance-carrying slice of one source.
+
+    `char_from`/`char_to` index into `EvidenceSource.text`, and
+    `text == source.text[char_from:char_to]` holds exactly. That is what keeps a
+    quotation verifiable once the source no longer fits in one prompt, which is
+    the whole reason chunks exist rather than one blob per file.
+    """
+
+    __tablename__ = "evidence_chunk"
+    __table_args__ = (UniqueConstraint("source_id", "seq"),)
+
+    id: Mapped[UUID] = _pk()
+    source_id: Mapped[UUID] = mapped_column(
+        ForeignKey("evidence_source.id", ondelete="CASCADE"), index=True
+    )
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    char_from: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    char_to: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    page_from: Mapped[int | None] = mapped_column(Integer)
+    page_to: Mapped[int | None] = mapped_column(Integer)
+    # The heading trail above this chunk, joined for reading: "3. Messergebnisse › Tabelle 2".
+    path: Mapped[str | None] = mapped_column(Text)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="text")
+    # What the unit knew about itself — for a mail thread, the sender and date of
+    # the reply this came from.
+    meta: Mapped[dict | None] = mapped_column(JSONB)
+
+    source: Mapped[EvidenceSource] = relationship(back_populates="chunks")
+
+
+class EvidenceAsset(Base):
+    """An image found in a source, or dropped on the desk directly.
+
+    `sha256` is the deduplication key and is unique per case: a letterhead on
+    twenty pages of one PDF, and the same letterhead in the next file, are one
+    asset. Enforced in the database rather than only in the harvester, because
+    two files parsing concurrently would otherwise both insert it.
+    """
+
+    __tablename__ = "evidence_asset"
+    __table_args__ = (UniqueConstraint("case_id", "sha256"),)
+
+    id: Mapped[UUID] = _pk()
+    case_id: Mapped[UUID] = mapped_column(
+        ForeignKey("evidence_case.id", ondelete="CASCADE"), index=True
+    )
+    source_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("evidence_source.id", ondelete="SET NULL")
+    )
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    uri: Mapped[str] = mapped_column(Text, nullable=False)
+    thumb_uri: Mapped[str | None] = mapped_column(Text)
+    media_type: Mapped[str] = mapped_column(String(120), nullable=False, default="image/png")
+    width: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    height: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    page: Mapped[int | None] = mapped_column(Integer)
+    # What the assistant said it shows. Empty where no multimodal endpoint is
+    # configured, which is a degraded tray rather than a broken one.
+    caption: Mapped[str | None] = mapped_column(Text)
+    # What a person typed about it, which always wins over the caption.
+    label: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    created_at: Mapped[datetime] = _created()
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class QuestionSet(Base):
+    """A saved list of questions and their commands, for a recurring kind of case.
+
+    `questions` is one JSONB document validated by Pydantic on read — the same
+    choice as `doc_type_version.spec`, and for the same reason: it is authored,
+    saved and reused as a unit, and shredding it across tables would buy query
+    flexibility nobody wants.
+
+    Unlike a doc type version it is **mutable and unversioned**, which is the one
+    place the desk deliberately differs. A version is immutable because documents
+    pin it and a rule must not move under work in progress. Nothing pins a set:
+    loading one copies its questions into a case, and from that moment the case
+    owns them. A set is a convenience, not a contract.
+    """
+
+    __tablename__ = "question_set"
+
+    id: Mapped[UUID] = _pk()
+    key: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    questions: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    created_at: Mapped[datetime] = _created()
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class EvidenceQuestion(Base):
+    """Something that has to come out of the pile, and how to find it.
+
+    A row rather than part of a JSONB document — the opposite choice from
+    `QuestionSet` and for the reason already on record in this schema: these are
+    edited individually, one at a time, and each is referenced by its candidates.
+    """
+
+    __tablename__ = "evidence_question"
+    __table_args__ = (UniqueConstraint("case_id", "key"),)
+
+    id: Mapped[UUID] = _pk()
+    case_id: Mapped[UUID] = mapped_column(
+        ForeignKey("evidence_case.id", ondelete="CASCADE"), index=True
+    )
+    seq: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    key: Mapped[str] = mapped_column(String(100), nullable=False)
+    prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    # The spec model's QuestionType, plus `identifier`. Shared vocabulary so the
+    # seam to doc-type questions is a mapping rather than a translation.
+    type: Mapped[str] = mapped_column(String(20), nullable=False, default="text")
+    options: Mapped[list | None] = mapped_column(JSONB)
+    # Whether several values are an answer or a contradiction. "Which part
+    # number?" has one; "which batches?" has four, and the review surface has to
+    # let a person take all of them.
+    multiple: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    commands: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    created_at: Mapped[datetime] = _created()
+
+    case: Mapped[EvidenceCase] = relationship(back_populates="questions")
+    candidates: Mapped[list["EvidenceCandidate"]] = relationship(
+        back_populates="question", cascade="all, delete-orphan"
+    )
+
+
+class EvidenceRun(Base):
+    """One pass over the pile, and what each stage of it did.
+
+    A row rather than a side effect, for the reason `llm_call` is a row: six
+    candidates out of 48 chunks is either a precise instrument or a broken one,
+    and the difference is invisible unless the run says which. `stats` carries
+    the funnel — scanned, hit, asked, found, and everything dropped with its
+    reason — and the test suite asserts those numbers reconcile.
+
+    Runs are kept, so two runs either side of an authoring change can be
+    compared. "13 calls → 4 calls, same five findings" is the sentence that
+    justifies the formulate step.
+    """
+
+    __tablename__ = "evidence_run"
+
+    id: Mapped[UUID] = _pk()
+    case_id: Mapped[UUID] = mapped_column(
+        ForeignKey("evidence_case.id", ondelete="CASCADE"), index=True
+    )
+    sources: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    chunks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    duration_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    stats: Mapped[dict | None] = mapped_column(JSONB)
+    errors: Mapped[list | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = _created()
+
+
+class EvidenceCandidate(Base):
+    """One proposed answer to one question, with the passage behind it.
+
+    Candidates are their own rows and **survive their outcome**, exactly as
+    `Proposal` does: what the material offered is the audit trail, whether or not
+    anybody took it. `status` moves `pending → accepted | dismissed` and nothing
+    is deleted.
+
+    That is also what makes a second run additive rather than annoying. The
+    unique constraint on `(question_id, value_norm)` is what guarantees it: an
+    accepted value stays a finding, a dismissed one is never offered again, and
+    only pending rows are replaced.
+    """
+
+    __tablename__ = "evidence_candidate"
+    __table_args__ = (UniqueConstraint("question_id", "value_norm"),)
+
+    id: Mapped[UUID] = _pk()
+    question_id: Mapped[UUID] = mapped_column(
+        ForeignKey("evidence_question.id", ondelete="CASCADE"), index=True
+    )
+    run_id: Mapped[UUID | None] = mapped_column(ForeignKey("evidence_run.id", ondelete="SET NULL"))
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    # The dedupe key, stored rather than recomputed because it is what the
+    # unique constraint is on.
+    value_norm: Mapped[str] = mapped_column(Text, nullable=False)
+    quote: Mapped[str | None] = mapped_column(Text)
+    source_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("evidence_source.id", ondelete="SET NULL")
+    )
+    chunk_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("evidence_chunk.id", ondelete="SET NULL")
+    )
+    char_from: Mapped[int | None] = mapped_column(Integer)
+    char_to: Mapped[int | None] = mapped_column(Integer)
+    # pattern | keyword_ask | ask — which tier found it, and therefore what its
+    # score means. Never compared across tiers (EVIDENCE-DESK §6.6).
+    tier: Mapped[str] = mapped_column(String(20), nullable=False, default="pattern")
+    score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    # Where ranking was involved: "chunk ranked 2 of 48".
+    rank: Mapped[int | None] = mapped_column(Integer)
+    ranked_of: Mapped[int | None] = mapped_column(Integer)
+    # How this was found, in one line a person can read, plus every other place
+    # the same value turned up. JSONB rather than a table of its own: an
+    # occurrence is only ever read beside the candidate it belongs to, so a row
+    # apiece would be a join to render a bullet list.
+    found_by: Mapped[str | None] = mapped_column(Text)
+    occurrences: Mapped[list | None] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    created_at: Mapped[datetime] = _created()
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    question: Mapped[EvidenceQuestion] = relationship(back_populates="candidates")
+
+    @property
+    def places(self) -> int:
+        return max(len(self.occurrences or []), 1)
+
+
 class HouseStyle(Base):
     """The company .docx every export falls back to, installation-wide.
 

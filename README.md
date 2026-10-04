@@ -30,7 +30,8 @@ Two invariants shape everything:
 - **The LLM is a worker inside a deterministic frame.** Ordering, gating and composition are
   ordinary Python; the model answers narrow, schema-constrained questions inside it.
 
-Design: [docs/DESIGN.md](docs/DESIGN.md) · Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+Design: [docs/DESIGN.md](docs/DESIGN.md) · Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) ·
+Evidence desk: [docs/EVIDENCE-DESK.md](docs/EVIDENCE-DESK.md)
 
 ## What this is for
 
@@ -78,12 +79,13 @@ two, and both are additive — nothing already built is waiting on them:
 | ✓ | The full quality gate: judged checks, quote-backed, run as a job |
 | ✓ | Export: JSON, Markdown and docx, gated and recorded |
 | ✓ | Evidence intake: paste a blob of notes, distributed across the sections, answers proposed from it |
+| ✓ | **The evidence desk**: drop in the pile of files a complaint actually arrives as, say what has to come out of it, and accept the candidates it finds |
 | ✓ | Spec editor for the rule builder: check, publish as a new version, import/export YAML |
 | ✓ | A structured builder for the same specs — sections, questions, blocks and checks as forms, for someone who has never read YAML |
 | ✓ | Word templates: a starter generated from the spec, branded in Word, bound to a version and carried forward |
 | ✓ | Admin view: health of the database, store and LLM endpoint, background jobs, configuration |
 | ✓ | Guided first-run setup: tests each dependency before saving, runs the migrations |
-| | Image evidence: upload and captioning |
+| | Accepted images reaching an `image_ref` block in a document |
 | | Span-level suggestions and the TipTap editor island |
 
 What is left, in order, is in [BACKLOG.md](docs/BACKLOG.md).
@@ -211,6 +213,34 @@ gaps instead of inventing the answer. Nothing is stored that you did not paste: 
 mapping is a quotation plus a section key, and the quotation is checked against
 your text before the row exists.
 
+### Trying the evidence desk
+
+**Evidence desk → Open a case**, then drop files on it — a PDF, a Word file, an
+`.eml` thread, a photograph — or paste text. Each is read into passages that keep
+their page number and, for mail, who wrote them.
+
+Then say what has to come out of the pile. For *"what is the customer's complaint
+number?"*, paste one or two real examples and press **Write me a pattern**: the
+assistant writes a regular expression, it is checked against your examples, and
+it is run over what you have already dropped in — so you see *14 matches across 3
+files*, or none, before you keep it. A pattern costs no assistant calls when the
+search runs.
+
+For something with no fixed shape, narrow it instead: give a word the material is
+likely to use and only the passages mentioning it are read. Matching is stemmed
+per language, so `Toleranz` finds `Toleranzen`, and **Suggest more words** offers
+terms in the language your files are actually in.
+
+Press **Search the pile**. It tells you what it will cost before it spends it.
+Candidates come back grouped by how certainly they were found — *found exactly*,
+*found near your keywords*, *read from the text* — one card per distinct value
+with every place it appeared, and each card will tell you the route it took if you
+ask. Accept what is right, dismiss what is not, and run again after dropping more
+files in: accepted values stay, dismissed ones never come back.
+
+What you accept comes out as JSON, or as Markdown that pastes straight into a
+document's intake box with all its quotations.
+
 ## Commands
 
 ```bash
@@ -245,7 +275,12 @@ MIT — see [LICENSE](LICENSE).
 .venv/bin/python -m pytest
 ```
 
-The deterministic core — spec model, linter, checks, state machine — is tested with dicts and needs
-no database, no network and no model. Service tests use the real PostgreSQL from `.env` and skip
-if it is unreachable. A boundary test asserts that `spec/` and `engine/` never import a database,
-because that purity is what keeps the rest testable.
+The deterministic core — spec model, linter, checks, state machine, and the evidence desk's parsers,
+chunker and ranker — is tested with dicts and bytestrings, and needs no database, no network and no
+model. The parser fixtures are **generated in Python** rather than committed, including a hand-built
+PDF, so what each test asserts against is known content rather than a binary nobody can read in a
+diff.
+
+Service tests use the real PostgreSQL from `.env` and skip if it is unreachable. A boundary test
+asserts that `spec/`, `engine/` and `ingest/` never import a database, because that purity is what
+keeps the rest testable.

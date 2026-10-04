@@ -1,0 +1,182 @@
+{# Move three: what the pile offered, and what you took.
+
+   Candidates are grouped by tier and never ranked in one list. A pattern hit is
+   exact, an asked hit is the model's confidence, and those are not the same
+   quantity — so the group heading carries the comparison a single number would
+   have faked, and a pattern card shows no confidence at all (EVIDENCE-DESK §6.6). #}
+<div class="card" id="findings-card">
+  <h3><span class="step-n">3</span> Find</h3>
+
+  {% for problem in problems %}
+  <div class="notice blocker">{{ problem }}</div>
+  {% endfor %}
+
+  {# The plan, before anybody spends it. Every number here is one the run has to
+     compute anyway, so this is the real cost rather than a guess — and adding a
+     keyword to a question visibly drops it. #}
+  <div class="plan">
+    <div class="plan-sum">
+      <strong>{{ plan.summary() }}</strong>
+      <span class="hint">
+        {{ count(plan.chunks, 'passage') }} across {{ count(plan.sources, 'file') }} ·
+        {{ count(plan.questions|length, 'question') }} with a way to find them
+      </span>
+    </div>
+    <form hx-post="/evidence/{{ case.id }}/run" hx-target="#findings-slot" hx-swap="innerHTML"
+          hx-disabled-elt="find button">
+      <button class="primary" type="submit" {{ 'disabled' if not plan.runnable or running }}>
+        {{ 'Search again' if runs else 'Search the pile' }}
+      </button>
+      <span class="htmx-indicator working">Starting…</span>
+    </form>
+  </div>
+
+  {% if plan.questions %}
+  <details class="quiet-details">
+    <summary>What a search would do, question by question</summary>
+    <table class="config">
+      <tbody>
+        {% for q in plan.questions %}
+        {% for s in q.steps %}
+        <tr>
+          <td>{% if loop.first %}{{ q.prompt }}{% endif %}</td>
+          <td><span class="chip tier-{{ s.kind }}">{{ s.kind }}</span></td>
+          <td class="why">
+            {%- if s.error -%}
+              <span class="s-needs_input">{{ s.error }}</span>
+            {%- elif s.kind == 'pattern' -%}
+              {{ count(s.scanned, 'passage') }} scanned, no calls
+            {%- elif s.kind == 'keyword_ask' -%}
+              {{ s.hit }} of {{ s.scanned }} passages hit → {{ count(s.asked, 'call') }}
+            {%- else -%}
+              {{ s.scanned }} ranked → {{ count(s.asked, 'call') }}
+            {%- endif -%}
+          </td>
+        </tr>
+        {% endfor %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% endif %}
+
+  {% if plan.uncommanded %}
+  <div class="notice">
+    <strong>{{ count(plan.uncommanded|length, 'question') }}
+      {{ verb(plan.uncommanded|length, 'has', 'have') }} no way to be found yet.</strong>
+    <div class="hint">
+      {{ plan.uncommanded|join(' · ') }} — add a pattern, a word to look near, or
+      a question to ask under <em>Formulate</em>.
+    </div>
+  </div>
+  {% endif %}
+
+  <div id="findings-slot">
+    {% if running %}
+      {% with job = running,
+              done_url = "/evidence/" ~ case.id ~ "/findings",
+              done_target = "#findings-card",
+              working_title = "Searching the pile" %}
+        {% include "partials/job.html" %}
+      {% endwith %}
+    {% endif %}
+  </div>
+
+  {% if review %}
+  <ul class="plain findings">
+    {% for entry in review %}
+    <li class="finding">
+      <div class="question-head">
+        <span class="dot {{ 's-complete' if entry.settled else 's-empty' }}">
+          {{ '✓' if entry.settled else '·' }}</span>
+        <span class="row-title">{{ entry.question.prompt }}</span>
+        <span class="where">
+          {%- if entry.accepted %}{{ count(entry.accepted|length, 'answer') }} accepted{% endif -%}
+          {%- if entry.pending %}{% if entry.accepted %} · {% endif %}{{ entry.pending }} to look at{% endif -%}
+          {%- if entry.dismissed %} · {{ entry.dismissed }} dismissed{% endif -%}
+          {%- if not entry.accepted and not entry.pending and not entry.dismissed %}nothing found{% endif -%}
+        </span>
+      </div>
+
+      {% if entry.accepted %}
+      <ul class="plain accepted">
+        {% for row in entry.accepted %}
+        <li>
+          <span class="mark">✓</span>
+          <span class="value">{{ row.value }}</span>
+          <span class="where">{{ count(row.places, 'place') }}</span>
+          <form hx-post="/evidence/candidates/{{ row.id }}/reopen"
+                hx-target="#findings-card" hx-swap="outerHTML" class="inline-form">
+            <button class="tool" type="submit" title="put it back among the candidates">undo</button>
+          </form>
+          {% if row.quote %}<blockquote class="quote">{{ row.quote }}</blockquote>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+
+      {% for group in entry.groups %}
+      <div class="tier-group">
+        <h5><span class="chip tier-{{ group.tier }}">{{ group.label }}</span></h5>
+        <ul class="plain candidates">
+          {% for row in group.rows %}
+          <li>
+            <div class="candidate-head">
+              <span class="value">{{ row.value }}</span>
+              <span class="where">
+                {{ count(row.places, 'place') }}
+                {%- if group.shows_confidence and row.score %}
+                · confidence {{ '%.2f'|format(row.score) }}{% endif %}
+              </span>
+              <span class="rowtools-right">
+                <form hx-post="/evidence/candidates/{{ row.id }}/accept"
+                      hx-target="#findings-card" hx-swap="outerHTML" class="inline-form">
+                  <button class="tool accept" type="submit">✓ accept</button>
+                </form>
+                <form hx-post="/evidence/candidates/{{ row.id }}/dismiss"
+                      hx-target="#findings-card" hx-swap="outerHTML" class="inline-form">
+                  <button class="tool" type="submit">✗ dismiss</button>
+                </form>
+              </span>
+            </div>
+            {# How it was found. The debugging surface for whoever authored the
+               question: "ranked 2 of 48" on a miss says the ranking was fine and
+               the model was not; "ranked 31, not asked" says the opposite. #}
+            <details class="route">
+              <summary>{{ row.found_by }}</summary>
+              <ul class="plain places">
+                {% for place in row.occurrences or [] %}
+                <li>
+                  <span class="where">{{ place.where }}</span>
+                  {% if place.quote %}<blockquote class="quote">{{ place.quote }}</blockquote>{% endif %}
+                </li>
+                {% endfor %}
+              </ul>
+            </details>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endfor %}
+    </li>
+    {% endfor %}
+  </ul>
+
+  <div class="actions">
+    <a href="/evidence/{{ case.id }}/export.md"><button type="button">Download findings</button></a>
+    <a href="/evidence/{{ case.id }}/export.json"><button class="quiet" type="button">JSON</button></a>
+    {% if runs %}
+    <a href="/evidence/{{ case.id }}/runs"><button class="quiet" type="button">
+      How the searches went</button></a>
+    {% endif %}
+    <span class="why">
+      The Markdown pastes straight into a document's intake box, quotes and all.
+    </span>
+  </div>
+  {% else %}
+  <div class="empty">
+    <span class="empty-mark">·</span>
+    Nothing searched for yet.
+  </div>
+  {% endif %}
+</div>

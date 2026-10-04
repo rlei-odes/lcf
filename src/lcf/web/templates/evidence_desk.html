@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}{{ case.title }}{% endblock %}
+{% block subtitle %}evidence desk{% endblock %}
+
+{% block content %}
+<div class="desk">
+
+  <header class="desk-head">
+    <div>
+      <h1>{{ case.title }}</h1>
+      <p class="hint">
+        Three moves, in order: get the material in, say what has to come out of
+        it, then accept what the desk finds.
+      </p>
+    </div>
+    <nav class="desk-steps">
+      <a href="#gather"><span class="step-n">1</span> Gather</a>
+      <a href="#formulate"><span class="step-n">2</span> Formulate</a>
+      <a href="#findings"><span class="step-n">3</span> Find</a>
+    </nav>
+  </header>
+
+  {# Each panel re-renders itself from the database after anything that changes
+     it, so the three can never disagree about what is in the case. #}
+  <section id="gather">{% include "partials/evidence_gather.html" %}</section>
+  <section id="assets">{% include "partials/evidence_assets.html" %}</section>
+  <section id="formulate">{% include "partials/evidence_formulate.html" %}</section>
+  <section id="findings">{% include "partials/evidence_findings.html" %}</section>
+
+</div>
+{% endblock %}

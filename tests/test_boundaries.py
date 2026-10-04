@@ -15,6 +15,10 @@ SRC = Path(__file__).resolve().parents[1] / "src/lcf"
 FORBIDDEN = {
     "spec": ("sqlalchemy", "boto3", "lcf.models", "lcf.services", "lcf.storage"),
     "engine": ("sqlalchemy", "boto3", "lcf.models", "lcf.services", "lcf.storage"),
+    # The evidence desk's ingest package: bytes and text in, dataclasses out.
+    # That is what keeps the parser, the chunker and the ranker testable with a
+    # bytestring and an assertion, which is most of what can go wrong in there.
+    "ingest": ("sqlalchemy", "boto3", "lcf.models", "lcf.services", "lcf.storage", "fastapi"),
 }
 
 

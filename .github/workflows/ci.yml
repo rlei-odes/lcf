@@ -4,10 +4,10 @@
 # than on faith: Dependabot opens a pull request against uv.lock, this runs the
 # whole suite against the new resolution, and the result is the decision.
 #
-# Postgres runs as a service container because most of the suite needs one — 246
-# of 353 tests pass without it and the other 107 skip, which is not enough signal
-# to merge anything on. Object storage does not: the local-disk backend is the
-# default and needs nothing but a writable directory, so the whole suite runs
+# Postgres runs as a service container because a third of the suite needs one —
+# 310 of 469 tests pass without it and the other 159 skip, which is not enough
+# signal to merge anything on. Object storage does not: the local-disk backend is
+# the default and needs nothing but a writable directory, so the whole suite runs
 # here with nothing skipped.
 name: CI
 

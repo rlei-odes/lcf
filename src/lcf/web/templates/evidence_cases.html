@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Evidence desk{% endblock %}
+{% block subtitle %}cases{% endblock %}
+
+{% block content %}
+<div class="layout split">
+
+  {# Starting a case is what this area is for, so it leads and stays put — the
+     same shape as the flow area's "start a document". #}
+  <div class="card hero lane-sticky">
+    <h2>Open a case</h2>
+    <p class="lead">
+      A case is one pile of material to be processed. Drop the complaint, the
+      measurement report, the mail thread and the photographs in, say what has to
+      come out of them, and the desk finds candidates for you to accept.
+    </p>
+
+    <form method="post" action="/evidence">
+      <div class="field">
+        <label for="case-title">What is this about?</label>
+        <input type="text" id="case-title" name="title" required
+               placeholder="Nordwerk complaint NW-CL-88213">
+      </div>
+      {% if sets %}
+      <div class="field">
+        <label for="from-set">Start from a saved set of questions</label>
+        <select id="from-set" name="from_set">
+          <option value="">Nothing — I will write the questions</option>
+          {% for s in sets %}
+          <option value="{{ s.key }}">{{ s.title }} ({{ count(s.questions|length, 'question') }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+      <button class="primary" type="submit">Open it</button>
+    </form>
+
+    <p class="hint" style="margin-top:var(--s4)">
+      The desk finds things and names where it
+      found them; what you accept comes out as an export you can take anywhere.
+    </p>
+  </div>
+
+  <div>
+    <div class="card">
+      <h3>Cases{% if cases %} · {{ cases|length }}{% endif %}</h3>
+      {% if cases %}
+      <ul class="plain rows">
+        {% for c in cases %}
+        <li>
+          <a class="row-link" href="/evidence/{{ c.id }}">
+            <span class="dot {{ 's-complete' if c.findings else 's-empty' }}"
+                  title="{{ count(c.findings, 'finding') ~ ' accepted' if c.findings else 'nothing accepted yet' }}">
+              {{ '✓' if c.findings else '·' }}</span>
+            <span class="row-title">{{ c.title }}</span>
+            <span class="meta">
+              {{ count(c.sources, 'file') }} ·
+              {{ count(c.questions, 'question') }}
+              {%- if c.findings %} · {{ c.findings }} accepted{% endif %}
+              · {{ c.created_at|localtime }}
+            </span>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="empty">
+        <span class="empty-mark">·</span>
+        No cases yet. The first one you open appears here.
+      </div>
+      {% endif %}
+    </div>
+
+    {% if sets %}
+    <div class="card">
+      <h3>Saved question sets · {{ sets|length }}</h3>
+      <p class="hint">
+        A set is the questions for a recurring kind of case, with the commands
+        that find their answers. The second complaint from the same customer
+        starts pre-wired.
+      </p>
+      <ul class="plain rows">
+        {% for s in sets %}
+        <li>
+          <span class="row-title">{{ s.title }}</span>
+          <span class="row-of">{{ count(s.questions|length, 'question') }}</span>
+          <span class="meta">{{ s.updated_at|localtime }}</span>
+        </li>
+        {% if s.description %}<li><span class="hint">{{ s.description }}</span></li>{% endif %}
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}
