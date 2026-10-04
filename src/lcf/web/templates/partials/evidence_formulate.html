@@ -25,7 +25,7 @@
     {% for q in questions %}
     {% set commands = builder_commands(q.commands) %}
     {% set open_finder = finding_for == q.id|string or not commands %}
-    <li class="question">
+    <li class="question" id="question-{{ q.id }}">
       <div class="q-top">
         <span class="qkey">{{ loop.index }}</span>
         <div class="q-title">
@@ -75,13 +75,6 @@
         </li>
         {% endfor %}
       </ul>
-      {% endif %}
-
-      {# The pattern or keyword proposal, if one was just made for this question.
-         Rendered inside the question it belongs to rather than at the top of the
-         panel, because it is about this question and nothing else. #}
-      {% if proposal and proposal.question_id == q.id|string %}
-        {% include "partials/evidence_proposal.html" %}
       {% endif %}
 
       {% if open_finder %}
@@ -146,7 +139,7 @@
             </div>
             <div class="actions">
               <button type="submit">Add this way</button>
-              <button class="quiet" type="submit"
+              <button type="submit"
                       hx-post="/evidence/questions/{{ q.id }}/keywords"
                       hx-target="#formulate-card" hx-swap="outerHTML"
                       hx-include="closest form">Suggest more words</button>
@@ -176,6 +169,14 @@
             <span class="htmx-indicator working">Working…</span>
           </form>
         </div>
+
+        {# A pattern or a word list just proposed for this question. Below the
+           forms rather than above them: it is the answer to the button that was
+           pressed, and an answer that appears above the question reads as though
+           it had been there all along. #}
+        {% if proposal and proposal.question_id == q.id|string %}
+          {% include "partials/evidence_proposal.html" %}
+        {% endif %}
       </div>
       {% else %}
       <div class="finder-closed">

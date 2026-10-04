@@ -1157,7 +1157,9 @@ table.plan-table thead th {
 
 .tray { display: flex; flex-wrap: wrap; gap: var(--s4); margin: var(--s4) 0; }
 figure.asset {
-  width: 176px; margin: 0; padding: var(--s3);
+  /* Wide enough for a caption to be read rather than scrolled. The thumbnail is
+     the smaller half of this card; the description is the half somebody uses. */
+  width: 260px; margin: 0; padding: var(--s3);
   background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-sm);
   display: flex; flex-direction: column; gap: var(--s2);
 }
@@ -1171,11 +1173,17 @@ figure.asset figcaption { font-size: 12.5px; color: var(--ink-2); line-height: 1
 figure.asset figcaption .where { display: block; margin-top: var(--s1); }
 figure.asset figcaption .value { font-size: 12.5px; }
 .asset-tools { display: flex; gap: var(--s2); }
+/* The description grows into whatever room the card has, and `save` is pinned
+   under it, so a row of cards ends on one line however long their captions are. */
+.asset-label { display: flex; flex-direction: column; flex: 1; gap: var(--s2); }
 .asset-label textarea {
-  width: 100%; padding: var(--s2); font-size: 12px; line-height: 1.4;
-  resize: vertical; min-height: 3.4em;
+  width: 100%; padding: var(--s2); font-size: 12px; line-height: 1.45;
+  resize: vertical; min-height: 6.5em; flex: 1;
 }
-.asset-save { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s1); }
+.asset-save {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--s2); margin-top: auto;
+}
 .asset-save .hint { font-size: 11px; }
 
 button.tool.accept { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, transparent); }

@@ -66,9 +66,10 @@
     </thead>
     <tbody>
       {% for q in plan.questions %}
+      {% set number = q.number %}
       {% for s in q.steps %}
       <tr>
-        <td>{% if loop.first %}{{ q.prompt }}{% endif %}</td>
+        <td>{% if loop.first %}<span class="qkey">{{ number }}</span> {{ q.prompt }}{% endif %}</td>
         <td><span class="chip tier-{{ s.kind }}">{{ tier_labels.get(s.kind, s.kind) }}</span></td>
         <td class="why">
           {%- if s.error -%}
@@ -115,6 +116,10 @@
     {% for entry in review %}
     <li class="finding">
       <div class="question-head">
+        {# The number the Formulate panel gave this question. Both lists are
+           ordered by `seq`, so "question 3 found nothing" points at one row in
+           both panels rather than making somebody match on wording. #}
+        <span class="qkey">{{ loop.index }}</span>
         <span class="dot {{ 's-complete' if entry.settled else 's-empty' }}">
           {{ '✓' if entry.settled else '·' }}</span>
         <span class="row-title">{{ entry.question.prompt }}</span>

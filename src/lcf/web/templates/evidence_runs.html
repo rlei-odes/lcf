@@ -40,6 +40,7 @@
     {% for e in (run.stats or {}).get('questions', []) %}
     <div class="run-question">
       <div class="question-head">
+        <span class="qkey">{{ e.get('number') or '·' }}</span>
         <span class="row-title">{{ e['prompt'] }}</span>
         <span class="where">
           {{ count(e['values'], 'distinct value') }}

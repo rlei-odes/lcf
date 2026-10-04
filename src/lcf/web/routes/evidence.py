@@ -232,7 +232,7 @@ async def add_question(
     problems: list[str] = []
     try:
         async with session() as s:
-            await evidence.add_question(
+            added = await evidence.add_question(
                 s,
                 case_id,
                 prompt,
@@ -242,7 +242,8 @@ async def add_question(
             )
     except evidence.Refused as exc:
         problems.append(str(exc))
-    return await _formulate(request, case_id, problems=problems)
+        return await _formulate(request, case_id, problems=problems)
+    return await _formulate(request, case_id, finding=str(added.id))
 
 
 @router.get("/evidence/{case_id}/questions", response_class=HTMLResponse)
@@ -267,7 +268,14 @@ async def _formulate(
     # it still needs.
     ctx["finding_for"] = finding or (proposal or {}).get("question_id", "")
     html = page(request, "partials/evidence_formulate.html", **ctx)
-    return _with_findings(request, html, ctx)
+    response = _with_findings(request, html, ctx)
+    # Swapping a whole panel leaves the browser at the pixel offset it had, which
+    # after a height change is somewhere arbitrary - usually the bottom. Naming
+    # the element to bring into view makes the page land on the question that was
+    # just worked on instead.
+    target = f"#question-{ctx['finding_for']}" if ctx["finding_for"] else "#formulate-card"
+    response.headers["HX-Reswap"] = f"outerHTML show:{target}:top"
+    return response
 
 
 def _with_findings(request: Request, response: HTMLResponse, ctx: dict) -> HTMLResponse:
@@ -309,7 +317,7 @@ async def edit_question(
             )
         except evidence.Refused as exc:
             problems.append(str(exc))
-    return await _formulate(request, case_id, problems=problems)
+    return await _formulate(request, case_id, problems=problems, finding=str(question_id))
 
 
 @router.post("/evidence/questions/{question_id}/remove", response_class=HTMLResponse)
@@ -367,7 +375,7 @@ async def add_command(request: Request, question_id: UUID):
             problems.append(str(exc))
         except ValueError as exc:
             problems.append(_readable(exc))
-    return await _formulate(request, case_id, problems=problems)
+    return await _formulate(request, case_id, problems=problems, finding=str(question_id))
 
 
 def _verify(command: Command) -> None:
@@ -410,7 +418,7 @@ async def drop_command(request: Request, question_id: UUID, at: int):
     async with session() as s:
         question = await evidence.remove_command(s, question_id, at)
         case_id = question.case_id
-    return await _formulate(request, case_id)
+    return await _formulate(request, case_id, finding=str(question_id))
 
 
 @router.post("/evidence/questions/{question_id}/pattern", response_class=HTMLResponse)
@@ -437,13 +445,13 @@ async def propose_pattern(request: Request, question_id: UUID, examples: str = F
 
     if not wanted:
         problems.append("Paste one or two real examples first.")
-        return await _formulate(request, case_id, problems=problems)
+        return await _formulate(request, case_id, problems=problems, finding=str(question_id))
 
     try:
         written = await ask_for_pattern(prompt, wanted)
     except (LLMUnavailable, LLMMalformed) as exc:
         problems.append(f"The assistant could not write a pattern: {exc}")
-        return await _formulate(request, case_id, problems=problems)
+        return await _formulate(request, case_id, problems=problems, finding=str(question_id))
 
     proposal = {
         "question_id": str(question_id),
@@ -521,7 +529,7 @@ async def propose_keywords(request: Request, question_id: UUID, keywords: str = 
         terms = await ask_for_keywords(prompt, language, already)
     except (LLMUnavailable, LLMMalformed) as exc:
         problems.append(f"The assistant could not suggest terms: {exc}")
-        return await _formulate(request, case_id, problems=problems)
+        return await _formulate(request, case_id, problems=problems, finding=str(question_id))
 
     proposal = {
         "question_id": str(question_id),

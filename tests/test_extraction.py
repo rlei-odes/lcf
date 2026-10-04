@@ -9,13 +9,13 @@ import uuid
 
 import pytest
 from sqlalchemy import delete, select
+from tests import fixtures
 
 from lcf.core.db import session
 from lcf.ingest.commands import Command
 from lcf.llm.calls import ChunkAnswer
 from lcf.models.tables import EvidenceCandidate, EvidenceCase, EvidenceRun
 from lcf.services import evidence, extraction
-from tests import fixtures
 
 
 @pytest.fixture
@@ -426,7 +426,9 @@ async def test_a_question_with_no_command_is_named_rather_than_ignored(case):
     async with session() as s:
         await evidence.add_question(s, case, "Something nobody said how to find")
         empty = await extraction.plan(s, case)
-    assert empty.uncommanded == ["Something nobody said how to find"]
+    # Numbered, so "question 1 has no way to be found" points at the same row
+    # the Formulate panel shows as 1.
+    assert empty.uncommanded == ["1. Something nobody said how to find"]
 
 
 # ───────────────────────────────────────────────────────── handing over

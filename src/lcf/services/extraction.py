@@ -123,6 +123,11 @@ class QuestionPlan:
     key: str
     prompt: str
     steps: list[Step] = field(default_factory=list)
+    # The question's position in the case's own list, so the plan, the findings
+    # and the Formulate panel all call it the same number. Not the position in
+    # this list: a question with no way to find it is left out of the plan but
+    # still counted in the panel, and the two would drift apart by one.
+    number: int = 0
 
     @property
     def calls(self) -> int:
@@ -169,12 +174,12 @@ async def plan(session: AsyncSession, case_id: UUID) -> Plan:
     questions = await evidence.questions_of(session, case_id)
     out = Plan(sources=len({s.source.id for s in scoped}), chunks=len(scoped))
 
-    for question in questions:
+    for number, question in enumerate(questions, start=1):
         commands = parse_commands(question.commands)
         if not commands:
-            out.uncommanded.append(question.prompt)
+            out.uncommanded.append(f"{number}. {question.prompt}")
             continue
-        entry = QuestionPlan(question.id, question.key, question.prompt)
+        entry = QuestionPlan(question.id, question.key, question.prompt, number=number)
         for command in commands:
             entry.steps.append(_plan_step(command, scoped))
         out.questions.append(entry)
@@ -322,7 +327,10 @@ async def run(case_id: UUID, progress=None) -> dict:
         if not questions:
             raise Refused("There are no questions to answer yet.")
         prepared = [(q, parse_commands(q.commands)) for q in questions]
-        plans = {q.id: QuestionPlan(q.id, q.key, q.prompt) for q, _ in prepared}
+        plans = {
+            q.id: QuestionPlan(q.id, q.key, q.prompt, number=n)
+            for n, (q, _) in enumerate(prepared, start=1)
+        }
 
     total = sum(
         _plan_step(c, scoped).asked for _, commands in prepared for c in commands if c.needs_model
@@ -656,6 +664,7 @@ def _question_stats(entry: QuestionPlan | None, question: EvidenceQuestion, grou
     steps = entry.steps if entry else []
     return {
         "key": question.key,
+        "number": entry.number if entry else 0,
         "prompt": question.prompt,
         "values": len(groups),
         "steps": [

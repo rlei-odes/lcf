@@ -81,16 +81,21 @@
       {# One description per image, not two. The assistant writes the first
          draft into the same box a person types in, so correcting it is editing
          text that is already there rather than discovering a second field that
-         silently overrides the first. #}
+         silently overrides the first.
+
+         The description is the tallest thing on the card because it is the part
+         a person actually reads; `save` sits at the bottom edge so every card
+         ends the same way whatever its text is. #}
       <form hx-post="/evidence/assets/{{ a.id }}/label" hx-target="#assets-card"
             hx-swap="outerHTML" class="asset-label">
-        <textarea name="label" rows="3"
+        <textarea name="label" rows="5"
                   placeholder="{{ 'Describe this image' if not a.caption else '' }}"
                   aria-label="description of this image">{{ a.label or a.caption or '' }}</textarea>
         <div class="asset-save">
-          <button class="tool" type="submit">save</button>
           {% if a.caption and not a.label %}<span class="hint">written by the assistant</span>
-          {% elif a.label and a.caption %}<span class="hint">edited by you</span>{% endif %}
+          {% elif a.label and a.caption %}<span class="hint">edited by you</span>
+          {% else %}<span class="hint"></span>{% endif %}
+          <button class="tool" type="submit">save</button>
         </div>
       </form>
     </figure>
