@@ -20,6 +20,8 @@ from lcf.models.tables import EvidenceCase, QuestionSet
 from lcf.services import evidence
 from lcf.web.app import app
 
+FORMAT_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
 
 @pytest.fixture
 def client(db):
@@ -627,6 +629,53 @@ async def test_a_pattern_that_stops_matching_its_examples_is_refused(client, cas
     )
     assert "does not match" in refused.text
     assert "no way to find it yet" in refused.text, "nothing was stored"
+
+
+async def test_the_same_file_twice_is_listed_once_and_read_once(client, case):
+    """Dropping a `.eml` in brings its attachments as sources, so dropping one of
+    those in directly as well is the ordinary way a case holds a document twice,
+    and every finding in it is then reported from two identical-looking places."""
+    data = fixtures.docx([("Heading 1", "1. Vorgang"), ("", "Charge LOT-2026-0417 betroffen.")])
+    for _ in range(2):
+        client.post(
+            f"/evidence/{case}/sources",
+            files={"files": ("Reklamation.docx", data, FORMAT_DOCX)},
+        )
+    await _settle(case)
+
+    panel = client.get(f"/evidence/{case}/gather")
+    assert "repeat" in panel.text
+    assert "already in this pile" in panel.text
+    # Listed twice, read once. Counted by rows: the filename itself appears
+    # twice per row, in the link and in the confirm text.
+    assert len(re.findall(r"/evidence/sources/[0-9a-f-]{36}/remove", panel.text)) == 2
+    async with session() as s:
+        chunks = await evidence.case_chunks(s, uuid.UUID(case))
+        sources = {c.source_id for c in chunks}
+    assert len(sources) == 1, "the repeat must contribute no passages"
+
+
+async def test_removing_the_read_copy_promotes_the_repeat(client, case):
+    """Otherwise a case holding a document twice loses it entirely when the
+    first copy goes, while still listing the second as a repeat of nothing."""
+    data = fixtures.docx([("Heading 1", "1. Vorgang"), ("", "Charge LOT-2026-0417 betroffen.")])
+    for _ in range(2):
+        client.post(
+            f"/evidence/{case}/sources",
+            files={"files": ("Reklamation.docx", data, FORMAT_DOCX)},
+        )
+    await _settle(case)
+
+    panel = client.get(f"/evidence/{case}/gather")
+    first = re.search(r"/evidence/sources/([0-9a-f-]{36})/remove", panel.text).group(1)
+    client.post(f"/evidence/sources/{first}/remove")
+    await _settle(case)
+
+    async with session() as s:
+        chunks = await evidence.case_chunks(s, uuid.UUID(case))
+    assert chunks, "the surviving copy is now the one that counts"
+    # Specifically the source note: "repeated" also appears in the image tally.
+    assert "already in this pile" not in client.get(f"/evidence/{case}/gather").text
 
 
 async def test_a_dropped_image_is_not_offered_for_captioning(client, case):

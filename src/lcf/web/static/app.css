@@ -965,6 +965,10 @@ details.paste-more > summary {
   cursor: pointer; color: var(--muted); font-size: 13px; padding: var(--s1) 0;
 }
 
+/* A repeat is listed so the pile shows what was dropped, and dimmed because it
+   takes no part in anything else. */
+tr.s-repeat > td { opacity: .6; }
+
 table.sources { width: 100%; border-collapse: collapse; margin: var(--s4) 0 var(--s3); font-size: 13.5px; }
 table.sources th {
   text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em;

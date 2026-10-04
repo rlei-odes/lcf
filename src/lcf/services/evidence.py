@@ -11,6 +11,7 @@ reads (EVIDENCE-DESK §11).
 """
 
 import asyncio
+import hashlib
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -172,6 +173,7 @@ async def add_file(
     if not data:
         raise Refused(f"{filename or 'that file'} is empty.")
 
+    digest = hashlib.sha256(data).hexdigest()
     source = EvidenceSource(
         id=uuid4(),
         case_id=case_id,
@@ -180,13 +182,42 @@ async def add_file(
         filename=clean_line(filename) or "upload",
         media_type=media_type or "",
         size_bytes=len(data),
-        status="queued",
+        sha256=digest,
+        status="repeat" if await _already_here(session, case_id, digest) else "queued",
     )
+    # Stored either way. A repeat is still a file somebody dropped in, and the
+    # one thing they may want from it is to download it and see that it is the
+    # same file.
     source.uri = _store(case_id, source.id, filename or "upload", data, media_type)
     session.add(source)
     await touch(session, case_id)
     await session.flush()
     return source
+
+
+async def _already_here(session: AsyncSession, case_id: UUID, digest: str) -> bool:
+    """Are these exact bytes in this case already?
+
+    The same rule images have had since the start, applied one level up. Dropping
+    a `.eml` in brings its attachments as sources of their own, so dropping one
+    of those in directly as well is the ordinary way a case ends up holding one
+    document twice — and every finding in it reported twice, from two places that
+    look identical.
+
+    Only non-repeats count, so three copies all point at the first rather than
+    forming a chain.
+    """
+    return bool(
+        await session.scalar(
+            select(EvidenceSource.id)
+            .where(
+                EvidenceSource.case_id == case_id,
+                EvidenceSource.sha256 == digest,
+                EvidenceSource.status != "repeat",
+            )
+            .limit(1)
+        )
+    )
 
 
 async def add_paste(session: AsyncSession, case_id: UUID, text: str) -> EvidenceSource:
@@ -196,18 +227,23 @@ async def add_paste(session: AsyncSession, case_id: UUID, text: str) -> Evidence
     if not body:
         raise Refused("Nothing was pasted: the box was empty.")
 
+    raw = body.encode("utf-8")
+    digest = hashlib.sha256(raw).hexdigest()
+    repeat = await _already_here(session, case_id, digest)
     source = EvidenceSource(
         id=uuid4(),
         case_id=case_id,
         kind="paste",
         filename="",
         media_type="text/plain",
-        size_bytes=len(body.encode("utf-8")),
-        status="queued",
+        size_bytes=len(raw),
+        sha256=digest,
+        status="repeat" if repeat else "queued",
     )
     session.add(source)
     await session.flush()
-    await _absorb(session, source, body.encode("utf-8"))
+    if not repeat:
+        await _absorb(session, source, raw)
     await touch(session, case_id)
     return source
 
@@ -379,6 +415,11 @@ async def _recurse(
         child.sender_domain = parent.sender_domain
         child.sent_at = parent.sent_at
         await session.flush()
+        # An attachment whose bytes are already in the case is listed and left
+        # alone, same as any other repeat. This is the common direction of it:
+        # the measurement report dropped in first, then the mail it came with.
+        if not child.counts:
+            continue
         if progress is not None:
             await progress.step(f"Reading {child.label}…")
         await _absorb(session, child, attachment.data)
@@ -464,8 +505,29 @@ async def get_source(session: AsyncSession, source_id: UUID) -> EvidenceSource:
 
 async def remove_source(session: AsyncSession, source_id: UUID) -> UUID:
     source = await get_source(session, source_id)
-    case_id = source.case_id
+    case_id, digest, was_real = source.case_id, source.sha256, source.counts
     await session.delete(source)
+    await session.flush()
+
+    # Removing the copy that was being read promotes the next one. Otherwise a
+    # case that holds a document twice loses it entirely when the first is
+    # dropped, while still listing the second as a repeat of nothing.
+    if was_real and digest:
+        heir = await session.scalar(
+            select(EvidenceSource)
+            .where(
+                EvidenceSource.case_id == case_id,
+                EvidenceSource.sha256 == digest,
+                EvidenceSource.status == "repeat",
+            )
+            .order_by(EvidenceSource.created_at)
+            .limit(1)
+        )
+        if heir is not None:
+            heir.status = "queued"
+            await session.flush()
+            await jobs.enqueue("parse_source", None, str(heir.id))
+
     await touch(session, case_id)
     return case_id
 

@@ -165,16 +165,6 @@ table rows and paragraphs. That is the docxtpl form that survives an author rest
 but it makes the file look noisier than the document it produces. A more compact idiom is worth
 testing against a restyled table before adopting.
 
-**The same file can be in a case twice without the desk noticing.** Dropping a
-`.eml` in brings its attachments as sources of their own; dropping one of those
-attachments in directly as well gives two sources with the same name, the same
-text and the same passages. Every finding in it is then reported twice, from two
-places that look identical. Images are deduplicated by SHA-256 on arrival
-([EVIDENCE-DESK §7](EVIDENCE-DESK.md#7-images)) and sources are not, which is the
-whole of the gap: the same digest on the source row, and a second drop of the
-same bytes becomes a note rather than a second source. Until then an attachment
-says so on every passage it contributes, so the two are at least tellable apart.
-
 **The markdown subset is enforced on the way out but not on the way in.** See
 [§5](#5-markdown-normalisation). Nothing else in [ARCHITECTURE §3](ARCHITECTURE.md#3-repository-layout)
 names a module that does not exist any more: `evidence/` and `jobs/` live inside `services/` and are

@@ -116,10 +116,14 @@ async def upload(request: Request, case_id: UUID, files: list[UploadFile] | None
                     s, case_id, data, upload_file.filename, upload_file.content_type or ""
                 )
                 source_id = source.id
+                repeat = not source.counts
         except evidence.Refused as exc:
             problems.append(str(exc))
             continue
-        await jobs.enqueue("parse_source", None, str(source_id))
+        # A repeat is listed, not read. Queuing a parse for it would spend the
+        # work and then store a second copy of every passage.
+        if not repeat:
+            await jobs.enqueue("parse_source", None, str(source_id))
         queued.append(upload_file.filename)
 
     if not queued and not problems:
@@ -202,11 +206,12 @@ async def source_language(request: Request, source_id: UUID, language: str = For
 
 @router.post("/evidence/sources/{source_id}/reparse", response_class=HTMLResponse)
 async def reparse(request: Request, source_id: UUID):
-    """Read a file again — after a language correction, or a parser change."""
+    """Read a file again, after a language correction or a parser change."""
     async with session() as s:
         source = await evidence.get_source(s, source_id)
-        case_id = source.case_id
-    await jobs.enqueue("parse_source", None, str(source_id))
+        case_id, readable = source.case_id, source.counts
+    if readable:
+        await jobs.enqueue("parse_source", None, str(source_id))
     return await _gather(request, case_id)
 
 

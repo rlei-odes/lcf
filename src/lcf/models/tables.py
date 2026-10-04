@@ -465,7 +465,13 @@ class EvidenceSource(Base):
     filename: Mapped[str] = mapped_column(String(400), nullable=False, default="")
     media_type: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # The digest of the bytes that arrived, which is how a file already in this
+    # case is recognised. Deliberately not unique: the repeat is kept as a row so
+    # the pile shows what was dropped, and `status` is what says it is one.
+    sha256: Mapped[str | None] = mapped_column(String(64), index=True)
     uri: Mapped[str | None] = mapped_column(Text)
+    # queued | parsed | failed | repeat. A `repeat` is a source whose bytes are
+    # already in this case: listed, never parsed, and taking no further part.
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued")
     error: Mapped[str | None] = mapped_column(Text)
     text: Mapped[str | None] = mapped_column(Text)
@@ -497,6 +503,16 @@ class EvidenceSource(Base):
         the subject is what a person recognises it by.
         """
         return (self.subject or "").strip() or self.filename or "pasted text"
+
+    @property
+    def counts(self) -> bool:
+        """Does this source take part in anything beyond being listed?
+
+        False for a repeat: it is kept so the pile shows what was dropped, and is
+        otherwise invisible — not parsed, no passages, no images, nothing to
+        search.
+        """
+        return self.status != "repeat"
 
 
 class EvidenceChunk(Base):

@@ -118,6 +118,19 @@ which is how a screenshot of a measurement actually arrives.
 Every source also gets its **language detected** on parse, which is what makes the lexical tier work
 on German material — see [§4.4](#44-language-is-a-property-of-the-source).
 
+**The same bytes twice are one source.** A `.eml` brings its attachments in as sources of their own,
+so dropping the measurement report in directly as well is the ordinary way a case ends up holding one
+document twice — and every finding in it reported twice, from two places that look identical because
+they carry the same filename. So a source is digested on arrival, the same rule images have had from
+the start ([§7](#7-images)), and bytes already in the case make a **repeat**: listed, because the pile
+should show what was dropped, and otherwise inert — never parsed, no passages, no images, nothing to
+search.
+
+It is a status rather than a refusal for two reasons. A person who drops a file and sees nothing
+happen will drop it again; and the copy has to be able to become the real one, which it does when the
+source it repeats is removed. Not a unique constraint, for the same reason: the row has to exist to
+say it is a repeat.
+
 ### 4.2 The parsing decision
 
 The survey, for the record, because this choice determines the perceived quality of the whole

@@ -63,7 +63,7 @@
     </thead>
     <tbody>
       {% for s in sources %}
-      <tr class="{{ 's-failed' if s.status == 'failed' }}">
+      <tr class="{{ 's-failed' if s.status == 'failed' }}{{ ' s-repeat' if not s.counts }}">
         <td>
           {% if s.parent_id %}<span class="attached" title="came attached to the mail above">↳</span>{% endif %}
           <a href="/evidence/sources/{{ s.id }}/text">{{ s.label }}</a>
@@ -75,6 +75,8 @@
         <td>
           {%- if s.status == 'failed' -%}
             <span class="s-needs_input">could not be read</span>
+          {%- elif s.status == 'repeat' -%}
+            <span class="tag">repeat</span>
           {%- elif s.status == 'queued' -%}
             <span class="working">waiting</span>
           {%- else -%}
@@ -86,7 +88,7 @@
         </td>
         <td>{{ passages.get(s.id, 0) if s.status == 'parsed' else '–' }}</td>
         <td>
-          {% if s.status == 'parsed' and s.kind != 'image' %}
+          {% if s.counts and s.status == 'parsed' and s.kind != 'image' %}
           <form hx-post="/evidence/sources/{{ s.id }}/language"
                 hx-target="#gather-card" hx-swap="outerHTML" class="inline-form">
             <select name="language" onchange="this.form.requestSubmit()"
@@ -104,7 +106,7 @@
           {% endif %}
         </td>
         <td class="rowtools-right">
-          {% if s.status == 'failed' or s.language_set %}
+          {% if s.counts and (s.status == 'failed' or s.language_set) %}
           <form hx-post="/evidence/sources/{{ s.id }}/reparse"
                 hx-target="#gather-card" hx-swap="outerHTML" class="inline-form">
             <button class="tool" type="submit" title="read it again">again</button>
@@ -117,6 +119,14 @@
           </form>
         </td>
       </tr>
+      {% if not s.counts %}
+      <tr class="row-note">
+        <td colspan="5"><span class="why">
+          The same file is already in this pile, so this copy is listed and not
+          read again. Remove the first one and this becomes the one that counts.
+        </span></td>
+      </tr>
+      {% endif %}
       {% if s.error %}
       <tr class="row-note"><td colspan="5"><span class="why">{{ s.error }}</span></td></tr>
       {% endif %}
