@@ -1,15 +1,19 @@
 {# Move two: what has to come out of the pile.
 
-   A question, its type, and the commands that find its answer. The three command
-   kinds are a closed vocabulary — there is no free-text field here in which
-   "write it more formally" could be expressed, which is what keeps DESIGN §5.8
-   intact (EVIDENCE-DESK §9). #}
+   A question, its type, and the ways to find its answer. The three ways are a
+   closed vocabulary - there is no free-text field here in which "write it more
+   formally" could be expressed, which is what keeps DESIGN §5.8 intact
+   (EVIDENCE-DESK §9).
+
+   Nothing on this panel hides behind a disclosure triangle. A person writing
+   questions is doing the work, not browsing options, and a triangle in front of
+   the only control that matters reads as though the panel were finished. #}
 <div class="card" id="formulate-card">
   <h3><span class="step-n">2</span> Formulate</h3>
   <p class="lead">
-    What has to come out of this pile? One question per thing — the part number,
-    the batch, the complaint number, the measured deviation — and for each, how to
-    find it.
+    What has to come out of this pile? One question per thing: the part number,
+    the batch, the complaint number, the measured deviation. Each needs at least
+    one way to be found, and may have several.
   </p>
 
   {% for problem in problems %}
@@ -20,30 +24,40 @@
   <ul class="plain questions">
     {% for q in questions %}
     {% set commands = builder_commands(q.commands) %}
+    {% set open_finder = finding_for == q.id|string or not commands %}
     <li class="question">
-      <div class="question-head">
+      <div class="q-top">
         <span class="qkey">{{ loop.index }}</span>
-        <span class="row-title">{{ q.prompt }}</span>
-        <span class="where">
-          {{ q.type }}{% if q.multiple %} · several{% endif %}
-          {%- if commands %} · {{ count(commands|length, 'command') }}
-          {%- else %} · <span class="s-needs_input">no way to find it</span>{% endif %}
-        </span>
-        <span class="rowtools-right">
+        <div class="q-title">
+          <div class="q-prompt">{{ q.prompt }}</div>
+          <div class="q-tags">
+            <span class="tag tag-type">{{ type_names.get(q.type, q.type) }}</span>
+            {% if q.multiple %}<span class="tag">several answers</span>{% endif %}
+            {% if q.options %}<span class="tag">{{ q.options|join(' / ') }}</span>{% endif %}
+            {% if commands %}
+              <span class="tag tag-ok">{{ count(commands|length, 'way') }} to find it</span>
+            {% else %}
+              <span class="tag tag-warn">no way to find it yet</span>
+            {% endif %}
+          </div>
+        </div>
+        <span class="q-tools">
           <form hx-post="/evidence/questions/{{ q.id }}/move" hx-target="#formulate-card"
                 hx-swap="outerHTML" class="inline-form">
             <input type="hidden" name="delta" value="-1">
-            <button class="tool" type="submit" title="earlier" {{ 'disabled' if loop.first }}>↑</button>
+            <button class="tool icon" type="submit" title="move up"
+                    {{ 'disabled' if loop.first }}>↑</button>
           </form>
           <form hx-post="/evidence/questions/{{ q.id }}/move" hx-target="#formulate-card"
                 hx-swap="outerHTML" class="inline-form">
             <input type="hidden" name="delta" value="1">
-            <button class="tool" type="submit" title="later" {{ 'disabled' if loop.last }}>↓</button>
+            <button class="tool icon" type="submit" title="move down"
+                    {{ 'disabled' if loop.last }}>↓</button>
           </form>
           <form hx-post="/evidence/questions/{{ q.id }}/remove" hx-target="#formulate-card"
                 hx-swap="outerHTML" class="inline-form"
                 hx-confirm="Remove this question and everything found for it?">
-            <button class="tool" type="submit">remove</button>
+            <button class="tool icon danger" type="submit" title="remove this question">✕</button>
           </form>
         </span>
       </div>
@@ -70,8 +84,16 @@
         {% include "partials/evidence_proposal.html" %}
       {% endif %}
 
-      <details class="add-check">
-        <summary>How should this be found?</summary>
+      {% if open_finder %}
+      <div class="finder">
+        <div class="finder-head">
+          <strong>How should this be found?</strong>
+          <span class="hint">
+            Pick one. You can add more than one way to the same question, and
+            often should: a pattern catches the number where it has its usual
+            shape, a word catches it where the customer wrote it differently.
+          </span>
+        </div>
 
         <div class="tiers">
           {# Pattern: the deterministic tier. A complaint number has a shape, a
@@ -83,9 +105,9 @@
             <p class="hint">
               For something with a shape: <code>NW-CL-88213</code>,
               <code>LOT-2026-0417</code>. Paste one or two real examples and the
-              assistant writes the pattern — it is then checked against your
-              examples and run over this pile before you keep it. Costs no
-              assistant calls at search time.
+              assistant writes the pattern. It is checked against your examples
+              and run over this pile before you keep it. Costs no assistant calls
+              when you search.
             </p>
             <div class="field">
               <label for="ex-{{ q.id }}">Real examples, comma separated</label>
@@ -102,10 +124,10 @@
             <input type="hidden" name="kind" value="keyword_ask">
             <h4><span class="chip tier-keyword_ask">Found near a word</span></h4>
             <p class="hint">
-              For something described in words near a word you know —
+              For something described in words near a word you know:
               <em>Toleranz</em>, <em>spec</em>, <em>Sollmaß</em>. Only passages
-              mentioning one of them are read, so this is the cheap way to use the
-              assistant. Matching is stemmed: <em>Toleranz</em> finds
+              mentioning one of them are read, so this is the cheap way to use
+              the assistant. Matching is stemmed, so <em>Toleranz</em> finds
               <em>Toleranzen</em>.
             </p>
             <div class="field">
@@ -114,12 +136,16 @@
                      placeholder="Toleranz, tolerance, Sollmaß">
             </div>
             <div class="field">
-              <label for="kwask-{{ q.id }}">What to ask of those passages</label>
+              <label for="kwask-{{ q.id }}">What to ask about those passages</label>
               <input type="text" id="kwask-{{ q.id }}" name="ask"
-                     placeholder="{{ q.prompt }}">
+                     value="{{ q.prompt }}">
+              <span class="hint">
+                Filled in from the question above. Reword it if the passages need
+                a narrower question than the heading does.
+              </span>
             </div>
             <div class="actions">
-              <button type="submit">Add it</button>
+              <button type="submit">Add this way</button>
               <button class="quiet" type="submit"
                       hx-post="/evidence/questions/{{ q.id }}/keywords"
                       hx-target="#formulate-card" hx-swap="outerHTML"
@@ -135,19 +161,31 @@
             <h4><span class="chip tier-ask">Read from the text</span></h4>
             <p class="hint">
               For something with neither a shape nor a reliable neighbour. The
-              best-matching passages in the whole pile are read — at most
+              best-matching passages in the whole pile are read, at most
               {{ top_k }} per question, which is the cost you are agreeing to.
             </p>
             <div class="field">
               <label for="ask-{{ q.id }}">What to ask</label>
-              <input type="text" id="ask-{{ q.id }}" name="ask"
-                     placeholder="{{ q.prompt }}">
+              <input type="text" id="ask-{{ q.id }}" name="ask" value="{{ q.prompt }}">
+              <span class="hint">
+                Filled in from the question above. Reword it if a passage needs
+                asking differently.
+              </span>
             </div>
-            <button type="submit">Add it</button>
+            <button type="submit">Add this way</button>
             <span class="htmx-indicator working">Working…</span>
           </form>
         </div>
-      </details>
+      </div>
+      {% else %}
+      <div class="finder-closed">
+        <button class="tool add" type="button"
+                hx-get="/evidence/{{ case.id }}/questions?finding={{ q.id }}"
+                hx-target="#formulate-card" hx-swap="outerHTML">
+          + Add another way to find this
+        </button>
+      </div>
+      {% endif %}
     </li>
     {% endfor %}
   </ul>
@@ -158,48 +196,58 @@
   </div>
   {% endif %}
 
-  <details class="add-check" {% if not questions %}open{% endif %}>
-    <summary>Add a question</summary>
+  {# Adding a question is the primary action of this panel, so it is a form and a
+     button rather than something to find. #}
+  <div class="new-question" id="new-question">
+    <h4>Add a question</h4>
     <form hx-post="/evidence/{{ case.id }}/questions"
           hx-target="#formulate-card" hx-swap="outerHTML">
       <div class="field">
-        <label for="new-prompt">What has to come out of the pile?</label>
+        <label for="new-prompt">The question</label>
         <input type="text" id="new-prompt" name="prompt" required
                placeholder="What is the customer's complaint number?">
-      </div>
-      <div class="field">
-        <label for="new-type">What kind of answer is it?</label>
-        <select id="new-type" name="type">
-          <option value="identifier">An identifier — a code or reference</option>
-          <option value="text" selected>Text — a word or a sentence</option>
-          <option value="number">A number — a measured value</option>
-          <option value="date">A date</option>
-          <option value="boolean">Yes or no</option>
-          <option value="choice">One of a fixed list</option>
-        </select>
         <span class="hint">
-          This is checked: an answer the field could not hold is dropped rather
-          than shown, and it decides how two answers are told apart.
+          This is the heading on the findings, and it is also what gets asked of
+          the passages unless you reword it when you add a way to find it.
         </span>
       </div>
-      <div class="field">
-        <label for="new-options">If it is a fixed list, what are the choices?</label>
-        <input type="text" id="new-options" name="options" placeholder="open, closed, rejected">
+      <div class="row-fields">
+        <div class="field">
+          <label for="new-type">What kind of answer is it?</label>
+          <select id="new-type" name="type" onchange="
+            this.closest('form').querySelector('.choice-field').hidden = this.value !== 'choice';">
+            <option value="identifier">Identifier, a code or reference</option>
+            <option value="text" selected>Text, a word or a sentence</option>
+            <option value="number">Number, a measured value</option>
+            <option value="date">Date</option>
+            <option value="boolean">Yes or no</option>
+            <option value="choice">One of a fixed list</option>
+          </select>
+          <span class="hint">
+            Checked when candidates come back: an answer the field could not hold
+            is dropped rather than shown.
+          </span>
+        </div>
+        <div class="field choice-field" hidden>
+          <label for="new-options">The list to choose from</label>
+          <input type="text" id="new-options" name="options" placeholder="open, closed, rejected">
+          <span class="hint">Comma separated. Only used by the fixed-list type.</span>
+        </div>
       </div>
       <label class="inline-check">
         <input type="checkbox" name="multiple" value="1">
         There may be several answers
         <span class="hint">
-          Tick this for "which batches are affected?" — four answers are four
-          batches, not three mistakes. Leave it for "what is the part number?",
-          where a second answer means the first is in doubt.
+          Tick this for "which batches are affected?", where four answers are
+          four batches. Leave it for "what is the part number?", where a second
+          answer means the first is in doubt.
         </span>
       </label>
       <div class="actions">
         <button class="primary" type="submit">Add the question</button>
       </div>
     </form>
-  </details>
+  </div>
 
   <details class="quiet-details">
     <summary>Saved sets of questions</summary>
@@ -213,7 +261,7 @@
       <div class="field">
         <label for="set-title">Save these {{ count(questions|length, 'question') }} as</label>
         <input type="text" id="set-title" name="title" required
-               placeholder="Nordwerk — Reklamation">
+               placeholder="Nordwerk, Reklamation">
       </div>
       <div class="field">
         <label for="set-desc">What is it for?</label>

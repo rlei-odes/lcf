@@ -7,7 +7,7 @@
 <div class="card" id="gather-card">
   <h3><span class="step-n">1</span> Gather</h3>
   <p class="lead">
-    Drop the files in — PDF, Word, email, photographs — or paste text. Each one
+    Drop the files in: PDF, Word, email, photographs, or paste text. Each one
     is read, split into passages, and kept exactly as it arrived.
   </p>
 
@@ -84,7 +84,7 @@
             {%- if s.parser == 'docling' %} · docling{% endif %}
           {%- endif -%}
         </td>
-        <td>{{ passages.get(s.id, 0) if s.status == 'parsed' else '—' }}</td>
+        <td>{{ passages.get(s.id, 0) if s.status == 'parsed' else '–' }}</td>
         <td>
           {% if s.status == 'parsed' and s.kind != 'image' %}
           <form hx-post="/evidence/sources/{{ s.id }}/language"
@@ -100,7 +100,7 @@
             {%- elif s.language_set %}<span class="where">set</span>{% endif %}
           </form>
           {% else %}
-          <span class="where">—</span>
+          <span class="where">–</span>
           {% endif %}
         </td>
         <td class="rowtools-right">

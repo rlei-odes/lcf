@@ -23,6 +23,18 @@ from lcf.ingest.text import clean_line
 # whose matching, deduplication and display all differ from free text.
 TYPES = frozenset({"text", "identifier", "number", "date", "boolean", "choice"})
 
+# The same vocabulary as a person reads it. Kept beside the set it names so the
+# two cannot drift, and so a question header says "Identifier" rather than
+# printing a column value at somebody.
+TYPE_NAMES = {
+    "text": "Text",
+    "identifier": "Identifier",
+    "number": "Number",
+    "date": "Date",
+    "boolean": "Yes or no",
+    "choice": "One of a list",
+}
+
 _SPACE = re.compile(r"\s+")
 _EDGE_PUNCTUATION = ".,;:!?\"'()[]{}«»„“”‚‘’<>"
 _NUMBER = re.compile(r"-?\d+(?:[.,]\d+)?")

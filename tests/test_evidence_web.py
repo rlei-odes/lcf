@@ -12,12 +12,13 @@ import uuid
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import delete
+from tests import fixtures
 
 from lcf.core.db import session
+from lcf.ingest.commands import Command
 from lcf.models.tables import EvidenceCase, QuestionSet
 from lcf.services import evidence
 from lcf.web.app import app
-from tests import fixtures
 
 
 @pytest.fixture
@@ -484,6 +485,78 @@ async def test_a_person_can_label_an_image_themselves(client, case):
         f"/evidence/assets/{asset}/label", data={"label": "Riefen in der Bohrung"}
     )
     assert "Riefen in der Bohrung" in labelled.text
+
+
+async def test_a_dropped_image_is_not_offered_for_captioning(client, case):
+    """Describing one spends a call on a card that is not on the tray, and it is
+    how a dropped image appeared to come back with a description."""
+    for name in ("one.png", "two.png"):
+        client.post(
+            f"/evidence/{case}/sources",
+            files={
+                "files": (name, fixtures.png(400, 300 if name == "one.png" else 310), "image/png")
+            },
+        )
+    await _settle(case)
+    tray = client.get(f"/evidence/{case}/assets")
+    assert "Describe the 2 images" in tray.text
+
+    asset = re.search(r"/evidence/assets/([0-9a-f-]{36})/dismiss", tray.text).group(1)
+    dropped = client.post(f"/evidence/assets/{asset}/dismiss")
+    assert "Describe the 1 image" in dropped.text
+    assert "Describe the 2 images" not in dropped.text
+
+
+async def test_adding_a_way_to_find_something_re_enables_the_search(client, case):
+    """The Find panel holds the plan it was rendered with. Without an
+    out-of-band swap the button stays disabled until the page is reloaded, and
+    the cost beside it is quietly wrong."""
+    client.post(f"/evidence/{case}/paste", data={"text": "Reklamation NW-CL-88213 vom 04.03.2026."})
+    client.post(
+        f"/evidence/{case}/questions",
+        data={"prompt": "What is the complaint number?", "type": "identifier"},
+    )
+    panel = client.get(f"/evidence/{case}/questions")
+    question = re.search(r"/evidence/questions/([0-9a-f-]{36})/commands", panel.text).group(1)
+
+    added = client.post(
+        f"/evidence/questions/{question}/commands",
+        data={"kind": "ask", "ask": "What is the complaint number?"},
+    )
+    # The findings panel rides along, and its button is no longer disabled.
+    assert 'hx-swap-oob="true"' in added.text
+    button = re.search(r'<button class="primary" type="submit"([^>]*)>', added.text).group(1)
+    assert "disabled" not in button
+
+
+async def test_an_accepted_finding_keeps_every_place_it_was_found(client, case):
+    """A value backed by four passages is not the same claim as one backed by
+    one, and accepting it must not reduce the finding to whichever quote
+    happened to score best."""
+    client.post(
+        f"/evidence/{case}/paste",
+        data={"text": "Reklamation NW-CL-88213.\n\nBezug: NW-CL-88213 vom 04.03.2026."},
+    )
+    client.post(
+        f"/evidence/{case}/questions",
+        data={"prompt": "Complaint number", "type": "identifier"},
+    )
+    panel = client.get(f"/evidence/{case}/questions")
+    question = re.search(r"/evidence/questions/([0-9a-f-]{36})/commands", panel.text).group(1)
+    async with session() as s:
+        await evidence.add_command(
+            s, uuid.UUID(question), Command(kind="pattern", pattern=r"\bNW-CL-\d{5}\b")
+        )
+
+    client.post(f"/evidence/{case}/run")
+    await _settle(case)
+    found = client.get(f"/evidence/{case}/findings")
+    candidate = re.search(r"/evidence/candidates/([0-9a-f-]{36})/accept", found.text).group(1)
+
+    accepted = client.post(f"/evidence/candidates/{candidate}/accept")
+    body = accepted.text[accepted.text.index('class="plain accepted"') :]
+    assert body.count("blockquote") >= 4, "both places and both quotes should survive"
+    assert "route-line" in body
 
 
 async def test_the_same_image_in_two_files_is_one_asset(client, case):

@@ -540,6 +540,11 @@ class EvidenceAsset(Base):
     two files parsing concurrently would otherwise both insert it.
     """
 
+    # Filled by `evidence.assets_of` from the source's filename, for the pill on
+    # the card. Not a column: it is derived, and a template reading it through
+    # the relationship would lazy-load after the session has gone.
+    source_kind: str = ""
+
     __tablename__ = "evidence_asset"
     __table_args__ = (UniqueConstraint("case_id", "sha256"),)
 

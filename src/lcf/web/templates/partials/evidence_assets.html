@@ -13,7 +13,9 @@
   {% set pending = assets|selectattr('status', 'equalto', 'pending')|list %}
   {% set kept = assets|selectattr('status', 'equalto', 'accepted')|list %}
   {% set gone = assets|selectattr('status', 'equalto', 'dismissed')|list %}
-  {% set uncaptioned = assets|rejectattr('caption')|list %}
+  {# Dropped images are excluded: describing one costs a call for a card that
+     is not on the tray, and it is how a dropped image appeared to come back. #}
+  {% set uncaptioned = (pending + kept)|rejectattr('caption')|list %}
 
   <p class="lead">
     {{ count(kept|length, 'image') }} kept, {{ pending|length }} still to look at.
@@ -38,7 +40,7 @@
       <button type="submit">Describe the {{ count(uncaptioned|length, 'image') }}</button>
       <span class="why">
         One assistant call per {{ max_images }} images. Needs a model that accepts
-        pictures — if yours does not, the thumbnails and the page numbers still
+        pictures. If yours does not, the thumbnails and the page numbers still
         work and you can type a label yourself.
       </span>
     </div>
@@ -53,15 +55,9 @@
              loading="lazy" width="160">
       </a>
       <figcaption>
-        {% if a.label %}
-          <span class="value">{{ a.label }}</span>
-        {% elif a.caption %}
-          {{ a.caption }}
-        {% else %}
-          <span class="hint">no description yet</span>
-        {% endif %}
         <span class="where">
-          {%- if a.page %}p. {{ a.page }} · {% endif -%}
+          {%- if a.source_kind %}<span class="pill-kind">{{ a.source_kind }}</span>{% endif -%}
+          {%- if a.page %} p. {{ a.page }} · {% endif -%}
           {{ a.width }}×{{ a.height }}
         </span>
       </figcaption>
@@ -82,10 +78,20 @@
         </form>
         {% endif %}
       </div>
+      {# One description per image, not two. The assistant writes the first
+         draft into the same box a person types in, so correcting it is editing
+         text that is already there rather than discovering a second field that
+         silently overrides the first. #}
       <form hx-post="/evidence/assets/{{ a.id }}/label" hx-target="#assets-card"
             hx-swap="outerHTML" class="asset-label">
-        <input type="text" name="label" value="{{ a.label or '' }}"
-               placeholder="what it shows" aria-label="your own description">
+        <textarea name="label" rows="3"
+                  placeholder="{{ 'Describe this image' if not a.caption else '' }}"
+                  aria-label="description of this image">{{ a.label or a.caption or '' }}</textarea>
+        <div class="asset-save">
+          <button class="tool" type="submit">save</button>
+          {% if a.caption and not a.label %}<span class="hint">written by the assistant</span>
+          {% elif a.label and a.caption %}<span class="hint">edited by you</span>{% endif %}
+        </div>
       </form>
     </figure>
     {% endfor %}

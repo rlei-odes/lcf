@@ -12,7 +12,7 @@
     <strong>That pattern was refused.</strong> {{ proposal.problem }}
   </p>
   <p class="hint">
-    It is here so you can correct it rather than start again — the field below is
+    It is here so you can correct it rather than start again. The field below is
     editable, and it is checked again when you keep it.
   </p>
   {% else %}
@@ -20,7 +20,7 @@
     <strong>{{ count(proposal.matches|length, 'match') }}</strong>
     in {{ count(proposal.scanned, 'passage') }} of this pile.
     {%- if not proposal.matches %}
-    Nothing matched, which usually means the pattern is too tight — or that what
+    Nothing matched, which usually means the pattern is too tight, or that what
     you are looking for is not in the files yet.
     {%- endif %}
   </p>
@@ -94,7 +94,7 @@
     <div class="actions">
       <button class="primary" type="submit">Keep the ticked words</button>
       <span class="why">
-        A word in every document of this kind narrows nothing — untick those.
+        A word in every document of this kind narrows nothing, so untick those.
       </span>
     </div>
   </form>

@@ -61,7 +61,7 @@
               {%- if s['ranked_not_asked'] %} · {{ s['ranked_not_asked'] }} matched but not asked{% endif -%}
               {%- if s['arbitrary'] %}
               <br><span class="s-stale">nothing in the question matched any passage, so the
-                first {{ s['asked'] }} were read in order — the ranking said nothing here</span>
+                first {{ s['asked'] }} were read in order; the ranking said nothing here</span>
               {%- endif -%}
             </td>
             <td class="why">
@@ -81,7 +81,7 @@
 
     <p class="hint">
       {% if (run.stats or {}).get('merged') %}
-      {{ count(run.stats['merged'], 'duplicate') }} merged — the same value found in
+      {{ count(run.stats['merged'], 'duplicate') }} merged. The same value found in
       more than one passage is one card, with the places listed under it.
       {% endif %}
     </p>

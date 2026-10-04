@@ -2,9 +2,32 @@
 
    Candidates are grouped by tier and never ranked in one list. A pattern hit is
    exact, an asked hit is the model's confidence, and those are not the same
-   quantity — so the group heading carries the comparison a single number would
-   have faked, and a pattern card shows no confidence at all (EVIDENCE-DESK §6.6). #}
-<div class="card" id="findings-card">
+   quantity - so the group heading carries the comparison a single number would
+   have faked, and a pattern card shows no confidence at all (EVIDENCE-DESK §6.6).
+
+   `oob` renders this panel as an out-of-band swap, which is how a change over in
+   Formulate updates the cost and re-enables the button without a reload. #}
+{# Where a value was found, listed under it. The debugging surface for whoever
+   authored the question: "ranked 2 of 48" on a miss says the ranking was fine
+   and the model was not; "ranked 31, not asked" says the opposite. #}
+{% macro places(row) %}
+<div class="route">
+  <div class="route-line">{{ row.found_by }}</div>
+  <ul class="plain places">
+    {% for place in row.occurrences or [] %}
+    <li>
+      <span class="where">
+        {% if place.get('kind') %}<span class="pill-kind">{{ place['kind'] }}</span>{% endif %}
+        {{ place['where'] }}
+      </span>
+      {% if place.get('quote') %}<blockquote class="quote">{{ place['quote'] }}</blockquote>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endmacro %}
+
+<div class="card" id="findings-card" {% if oob %}hx-swap-oob="true"{% endif %}>
   <h3><span class="step-n">3</span> Find</h3>
 
   {% for problem in problems %}
@@ -12,7 +35,7 @@
   {% endfor %}
 
   {# The plan, before anybody spends it. Every number here is one the run has to
-     compute anyway, so this is the real cost rather than a guess — and adding a
+     compute anyway, so this is the real cost rather than a guess, and adding a
      keyword to a question visibly drops it. #}
   <div class="plan">
     <div class="plan-sum">
@@ -32,32 +55,37 @@
   </div>
 
   {% if plan.questions %}
-  <details class="quiet-details">
-    <summary>What a search would do, question by question</summary>
-    <table class="config">
-      <tbody>
-        {% for q in plan.questions %}
-        {% for s in q.steps %}
-        <tr>
-          <td>{% if loop.first %}{{ q.prompt }}{% endif %}</td>
-          <td><span class="chip tier-{{ s.kind }}">{{ s.kind }}</span></td>
-          <td class="why">
-            {%- if s.error -%}
-              <span class="s-needs_input">{{ s.error }}</span>
-            {%- elif s.kind == 'pattern' -%}
-              {{ count(s.scanned, 'passage') }} scanned, no calls
-            {%- elif s.kind == 'keyword_ask' -%}
-              {{ s.hit }} of {{ s.scanned }} passages hit → {{ count(s.asked, 'call') }}
-            {%- else -%}
-              {{ s.scanned }} ranked → {{ count(s.asked, 'call') }}
-            {%- endif -%}
-          </td>
-        </tr>
-        {% endfor %}
-        {% endfor %}
-      </tbody>
-    </table>
-  </details>
+  <h4 class="section-h">What a search would do</h4>
+  <table class="config plan-table">
+    <thead>
+      <tr>
+        <th>Question</th>
+        <th>How it is found</th>
+        <th>What that costs</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for q in plan.questions %}
+      {% for s in q.steps %}
+      <tr>
+        <td>{% if loop.first %}{{ q.prompt }}{% endif %}</td>
+        <td><span class="chip tier-{{ s.kind }}">{{ tier_labels.get(s.kind, s.kind) }}</span></td>
+        <td class="why">
+          {%- if s.error -%}
+            <span class="s-needs_input">{{ s.error }}</span>
+          {%- elif s.kind == 'pattern' -%}
+            {{ count(s.scanned, 'passage') }} scanned, no assistant calls
+          {%- elif s.kind == 'keyword_ask' -%}
+            {{ s.hit }} of {{ s.scanned }} passages hit, {{ count(s.asked, 'call') }}
+          {%- else -%}
+            {{ s.scanned }} ranked, {{ count(s.asked, 'call') }}
+          {%- endif -%}
+        </td>
+      </tr>
+      {% endfor %}
+      {% endfor %}
+    </tbody>
+  </table>
   {% endif %}
 
   {% if plan.uncommanded %}
@@ -65,7 +93,7 @@
     <strong>{{ count(plan.uncommanded|length, 'question') }}
       {{ verb(plan.uncommanded|length, 'has', 'have') }} no way to be found yet.</strong>
     <div class="hint">
-      {{ plan.uncommanded|join(' · ') }} — add a pattern, a word to look near, or
+      {{ plan.uncommanded|join(' · ') }}. Add a pattern, a word to look near, or
       a question to ask under <em>Formulate</em>.
     </div>
   </div>
@@ -102,14 +130,22 @@
       <ul class="plain accepted">
         {% for row in entry.accepted %}
         <li>
-          <span class="mark">✓</span>
-          <span class="value">{{ row.value }}</span>
-          <span class="where">{{ count(row.places, 'place') }}</span>
-          <form hx-post="/evidence/candidates/{{ row.id }}/reopen"
-                hx-target="#findings-card" hx-swap="outerHTML" class="inline-form">
-            <button class="tool" type="submit" title="put it back among the candidates">undo</button>
-          </form>
-          {% if row.quote %}<blockquote class="quote">{{ row.quote }}</blockquote>{% endif %}
+          <div class="candidate-head">
+            <span class="mark">✓</span>
+            <span class="value">{{ row.value }}</span>
+            <span class="where">{{ count(row.places, 'place') }}</span>
+            <span class="rowtools-right">
+              <form hx-post="/evidence/candidates/{{ row.id }}/reopen"
+                    hx-target="#findings-card" hx-swap="outerHTML" class="inline-form">
+                <button class="tool" type="submit"
+                        title="put it back among the candidates">undo</button>
+              </form>
+            </span>
+          </div>
+          {# Accepting does not throw the other places away. A complaint number
+             found in four passages is one finding backed by four, and the one
+             quote that happened to score best is not the finding. #}
+          {{ places(row) }}
         </li>
         {% endfor %}
       </ul>
@@ -139,20 +175,7 @@
                 </form>
               </span>
             </div>
-            {# How it was found. The debugging surface for whoever authored the
-               question: "ranked 2 of 48" on a miss says the ranking was fine and
-               the model was not; "ranked 31, not asked" says the opposite. #}
-            <details class="route">
-              <summary>{{ row.found_by }}</summary>
-              <ul class="plain places">
-                {% for place in row.occurrences or [] %}
-                <li>
-                  <span class="where">{{ place.where }}</span>
-                  {% if place.quote %}<blockquote class="quote">{{ place.quote }}</blockquote>{% endif %}
-                </li>
-                {% endfor %}
-              </ul>
-            </details>
+            {{ places(row) }}
           </li>
           {% endfor %}
         </ul>

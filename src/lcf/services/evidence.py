@@ -829,7 +829,30 @@ async def assets_of(
     query = select(EvidenceAsset).where(EvidenceAsset.case_id == case_id)
     if status:
         query = query.where(EvidenceAsset.status == status)
-    return list(await session.scalars(query.order_by(EvidenceAsset.created_at, EvidenceAsset.page)))
+    rows = list(await session.scalars(query.order_by(EvidenceAsset.created_at, EvidenceAsset.page)))
+
+    # Which file each image came out of, resolved here rather than through the
+    # relationship: a template renders after the session has gone, where a lazy
+    # load raises. Same reason `chunk_counts` is a query.
+    names = {
+        source_id: filename
+        for source_id, filename in await session.execute(
+            select(EvidenceSource.id, EvidenceSource.filename).where(
+                EvidenceSource.case_id == case_id
+            )
+        )
+    }
+    for row in rows:
+        row.source_kind = _file_kind(names.get(row.source_id, ""))
+    return rows
+
+
+def _file_kind(filename: str) -> str:
+    """The short label on an image's provenance pill: pdf, docx, eml, upload."""
+    _, _, ext = (filename or "").rpartition(".")
+    if ext and ext != filename and 1 <= len(ext) <= 5:
+        return ext.lower()
+    return "upload"
 
 
 async def get_asset(session: AsyncSession, asset_id: UUID) -> EvidenceAsset:
@@ -886,7 +909,15 @@ async def caption_job(document_id: UUID | None, scope: str | None, progress) -> 
     budget = max(settings().llm_max_images_per_call, 1)
 
     async with db_session() as s:
-        pending = [a for a in await assets_of(s, case_id) if not (a.caption or "").strip()]
+        # Dismissed images are excluded, not merely unshown. Describing one a
+        # person has already dropped spends a call to produce a caption for a
+        # card that is not on the tray, and it is how a dropped image appeared
+        # to come back.
+        pending = [
+            a
+            for a in await assets_of(s, case_id)
+            if a.status != "dismissed" and not (a.caption or "").strip()
+        ]
         loaded: list[tuple[UUID, bytes, str]] = []
         for asset in pending:
             data = asset_bytes(asset)

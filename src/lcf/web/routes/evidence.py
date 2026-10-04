@@ -14,8 +14,9 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from lcf.core.config import settings
 from lcf.core.db import session
 from lcf.ingest import language as lang
-from lcf.ingest.commands import Command
+from lcf.ingest.commands import TIER_LABELS, Command
 from lcf.ingest.retrieval import PatternInvalid, PatternTooSlow
+from lcf.ingest.values import TYPE_NAMES
 from lcf.services import evidence, extraction, jobs
 from lcf.web.pages import page, redirect
 
@@ -80,6 +81,8 @@ async def _desk_context(case_id: UUID) -> dict:
         "review": reviewed,
         "runs": runs,
         "languages": lang.SUPPORTED,
+        "type_names": TYPE_NAMES,
+        "tier_labels": TIER_LABELS,
         # The cost ceiling per question, shown where somebody is about to agree
         # to it rather than only in the plan.
         "top_k": settings().extract_top_k,
@@ -243,8 +246,8 @@ async def add_question(
 
 
 @router.get("/evidence/{case_id}/questions", response_class=HTMLResponse)
-async def formulate_panel(request: Request, case_id: UUID):
-    return await _formulate(request, case_id)
+async def formulate_panel(request: Request, case_id: UUID, finding: str = ""):
+    return await _formulate(request, case_id, finding=finding)
 
 
 async def _formulate(
@@ -252,13 +255,32 @@ async def _formulate(
     case_id: UUID,
     problems: list[str] | None = None,
     proposal: dict | None = None,
+    finding: str = "",
 ):
     ctx = await _desk_context(case_id)
     ctx["problems"] = problems or []
     # A pattern or keyword proposal waiting to be accepted, which belongs to the
     # question it was made for and to this response only.
     ctx["proposal"] = proposal
-    return page(request, "partials/evidence_formulate.html", **ctx)
+    # Which question has its "how should this be found?" block open. A question
+    # with no way to find it yet opens by itself, because that is the one thing
+    # it still needs.
+    ctx["finding_for"] = finding or (proposal or {}).get("question_id", "")
+    html = page(request, "partials/evidence_formulate.html", **ctx)
+    return _with_findings(request, html, ctx)
+
+
+def _with_findings(request: Request, response: HTMLResponse, ctx: dict) -> HTMLResponse:
+    """Append the findings panel as an out-of-band swap.
+
+    Adding a question, or a way to find one, changes what a search would cost and
+    whether one can run at all. Without this the Find panel keeps the plan it was
+    rendered with, so the button stays disabled until the page is reloaded and
+    the estimate beside it is quietly wrong.
+    """
+    ctx = dict(ctx, problems=[], oob=True)
+    extra = page(request, "partials/evidence_findings.html", **ctx)
+    return HTMLResponse(response.body.decode() + extra.body.decode())
 
 
 @router.post("/evidence/questions/{question_id}", response_class=HTMLResponse)
@@ -359,7 +381,7 @@ def _verify(command: Command) -> None:
             raise PatternInvalid(
                 "that pattern does not match "
                 + ", ".join(f"`{m}`" for m in missed)
-                + " — the examples it is meant to find."
+                + ", the examples it is meant to find."
             )
 
 

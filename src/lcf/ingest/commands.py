@@ -88,7 +88,7 @@ class Command(BaseModel):
         so what a person reads while authoring is what they read afterwards.
         """
         if self.kind == "pattern":
-            return f"matches `{self.pattern}`" + (f" — {self.note}" if self.note else "")
+            return f"matches `{self.pattern}`" + (f": {self.note}" if self.note else "")
         if self.kind == "keyword_ask":
             terms = ", ".join(self.keywords)
             return f"asks “{self.ask}” of chunks mentioning {terms}"

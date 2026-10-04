@@ -59,8 +59,21 @@ class Scoped:
         return self.source.language or "en"
 
     @property
+    def file_kind(self) -> str:
+        """The short label for the pill on a provenance line.
+
+        The extension a person recognises, because what a passage came out of
+        changes how much it is worth: a line in a customer `.eml` is a claim and
+        the same line in their measurement `.pdf` is a record.
+        """
+        _, _, ext = (self.source.filename or "").rpartition(".")
+        if ext and ext != self.source.filename and 1 <= len(ext) <= 5:
+            return ext.lower()
+        return self.source.kind or "text"
+
+    @property
     def where(self) -> str:
-        """Which file, which page, who said it — in one readable line."""
+        """Which file, which page, who said it, in one readable line."""
         bits = [self.source.label]
         if self.chunk.page_from:
             bits.append(
@@ -140,7 +153,7 @@ class Plan:
         if not self.questions:
             return "No questions to answer yet."
         if not self.calls:
-            return "Everything is found by pattern — no assistant calls."
+            return "Everything is found by pattern, with no assistant calls."
         return f"{self.calls} assistant {'call' if self.calls == 1 else 'calls'}"
 
 
@@ -280,6 +293,7 @@ class Found:
     ranked_of: int | None
     found_by: str
     where: str
+    kind: str = "text"
 
 
 @jobs.handler("extract")
@@ -420,6 +434,7 @@ def _run_pattern(
                     ranked_of=None,
                     found_by=f"found exactly, by pattern `{command.pattern}`",
                     where=item.where,
+                    kind=item.file_kind,
                 )
             )
             if len(out) >= MAX_PATTERN_HITS:
@@ -537,6 +552,7 @@ async def _run_asked(
                 ranked_of=step.scanned,
                 found_by=found_by,
                 where=item.where,
+                kind=item.file_kind,
             )
         )
 
@@ -586,7 +602,10 @@ async def _store_candidates(
         for norm, entries in groups.items():
             entries.sort(key=lambda h: (TIER_ORDER.get(h.tier, 9), -h.score))
             best = entries[0]
-            occurrences = [{"where": e.where, "quote": e.quote, "tier": e.tier} for e in entries]
+            occurrences = [
+                {"where": e.where, "quote": e.quote, "tier": e.tier, "kind": e.kind}
+                for e in entries
+            ]
 
             existing = decided.get(norm)
             if existing is not None and existing.status in ("accepted", "dismissed"):
@@ -872,7 +891,7 @@ def as_markdown(report: dict) -> str:
                 lines.append(f"  > {answer['quote']}")
             for place in answer.get("places") or []:
                 if place:
-                    lines.append(f"  — {place}")
+                    lines.append(f"  - {place}")
         lines.append("")
 
     if report["images"]:

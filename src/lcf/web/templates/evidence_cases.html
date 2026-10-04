@@ -25,7 +25,7 @@
       <div class="field">
         <label for="from-set">Start from a saved set of questions</label>
         <select id="from-set" name="from_set">
-          <option value="">Nothing — I will write the questions</option>
+          <option value="">Nothing, I will write the questions</option>
           {% for s in sets %}
           <option value="{{ s.key }}">{{ s.title }} ({{ count(s.questions|length, 'question') }})</option>
           {% endfor %}
