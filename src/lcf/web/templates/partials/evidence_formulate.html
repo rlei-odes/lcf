@@ -65,13 +65,71 @@
       {% if commands %}
       <ul class="plain commands">
         {% for c in commands %}
+        {% set at = loop.index0 %}
+        {% set editing = editing_at == at and finding_for == q.id|string %}
         <li>
-          <span class="chip tier-{{ c.kind }}">{{ c.label }}</span>
-          <span class="command-body">{{ c.describe() }}</span>
-          <form hx-post="/evidence/questions/{{ q.id }}/commands/{{ loop.index0 }}/remove"
-                hx-target="#formulate-card" hx-swap="outerHTML" class="inline-form">
-            <button class="tool" type="submit">drop</button>
+          <div class="command-row">
+            <span class="chip tier-{{ c.kind }}">{{ c.label }}</span>
+            <span class="command-body">{{ c.describe() }}</span>
+            <span class="rowtools-right">
+              {% if not editing %}
+              <button class="tool" type="button"
+                      hx-get="/evidence/{{ case.id }}/questions?finding={{ q.id }}&edit={{ at }}"
+                      hx-target="#formulate-card" hx-swap="outerHTML">edit</button>
+              {% endif %}
+              <form hx-post="/evidence/questions/{{ q.id }}/commands/{{ at }}/remove"
+                    hx-target="#formulate-card" hx-swap="outerHTML" class="inline-form">
+                <button class="tool" type="submit">drop</button>
+              </form>
+            </span>
+          </div>
+
+          {# Editing in place. The kind cannot change here - a pattern and a
+             keyword list have nothing in common to carry across - so it rides
+             along as a hidden field and a different kind means dropping this one
+             and adding another. #}
+          {% if editing %}
+          <form class="command-edit"
+                hx-post="/evidence/questions/{{ q.id }}/commands/{{ at }}"
+                hx-target="#formulate-card" hx-swap="outerHTML">
+            <input type="hidden" name="kind" value="{{ c.kind }}">
+            {% if c.kind == 'pattern' %}
+            <div class="field">
+              <label for="ep-{{ q.id }}-{{ at }}">The pattern</label>
+              <input type="text" id="ep-{{ q.id }}-{{ at }}" name="pattern"
+                     value="{{ c.pattern }}" spellcheck="false">
+            </div>
+            <div class="field">
+              <label for="ee-{{ q.id }}-{{ at }}">Real examples it must still match</label>
+              <input type="text" id="ee-{{ q.id }}-{{ at }}" name="examples"
+                     value="{{ c.examples|join(', ') }}">
+              <span class="hint">
+                Checked on save. A pattern that stops matching what it was built
+                from is refused rather than quietly kept.
+              </span>
+            </div>
+            <input type="hidden" name="note" value="{{ c.note or '' }}">
+            {% else %}
+            {% if c.kind == 'keyword_ask' %}
+            <div class="field">
+              <label for="ek-{{ q.id }}-{{ at }}">Words to look near</label>
+              <input type="text" id="ek-{{ q.id }}-{{ at }}" name="keywords"
+                     value="{{ c.keywords|join(', ') }}">
+            </div>
+            {% endif %}
+            <div class="field">
+              <label for="ea-{{ q.id }}-{{ at }}">What to ask</label>
+              <input type="text" id="ea-{{ q.id }}-{{ at }}" name="ask" value="{{ c.ask }}">
+            </div>
+            {% endif %}
+            <div class="actions">
+              <button class="primary" type="submit">Save</button>
+              <button class="quiet" type="button"
+                      hx-get="/evidence/{{ case.id }}/questions?finding={{ q.id }}"
+                      hx-target="#formulate-card" hx-swap="outerHTML">Cancel</button>
+            </div>
           </form>
+          {% endif %}
         </li>
         {% endfor %}
       </ul>

@@ -20,7 +20,11 @@
         {% if place.get('kind') %}<span class="pill-kind">{{ place['kind'] }}</span>{% endif %}
         {{ place['where'] }}
       </span>
-      {% if place.get('quote') %}<blockquote class="quote">{{ place['quote'] }}</blockquote>{% endif %}
+      {# The value marked inside the sentence it was found in. What a person is
+         checking on this card is exactly that it is there. #}
+      {% if place.get('quote') %}
+      <blockquote class="quote">{{ highlight(place['quote'], row.value) }}</blockquote>
+      {% endif %}
     </li>
     {% endfor %}
   </ul>
@@ -65,11 +69,17 @@
       </tr>
     </thead>
     <tbody>
+      {# One cell per question, spanning its ways. A question with two ways was
+         printing a blank first column on the second row, which reads as a
+         nameless question rather than as a continuation of the one above. #}
       {% for q in plan.questions %}
-      {% set number = q.number %}
       {% for s in q.steps %}
-      <tr>
-        <td>{% if loop.first %}<span class="qkey">{{ number }}</span> {{ q.prompt }}{% endif %}</td>
+      <tr class="{{ 'step-first' if loop.first }}">
+        {% if loop.first %}
+        <td rowspan="{{ q.steps|length }}" class="plan-q">
+          <span class="qkey">{{ q.number }}</span> {{ q.prompt }}
+        </td>
+        {% endif %}
         <td><span class="chip tier-{{ s.kind }}">{{ tier_labels.get(s.kind, s.kind) }}</span></td>
         <td class="why">
           {%- if s.error -%}

@@ -679,3 +679,27 @@ def test_a_pasted_example_is_cleaned_before_a_pattern_is_built_from_it():
     built from it would match only text carrying the same ones."""
     command = Command(kind="pattern", pattern=r"\bNW-CL-\d{5}\b", examples=["NW-CL-\u200b88213"])
     assert command.examples == ["NW-CL-88213"]
+
+
+# ──────────────────────────────────────────────── marking a hit in its quote
+
+
+def test_a_found_value_is_marked_inside_its_quote():
+    """What a person checks on a card is that the value really is in the
+    sentence under it. Marking it turns that check into a glance."""
+    from lcf.web.pages import highlight
+
+    marked = str(highlight("unsere Reklamation NW-CL-88213 vom 04.03", "NW-CL-88213"))
+    assert "<mark>NW-CL-88213</mark>" in marked
+    # Case-insensitive, because a pattern may be and the text decides the casing.
+    assert "<mark>nw-cl-88213</mark>" in str(highlight("bezug nw-cl-88213 hier", "NW-CL-88213"))
+
+
+def test_marking_never_trusts_the_quote_or_the_value_as_html():
+    """The quote is somebody else's document and the value may come from a
+    model. Neither is ever inserted as markup."""
+    from lcf.web.pages import highlight
+
+    marked = str(highlight("a <b>bold</b> lie about NW-CL-88213", "NW-CL-88213"))
+    assert "&lt;b&gt;" in marked and "<b>" not in marked
+    assert str(highlight("plain", "<script>")) == "plain"

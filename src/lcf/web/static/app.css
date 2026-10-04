@@ -1101,6 +1101,12 @@ ul.places > li {
   padding: var(--s2) 0 var(--s2) var(--s3); border-left: 2px solid var(--line);
 }
 ul.places .quote { margin: var(--s1) 0 0; font-size: 12.5px; }
+/* The found value inside its sentence. Weight and a wash rather than a colour:
+   the quote has to stay readable as a sentence. */
+.quote mark {
+  background: var(--accent-soft); color: var(--ink);
+  font-weight: 600; padding: 0 2px; border-radius: 2px;
+}
 
 /* The file a passage came out of. A claim in a customer `.eml` and a record in
    their measurement `.pdf` are worth different amounts. */
@@ -1152,6 +1158,11 @@ table.plan-table thead th {
   text-transform: uppercase; letter-spacing: .04em;
   padding-bottom: var(--s2); border-bottom: 1px solid var(--line);
 }
+/* A question's cell spans its ways, so the rule goes under the whole group
+   rather than between two rows that belong together. */
+table.plan-table td { border-top: 0; }
+table.plan-table tr.step-first > td { border-top: 1px solid var(--line-2); }
+table.plan-table td.plan-q { vertical-align: top; padding-top: var(--s3); }
 
 /* --- Images ------------------------------------------------------------- */
 

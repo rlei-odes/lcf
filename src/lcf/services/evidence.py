@@ -699,6 +699,29 @@ async def add_command(
     return question
 
 
+async def replace_command(
+    session: AsyncSession, question_id: UUID, at: int, command: Command
+) -> EvidenceQuestion:
+    """Put an edited command back where the old one was.
+
+    In place rather than drop-and-add, because position is what a person reads
+    the list by and what the remove button is indexed on. A keyword list is the
+    thing most often got slightly wrong, and retyping the question to fix one
+    word is how a list stops being maintained.
+    """
+    question = await get_question(session, question_id)
+    current = parse_commands(question.commands)
+    if not 0 <= at < len(current):
+        raise NotFound(f"no way to find it at position {at}")
+    if current[at].kind != command.kind:
+        raise Refused("A way to find something cannot change kind. Drop it and add another.")
+    current[at] = command
+    question.commands = dump_commands(current)
+    await touch(session, question.case_id)
+    await session.flush()
+    return question
+
+
 async def remove_command(session: AsyncSession, question_id: UUID, at: int) -> EvidenceQuestion:
     question = await get_question(session, question_id)
     current = parse_commands(question.commands)
@@ -843,16 +866,17 @@ async def assets_of(
         )
     }
     for row in rows:
-        row.source_kind = _file_kind(names.get(row.source_id, ""))
+        row.source_name = names.get(row.source_id, "")
+        row.source_kind = _file_kind(row.source_name)
     return rows
 
 
 def _file_kind(filename: str) -> str:
-    """The short label on an image's provenance pill: pdf, docx, eml, upload."""
+    """The short label for a file: pdf, docx, eml, or nothing recognisable."""
     _, _, ext = (filename or "").rpartition(".")
     if ext and ext != filename and 1 <= len(ext) <= 5:
         return ext.lower()
-    return "upload"
+    return ""
 
 
 async def get_asset(session: AsyncSession, asset_id: UUID) -> EvidenceAsset:

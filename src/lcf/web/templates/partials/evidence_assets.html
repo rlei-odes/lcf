@@ -55,11 +55,18 @@
              loading="lazy" width="160">
       </a>
       <figcaption>
+        {# The pill says what the image is; the line under it says where it was
+           found. Those are two different facts and the pill was giving the
+           second one. #}
         <span class="where">
-          {%- if a.source_kind %}<span class="pill-kind">{{ a.source_kind }}</span>{% endif -%}
-          {%- if a.page %} p. {{ a.page }} · {% endif -%}
+          <span class="pill-kind">{{ a.image_kind }}</span>
           {{ a.width }}×{{ a.height }}
         </span>
+        {% if a.source_name %}
+        <span class="where asset-from">
+          from {{ a.source_name }}{% if a.page %}, p. {{ a.page }}{% endif %}
+        </span>
+        {% elif a.page %}<span class="where asset-from">p. {{ a.page }}</span>{% endif %}
       </figcaption>
       <div class="asset-tools">
         {% if a.status == 'accepted' %}

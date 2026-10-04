@@ -487,6 +487,53 @@ async def test_a_person_can_label_an_image_themselves(client, case):
     assert "Riefen in der Bohrung" in labelled.text
 
 
+async def test_a_way_to_find_something_can_be_edited_in_place(client, case):
+    """Only dropping and re-adding it would mean retyping the question to fix
+    one word, which is how a keyword list stops being maintained."""
+    client.post(f"/evidence/{case}/paste", data={"text": "Reklamation NW-CL-88213 vom 04.03."})
+    client.post(
+        f"/evidence/{case}/questions", data={"prompt": "Complaint number", "type": "identifier"}
+    )
+    panel = client.get(f"/evidence/{case}/questions")
+    question = re.search(r"/evidence/questions/([0-9a-f-]{36})/commands", panel.text).group(1)
+    client.post(
+        f"/evidence/questions/{question}/commands",
+        data={"kind": "pattern", "pattern": r"\bNW-CL-\d{5}\b", "examples": "NW-CL-88213"},
+    )
+
+    editing = client.get(f"/evidence/{case}/questions?finding={question}&edit=0")
+    assert "command-edit" in editing.text
+    assert r"\bNW-CL-\d{5}\b" in editing.text, "the editor opens on what is already there"
+
+    saved = client.post(
+        f"/evidence/questions/{question}/commands/0",
+        data={"kind": "pattern", "pattern": r"\bNW-[A-Z]{2}-\d{5}\b", "examples": "NW-CL-88213"},
+    )
+    assert r"NW-[A-Z]{2}" in saved.text
+    assert r"\bNW-CL-\d{5}\b" not in saved.text, "replaced in place, not added beside"
+
+
+async def test_an_edit_that_stops_matching_its_examples_is_refused(client, case):
+    """A corrected pattern is no more trusted than a proposed one."""
+    client.post(f"/evidence/{case}/paste", data={"text": "Reklamation NW-CL-88213."})
+    client.post(
+        f"/evidence/{case}/questions", data={"prompt": "Complaint number", "type": "identifier"}
+    )
+    panel = client.get(f"/evidence/{case}/questions")
+    question = re.search(r"/evidence/questions/([0-9a-f-]{36})/commands", panel.text).group(1)
+    client.post(
+        f"/evidence/questions/{question}/commands",
+        data={"kind": "pattern", "pattern": r"\bNW-CL-\d{5}\b", "examples": "NW-CL-88213"},
+    )
+
+    refused = client.post(
+        f"/evidence/questions/{question}/commands/0",
+        data={"kind": "pattern", "pattern": r"\bZZ-\d{5}\b", "examples": "NW-CL-88213"},
+    )
+    assert "does not match" in refused.text
+    assert r"\bNW-CL-\d{5}\b" in refused.text, "the old one is still what is stored"
+
+
 async def test_a_dropped_image_is_not_offered_for_captioning(client, case):
     """Describing one spends a call on a card that is not on the tray, and it is
     how a dropped image appeared to come back with a description."""

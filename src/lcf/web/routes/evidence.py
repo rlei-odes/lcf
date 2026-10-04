@@ -247,8 +247,10 @@ async def add_question(
 
 
 @router.get("/evidence/{case_id}/questions", response_class=HTMLResponse)
-async def formulate_panel(request: Request, case_id: UUID, finding: str = ""):
-    return await _formulate(request, case_id, finding=finding)
+async def formulate_panel(
+    request: Request, case_id: UUID, finding: str = "", edit: int | None = None
+):
+    return await _formulate(request, case_id, finding=finding, editing_at=edit)
 
 
 async def _formulate(
@@ -257,6 +259,7 @@ async def _formulate(
     problems: list[str] | None = None,
     proposal: dict | None = None,
     finding: str = "",
+    editing_at: int | None = None,
 ):
     ctx = await _desk_context(case_id)
     ctx["problems"] = problems or []
@@ -267,6 +270,8 @@ async def _formulate(
     # with no way to find it yet opens by itself, because that is the one thing
     # it still needs.
     ctx["finding_for"] = finding or (proposal or {}).get("question_id", "")
+    # Which of that question's ways is open for editing, if any.
+    ctx["editing_at"] = editing_at
     html = page(request, "partials/evidence_formulate.html", **ctx)
     response = _with_findings(request, html, ctx)
     # Swapping a whole panel leaves the browser at the pixel offset it had, which
@@ -372,6 +377,43 @@ async def add_command(request: Request, question_id: UUID):
                 _verify(command)
             await evidence.add_command(s, question_id, command)
         except (evidence.Refused, PatternInvalid, PatternTooSlow) as exc:
+            problems.append(str(exc))
+        except ValueError as exc:
+            problems.append(_readable(exc))
+    return await _formulate(request, case_id, problems=problems, finding=str(question_id))
+
+
+@router.post("/evidence/questions/{question_id}/commands/{at}", response_class=HTMLResponse)
+async def edit_command(request: Request, question_id: UUID, at: int):
+    """Save an edited way to find something, in place.
+
+    The same reading and the same verification as adding one: a corrected
+    pattern is no more trusted than a proposed one, and a keyword list edited
+    down to nothing is refused rather than stored as a command that selects
+    every passage.
+    """
+    form = await request.form()
+    ticked = [str(v) for v in form.getlist("keywords") if str(v).strip()]
+    problems: list[str] = []
+
+    async with session() as s:
+        question = await evidence.get_question(s, question_id)
+        case_id = question.case_id
+        try:
+            command = Command.model_validate(
+                {
+                    "kind": str(form.get("kind") or "pattern"),
+                    "pattern": str(form.get("pattern") or "") or None,
+                    "keywords": ticked if len(ticked) > 1 else (ticked[0] if ticked else []),
+                    "ask": str(form.get("ask") or "") or None,
+                    "examples": str(form.get("examples") or ""),
+                    "note": str(form.get("note") or "") or None,
+                }
+            )
+            if command.kind == "pattern":
+                _verify(command)
+            await evidence.replace_command(s, question_id, at, command)
+        except (evidence.Refused, evidence.NotFound, PatternInvalid, PatternTooSlow) as exc:
             problems.append(str(exc))
         except ValueError as exc:
             problems.append(_readable(exc))

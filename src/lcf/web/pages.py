@@ -12,6 +12,7 @@ from pathlib import Path
 from fastapi import Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
+from markupsafe import Markup, escape
 
 from lcf.core.text import count, verb
 from lcf.engine.state import Status
@@ -109,6 +110,37 @@ templates.env.globals["drafts"] = drafts
 # provenance line uses, so what somebody reads while authoring is what they read
 # afterwards.
 templates.env.globals["builder_commands"] = ingest_commands.parse_commands
+
+
+def highlight(quote: str, value: str) -> Markup:
+    """The quote with the found value marked inside it.
+
+    What a person checks on a candidate card is whether the value really is in
+    the sentence under it, and a pattern hit puts it there verbatim. Marking it
+    turns that check into a glance.
+
+    Case-insensitive, because a pattern may be and the surrounding text decides
+    the casing. Escaped piece by piece and assembled as markup: the quote is
+    somebody else's document and the value may have come from a model, so
+    neither is ever trusted as HTML.
+    """
+    text = str(quote or "")
+    needle = str(value or "").strip()
+    if not text or not needle:
+        return Markup(escape(text))
+
+    out: list[str] = []
+    low_text, low_needle = text.casefold(), needle.casefold()
+    at = 0
+    while (found := low_text.find(low_needle, at)) != -1:
+        out.append(str(escape(text[at:found])))
+        out.append(f"<mark>{escape(text[found : found + len(needle)])}</mark>")
+        at = found + len(needle)
+    out.append(str(escape(text[at:])))
+    return Markup("".join(out))
+
+
+templates.env.globals["highlight"] = highlight
 
 
 def page(request: Request, name: str, **ctx) -> HTMLResponse:

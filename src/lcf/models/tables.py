@@ -540,10 +540,22 @@ class EvidenceAsset(Base):
     two files parsing concurrently would otherwise both insert it.
     """
 
-    # Filled by `evidence.assets_of` from the source's filename, for the pill on
-    # the card. Not a column: it is derived, and a template reading it through
-    # the relationship would lazy-load after the session has gone.
+    # Filled by `evidence.assets_of` from the source row, for the card. Not
+    # columns: they are derived, and a template reading them through the
+    # relationship would lazy-load after the session has gone.
     source_kind: str = ""
+    source_name: str = ""
+
+    @property
+    def image_kind(self) -> str:
+        """What this image *is*, which is not what it came out of.
+
+        The pill on an image card says JPG or PNG. Labelling the thumbnail of a
+        photograph `DOCX` describes the envelope rather than the thing, and the
+        envelope already has its own line underneath.
+        """
+        subtype = (self.media_type or "").rpartition("/")[2].lower()
+        return {"jpeg": "jpg", "svg+xml": "svg", "tiff": "tif"}.get(subtype, subtype) or "img"
 
     __tablename__ = "evidence_asset"
     __table_args__ = (UniqueConstraint("case_id", "sha256"),)
