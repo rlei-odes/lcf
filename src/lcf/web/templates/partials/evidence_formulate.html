@@ -62,186 +62,158 @@
         </span>
       </div>
 
-      {% if commands %}
+      {% set by_kind = {} %}
+      {% for c in commands %}{% if c.kind not in by_kind %}{% set _ = by_kind.update({c.kind: c}) %}{% endif %}{% endfor %}
+      {% set shared_ask = (by_kind.get('keyword_ask').ask if by_kind.get('keyword_ask')
+                           else (by_kind.get('ask').ask if by_kind.get('ask') else q.prompt)) %}
+
+      {% if commands and not open_finder %}
       <ul class="plain commands">
         {% for c in commands %}
-        {% set at = loop.index0 %}
-        {% set editing = editing_at == at and finding_for == q.id|string %}
         <li>
-          <div class="command-row">
-            <span class="chip tier-{{ c.kind }}">{{ c.label }}</span>
-            <span class="command-body">{{ c.describe() }}</span>
-            <span class="rowtools-right">
-              {% if not editing %}
-              <button class="tool" type="button"
-                      hx-get="/evidence/{{ case.id }}/questions?finding={{ q.id }}&edit={{ at }}"
-                      hx-target="#formulate-card" hx-swap="outerHTML">edit</button>
-              {% endif %}
-              <form hx-post="/evidence/questions/{{ q.id }}/commands/{{ at }}/remove"
-                    hx-target="#formulate-card" hx-swap="outerHTML" class="inline-form">
-                <button class="tool" type="submit">drop</button>
-              </form>
-            </span>
-          </div>
-
-          {# Editing in place. The kind cannot change here - a pattern and a
-             keyword list have nothing in common to carry across - so it rides
-             along as a hidden field and a different kind means dropping this one
-             and adding another. #}
-          {% if editing %}
-          <form class="command-edit"
-                hx-post="/evidence/questions/{{ q.id }}/commands/{{ at }}"
-                hx-target="#formulate-card" hx-swap="outerHTML">
-            <input type="hidden" name="kind" value="{{ c.kind }}">
-            {% if c.kind == 'pattern' %}
-            <div class="field">
-              <label for="ep-{{ q.id }}-{{ at }}">The pattern</label>
-              <input type="text" id="ep-{{ q.id }}-{{ at }}" name="pattern"
-                     value="{{ c.pattern }}" spellcheck="false">
-            </div>
-            <div class="field">
-              <label for="ee-{{ q.id }}-{{ at }}">Real examples it must still match</label>
-              <input type="text" id="ee-{{ q.id }}-{{ at }}" name="examples"
-                     value="{{ c.examples|join(', ') }}">
-              <span class="hint">
-                Checked on save. A pattern that stops matching what it was built
-                from is refused rather than quietly kept.
-              </span>
-            </div>
-            <input type="hidden" name="note" value="{{ c.note or '' }}">
-            {% else %}
-            {% if c.kind == 'keyword_ask' %}
-            <div class="field">
-              <label for="ek-{{ q.id }}-{{ at }}">Words to look near</label>
-              <input type="text" id="ek-{{ q.id }}-{{ at }}" name="keywords"
-                     value="{{ c.keywords|join(', ') }}">
-            </div>
-            {% endif %}
-            <div class="field">
-              <label for="ea-{{ q.id }}-{{ at }}">What to ask</label>
-              <input type="text" id="ea-{{ q.id }}-{{ at }}" name="ask" value="{{ c.ask }}">
-            </div>
-            {% endif %}
-            <div class="actions">
-              <button class="primary" type="submit">Save</button>
-              <button class="quiet" type="button"
-                      hx-get="/evidence/{{ case.id }}/questions?finding={{ q.id }}"
-                      hx-target="#formulate-card" hx-swap="outerHTML">Cancel</button>
-            </div>
-          </form>
-          {% endif %}
+          <span class="chip tier-{{ c.kind }}">{{ c.label }}</span>
+          <span class="command-body">{{ c.describe() }}</span>
         </li>
         {% endfor %}
       </ul>
       {% endif %}
 
       {% if open_finder %}
-      <div class="finder">
+      {# One form, not three. How a question is found is a single decision with
+         three parts, and the question being asked is shared by the two parts
+         that ask anything - it was always the same sentence, written out three
+         times. A way that is not ticked is not stored, so unticking removes it. #}
+      {# A proposal wins over what is stored. Re-reading the database here is how
+         clearing a pattern, pasting a new example and asking for another one put
+         the old values straight back on the screen. #}
+      {% set offered = proposal if proposal and proposal.question_id == q.id|string
+                       and proposal.pattern is defined else none %}
+      <form class="finder" id="finder-{{ q.id }}"
+            hx-post="/evidence/questions/{{ q.id }}/ways"
+            hx-target="#formulate-card" hx-swap="outerHTML">
         <div class="finder-head">
           <strong>How should this be found?</strong>
           <span class="hint">
-            Pick one. You can add more than one way to the same question, and
-            often should: a pattern catches the number where it has its usual
-            shape, a word catches it where the customer wrote it differently.
+            Tick every way worth trying. A pattern catches the value where it has
+            its usual shape; a word catches it where the customer wrote it
+            differently. Ticking more than one is normal.
+          </span>
+        </div>
+
+        <div class="field shared-ask">
+          <label for="sa-{{ q.id }}">What to ask the assistant</label>
+          <input type="text" id="sa-{{ q.id }}" name="ask" value="{{ shared_ask }}">
+          <span class="hint">
+            Used by both assistant-backed ways below. Filled in from the question
+            above; reword it if a passage needs asking differently.
           </span>
         </div>
 
         <div class="tiers">
-          {# Pattern: the deterministic tier. A complaint number has a shape, a
-             regex finds it exactly, and nothing about it needs a model at run
-             time (EVIDENCE-DESK §5.2). #}
-          <form hx-post="/evidence/questions/{{ q.id }}/pattern"
-                hx-target="#formulate-card" hx-swap="outerHTML" class="tier-form">
-            <h4><span class="chip tier-pattern">Found exactly</span></h4>
+          {% set on = by_kind.get('pattern') %}
+          {% set lit = offered or on %}
+          <div class="tier-form way {{ 'way-on' if lit }}">
+            <label class="way-head">
+              <input type="checkbox" name="use_pattern" value="1" {{ 'checked' if lit }}>
+              <span class="chip tier-pattern">Found exactly</span>
+              <span class="way-state">{{ 'in use' if lit else 'off' }}</span>
+            </label>
             <p class="hint">
               For something with a shape: <code>NW-CL-88213</code>,
-              <code>LOT-2026-0417</code>. Paste one or two real examples and the
-              assistant writes the pattern. It is checked against your examples
-              and run over this pile before you keep it. Costs no assistant calls
-              when you search.
+              <code>LOT-2026-0417</code>. Costs no assistant calls when you search.
             </p>
             <div class="field">
-              <label for="ex-{{ q.id }}">Real examples, comma separated</label>
-              <input type="text" id="ex-{{ q.id }}" name="examples"
-                     placeholder="NW-CL-88213, NW-CL-90104">
+              <label for="pt-{{ q.id }}">The pattern</label>
+              <input type="text" id="pt-{{ q.id }}" name="pattern" spellcheck="false"
+                     value="{{ offered.pattern if offered else (on.pattern if on else '') }}"
+                     placeholder="write one, or have it written below">
             </div>
-            <button type="submit">Write me a pattern</button>
-            <span class="htmx-indicator working">Writing…</span>
-          </form>
+            <div class="field">
+              <label for="ex-{{ q.id }}">Real examples, separated by commas</label>
+              <input type="text" id="ex-{{ q.id }}" name="examples"
+                     value="{{ (offered.examples if offered else (on.examples if on else []))|join(', ') }}"
+                     placeholder="NW-CL-88213, NW-CL-90104">
+              <span class="hint">
+                Paste the values as they appear in the documents, commas between
+                them. Two or three beat one: they are what the pattern is held to
+                and what the assistant reads the shape from. Differently shaped
+                examples are fine, and give a pattern that matches either.
+              </span>
+            </div>
+            <input type="hidden" name="note"
+                   value="{{ offered.note if offered else (on.note if on and on.note else '') }}">
+            <button type="submit" class="quiet"
+                    hx-post="/evidence/questions/{{ q.id }}/pattern"
+                    hx-target="#formulate-card" hx-swap="outerHTML"
+                    hx-include="closest form">Write me a pattern</button>
+          </div>
 
-          {# keyword_ask: narrowed. The tier that makes the cost bearable. #}
-          <form hx-post="/evidence/questions/{{ q.id }}/commands"
-                hx-target="#formulate-card" hx-swap="outerHTML" class="tier-form">
-            <input type="hidden" name="kind" value="keyword_ask">
-            <h4><span class="chip tier-keyword_ask">Found near a word</span></h4>
+          {% set on = by_kind.get('keyword_ask') %}
+          <div class="tier-form way {{ 'way-on' if on }}">
+            <label class="way-head">
+              <input type="checkbox" name="use_keyword_ask" value="1" {{ 'checked' if on }}>
+              <span class="chip tier-keyword_ask">Found near a word</span>
+              <span class="way-state">{{ 'in use' if on else 'off' }}</span>
+            </label>
             <p class="hint">
-              For something described in words near a word you know:
-              <em>Toleranz</em>, <em>spec</em>, <em>Sollmaß</em>. Only passages
-              mentioning one of them are read, so this is the cheap way to use
-              the assistant. Matching is stemmed, so <em>Toleranz</em> finds
-              <em>Toleranzen</em>.
+              Only passages mentioning one of these words are read, so this is the
+              cheap way to use the assistant. Matching is stemmed, so
+              <em>Toleranz</em> finds <em>Toleranzen</em>.
             </p>
             <div class="field">
               <label for="kw-{{ q.id }}">Words to look near</label>
               <input type="text" id="kw-{{ q.id }}" name="keywords"
+                     value="{{ on.keywords|join(', ') if on else '' }}"
                      placeholder="Toleranz, tolerance, Sollmaß">
             </div>
-            <div class="field">
-              <label for="kwask-{{ q.id }}">What to ask about those passages</label>
-              <input type="text" id="kwask-{{ q.id }}" name="ask"
-                     value="{{ q.prompt }}">
-              <span class="hint">
-                Filled in from the question above. Reword it if the passages need
-                a narrower question than the heading does.
-              </span>
-            </div>
-            <div class="actions">
-              <button type="submit">Add this way</button>
-              <button type="submit"
-                      hx-post="/evidence/questions/{{ q.id }}/keywords"
-                      hx-target="#formulate-card" hx-swap="outerHTML"
-                      hx-include="closest form">Suggest more words</button>
-              <span class="htmx-indicator working">Working…</span>
-            </div>
-          </form>
+            <button type="submit" class="quiet"
+                    hx-post="/evidence/questions/{{ q.id }}/keywords"
+                    hx-target="#formulate-card" hx-swap="outerHTML"
+                    hx-include="closest form">Suggest more words</button>
+          </div>
 
-          {# ask: the last resort, and the most expensive. #}
-          <form hx-post="/evidence/questions/{{ q.id }}/commands"
-                hx-target="#formulate-card" hx-swap="outerHTML" class="tier-form">
-            <input type="hidden" name="kind" value="ask">
-            <h4><span class="chip tier-ask">Read from the text</span></h4>
+          {% set on = by_kind.get('ask') %}
+          <div class="tier-form way {{ 'way-on' if on }}">
+            <label class="way-head">
+              <input type="checkbox" name="use_ask" value="1" {{ 'checked' if on }}>
+              <span class="chip tier-ask">Read from the text</span>
+              <span class="way-state">{{ 'in use' if on else 'off' }}</span>
+            </label>
             <p class="hint">
               For something with neither a shape nor a reliable neighbour. The
               best-matching passages in the whole pile are read, at most
               {{ top_k }} per question, which is the cost you are agreeing to.
             </p>
             <div class="field">
-              <label for="ask-{{ q.id }}">What to ask</label>
-              <input type="text" id="ask-{{ q.id }}" name="ask" value="{{ q.prompt }}">
               <span class="hint">
-                Filled in from the question above. Reword it if a passage needs
-                asking differently.
+                Nothing more to set: it asks the question above, of the passages
+                that rank highest for it.
               </span>
             </div>
-            <button type="submit">Add this way</button>
-            <span class="htmx-indicator working">Working…</span>
-          </form>
+          </div>
         </div>
 
-        {# A pattern or a word list just proposed for this question. Below the
-           forms rather than above them: it is the answer to the button that was
-           pressed, and an answer that appears above the question reads as though
-           it had been there all along. #}
-        {% if proposal and proposal.question_id == q.id|string %}
-          {% include "partials/evidence_proposal.html" %}
-        {% endif %}
-      </div>
+        <div class="actions finder-actions">
+          <button class="primary" type="submit">Save how this is found</button>
+          <button class="quiet" type="button"
+                  hx-get="/evidence/{{ case.id }}/questions"
+                  hx-target="#formulate-card" hx-swap="outerHTML">Cancel</button>
+          <span class="htmx-indicator working">Saving…</span>
+        </div>
+
+      </form>
+
+      {# The proposal carries forms of its own, so it sits after this one rather
+         than inside it. Below the form that asked for it either way. #}
+      {% if proposal and proposal.question_id == q.id|string %}
+        {% include "partials/evidence_proposal.html" %}
+      {% endif %}
       {% else %}
       <div class="finder-closed">
         <button class="tool add" type="button"
                 hx-get="/evidence/{{ case.id }}/questions?finding={{ q.id }}"
                 hx-target="#formulate-card" hx-swap="outerHTML">
-          + Add another way to find this
+          Edit how this is found
         </button>
       </div>
       {% endif %}

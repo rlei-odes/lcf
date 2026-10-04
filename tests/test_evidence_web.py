@@ -487,51 +487,144 @@ async def test_a_person_can_label_an_image_themselves(client, case):
     assert "Riefen in der Bohrung" in labelled.text
 
 
-async def test_a_way_to_find_something_can_be_edited_in_place(client, case):
-    """Only dropping and re-adding it would mean retyping the question to fix
-    one word, which is how a keyword list stops being maintained."""
+async def test_how_a_question_is_found_is_one_form(client, case):
+    """Three ways, one save, and the question asked once.
+
+    Both assistant-backed ways ask the same thing, so it is written once above
+    them rather than three times inside them.
+    """
     client.post(f"/evidence/{case}/paste", data={"text": "Reklamation NW-CL-88213 vom 04.03."})
     client.post(
         f"/evidence/{case}/questions", data={"prompt": "Complaint number", "type": "identifier"}
     )
     panel = client.get(f"/evidence/{case}/questions")
-    question = re.search(r"/evidence/questions/([0-9a-f-]{36})/commands", panel.text).group(1)
-    client.post(
-        f"/evidence/questions/{question}/commands",
-        data={"kind": "pattern", "pattern": r"\bNW-CL-\d{5}\b", "examples": "NW-CL-88213"},
-    )
-
-    editing = client.get(f"/evidence/{case}/questions?finding={question}&edit=0")
-    assert "command-edit" in editing.text
-    assert r"\bNW-CL-\d{5}\b" in editing.text, "the editor opens on what is already there"
+    question = re.search(r'id="question-([0-9a-f-]{36})"', panel.text).group(1)
 
     saved = client.post(
-        f"/evidence/questions/{question}/commands/0",
-        data={"kind": "pattern", "pattern": r"\bNW-[A-Z]{2}-\d{5}\b", "examples": "NW-CL-88213"},
+        f"/evidence/questions/{question}/ways",
+        data={
+            "ask": "What is the complaint number?",
+            "use_pattern": "1",
+            "pattern": r"\bNW-CL-\d{5}\b",
+            "examples": "NW-CL-88213",
+            "use_keyword_ask": "1",
+            "keywords": "Reklamation",
+            "use_ask": "1",
+        },
     )
-    assert r"NW-[A-Z]{2}" in saved.text
-    assert r"\bNW-CL-\d{5}\b" not in saved.text, "replaced in place, not added beside"
+    assert "3 ways to find it" in saved.text
+    # Written once in the form, stored on both ways that ask anything.
+    assert saved.text.count("What is the complaint number?") == 2
+    assert r"\bNW-CL-\d{5}\b" in saved.text
 
 
-async def test_an_edit_that_stops_matching_its_examples_is_refused(client, case):
-    """A corrected pattern is no more trusted than a proposed one."""
+async def test_unticking_a_way_removes_it(client, case):
+    """Unticking is how one is dropped: the form is the whole configuration, so
+    a way that is not ticked is not stored."""
     client.post(f"/evidence/{case}/paste", data={"text": "Reklamation NW-CL-88213."})
     client.post(
         f"/evidence/{case}/questions", data={"prompt": "Complaint number", "type": "identifier"}
     )
     panel = client.get(f"/evidence/{case}/questions")
-    question = re.search(r"/evidence/questions/([0-9a-f-]{36})/commands", panel.text).group(1)
+    question = re.search(r'id="question-([0-9a-f-]{36})"', panel.text).group(1)
     client.post(
-        f"/evidence/questions/{question}/commands",
-        data={"kind": "pattern", "pattern": r"\bNW-CL-\d{5}\b", "examples": "NW-CL-88213"},
+        f"/evidence/questions/{question}/ways",
+        data={
+            "ask": "Complaint number",
+            "use_pattern": "1",
+            "pattern": r"\bNW-CL-\d{5}\b",
+            "examples": "NW-CL-88213",
+            "use_ask": "1",
+        },
     )
 
+    fewer = client.post(
+        f"/evidence/questions/{question}/ways", data={"ask": "Complaint number", "use_ask": "1"}
+    )
+    assert "1 way to find it" in fewer.text
+    assert r"\bNW-CL-\d{5}\b" not in fewer.text
+
+
+async def test_a_proposed_pattern_replaces_what_was_in_the_field(client, case, monkeypatch):
+    """Re-reading the stored command here is how clearing a pattern, pasting a
+    new example and asking for another one put the old values back on screen."""
+    from lcf.llm.calls import ProposedPattern
+
+    async def fake(prompt, examples):
+        return ProposedPattern(pattern=r"\bLOT-\d{4}-\d{4}\b", note="a batch code")
+
+    monkeypatch.setattr("lcf.llm.calls.propose_pattern", fake)
+
+    client.post(f"/evidence/{case}/paste", data={"text": "Charge LOT-2026-0417 betroffen."})
+    client.post(
+        f"/evidence/{case}/questions", data={"prompt": "Which batch?", "type": "identifier"}
+    )
+    panel = client.get(f"/evidence/{case}/questions")
+    question = re.search(r'id="question-([0-9a-f-]{36})"', panel.text).group(1)
+    client.post(
+        f"/evidence/questions/{question}/ways",
+        data={
+            "ask": "Which batch?",
+            "use_pattern": "1",
+            "pattern": r"\bOLD-\d{3}\b",
+            "examples": "OLD-123",
+        },
+    )
+
+    offered = client.post(
+        f"/evidence/questions/{question}/pattern", data={"examples": "LOT-2026-0417"}
+    )
+    assert r"\bLOT-\d{4}-\d{4}\b" in offered.text
+    assert "OLD-123" not in offered.text, "the cleared example must not come back"
+    assert r"\bOLD-\d{3}\b" not in offered.text
+
+
+async def test_differently_shaped_examples_are_held_to_all_of_them(client, case, monkeypatch):
+    """Two shapes want alternation. A pattern matching only the first is refused
+    and said so, rather than stored as though it covered both."""
+    from lcf.llm.calls import ProposedPattern
+
+    async def half(prompt, examples):
+        return ProposedPattern(pattern=r"\bNW-CL-\d{5}\b", note="only the first shape")
+
+    monkeypatch.setattr("lcf.llm.calls.propose_pattern", half)
+
+    client.post(f"/evidence/{case}/paste", data={"text": "NW-CL-88213 und LOT-2026-0417."})
+    client.post(
+        f"/evidence/{case}/questions", data={"prompt": "Which identifiers?", "type": "identifier"}
+    )
+    panel = client.get(f"/evidence/{case}/questions")
+    question = re.search(r'id="question-([0-9a-f-]{36})"', panel.text).group(1)
+
+    offered = client.post(
+        f"/evidence/questions/{question}/pattern",
+        data={"examples": "NW-CL-88213, LOT-2026-0417"},
+    )
+    assert "will not do" in offered.text
+    assert "LOT-2026-0417" in offered.text, "it has to name the example that failed"
+
+
+async def test_a_pattern_that_stops_matching_its_examples_is_refused(client, case):
+    """A corrected pattern is no more trusted than a proposed one, and the
+    editor stays open on what was typed because the message is about a field."""
+    client.post(f"/evidence/{case}/paste", data={"text": "Reklamation NW-CL-88213."})
+    client.post(
+        f"/evidence/{case}/questions", data={"prompt": "Complaint number", "type": "identifier"}
+    )
+    panel = client.get(f"/evidence/{case}/questions")
+    question = re.search(r'id="question-([0-9a-f-]{36})"', panel.text).group(1)
+
     refused = client.post(
-        f"/evidence/questions/{question}/commands/0",
-        data={"kind": "pattern", "pattern": r"\bZZ-\d{5}\b", "examples": "NW-CL-88213"},
+        f"/evidence/questions/{question}/ways",
+        data={
+            "ask": "Complaint number",
+            "use_pattern": "1",
+            "pattern": r"\bZZ-\d{5}\b",
+            "examples": "NW-CL-88213",
+        },
     )
     assert "does not match" in refused.text
-    assert r"\bNW-CL-\d{5}\b" in refused.text, "the old one is still what is stored"
+    assert "no way to find it yet" in refused.text, "nothing was stored"
 
 
 async def test_a_dropped_image_is_not_offered_for_captioning(client, case):
@@ -564,11 +657,11 @@ async def test_adding_a_way_to_find_something_re_enables_the_search(client, case
         data={"prompt": "What is the complaint number?", "type": "identifier"},
     )
     panel = client.get(f"/evidence/{case}/questions")
-    question = re.search(r"/evidence/questions/([0-9a-f-]{36})/commands", panel.text).group(1)
+    question = re.search(r'id="question-([0-9a-f-]{36})"', panel.text).group(1)
 
     added = client.post(
-        f"/evidence/questions/{question}/commands",
-        data={"kind": "ask", "ask": "What is the complaint number?"},
+        f"/evidence/questions/{question}/ways",
+        data={"ask": "What is the complaint number?", "use_ask": "1"},
     )
     # The findings panel rides along, and its button is no longer disabled.
     assert 'hx-swap-oob="true"' in added.text
@@ -589,7 +682,7 @@ async def test_an_accepted_finding_keeps_every_place_it_was_found(client, case):
         data={"prompt": "Complaint number", "type": "identifier"},
     )
     panel = client.get(f"/evidence/{case}/questions")
-    question = re.search(r"/evidence/questions/([0-9a-f-]{36})/commands", panel.text).group(1)
+    question = re.search(r'id="question-([0-9a-f-]{36})"', panel.text).group(1)
     async with session() as s:
         await evidence.add_command(
             s, uuid.UUID(question), Command(kind="pattern", pattern=r"\bNW-CL-\d{5}\b")

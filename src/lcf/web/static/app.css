@@ -1136,13 +1136,38 @@ ul.places .quote { margin: var(--s1) 0 0; font-size: 12.5px; }
 button.tool.icon { min-width: 26px; padding: 2px 6px; line-height: 1.2; }
 button.tool.add { color: var(--accent); border-style: dashed; }
 
-.finder {
+form.finder {
   margin-top: var(--s4); padding: var(--s4);
   background: var(--sunken); border-radius: var(--radius-sm);
 }
 .finder-head { margin-bottom: var(--s3); }
 .finder-head .hint { display: block; margin-top: var(--s1); }
 .finder-closed { margin-top: var(--s3); }
+
+/* The question is asked once, above the ways that use it. */
+.shared-ask { margin-bottom: var(--s4); }
+.shared-ask input { font-weight: 600; }
+
+/* Which ways are on has to be visible without reading three paragraphs. An
+   unticked one stays legible rather than disabled: it is an option, not a
+   refusal. */
+.way {
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: var(--s3); background: var(--panel);
+}
+.way-on { border-color: var(--accent-line); background: var(--accent-soft); }
+.way-head {
+  display: flex; align-items: center; gap: var(--s2);
+  cursor: pointer; margin-bottom: var(--s2);
+}
+.way-head input[type="checkbox"] { margin: 0; }
+.way-state {
+  margin-left: auto; font-size: 11px; text-transform: uppercase;
+  letter-spacing: .04em; color: var(--muted);
+}
+.way-on .way-state { color: var(--accent); font-weight: 600; }
+.way:not(.way-on) .field, .way:not(.way-on) > .hint { opacity: .72; }
+.finder-actions { margin-top: var(--s4); }
 
 .new-question {
   margin-top: var(--s5); padding: var(--s4);
@@ -1196,6 +1221,30 @@ figure.asset figcaption .value { font-size: 12.5px; }
   gap: var(--s2); margin-top: auto;
 }
 .asset-save .hint { font-size: 11px; }
+
+/* The image, full size, without leaving the page. `<dialog>` so Escape, the
+   backdrop and focus are the browser's problem rather than ours. */
+dialog.lightbox {
+  border: 0; padding: 0; background: transparent; max-width: 92vw; max-height: 92vh;
+  overflow: visible;
+}
+dialog.lightbox::backdrop { background: rgb(0 0 0 / .72); }
+dialog.lightbox img {
+  display: block; max-width: 92vw; max-height: 80vh; width: auto; height: auto;
+  border-radius: var(--radius-sm); background: var(--panel);
+}
+.lightbox-caption {
+  margin: var(--s3) 0 0; color: #fff; font-size: 13px; line-height: 1.45;
+  max-width: 70ch; text-shadow: 0 1px 2px rgb(0 0 0 / .6);
+}
+.lightbox-close {
+  position: absolute; top: calc(-1 * var(--s5)); right: 0;
+  width: 32px; height: 32px; padding: 0; line-height: 1;
+  border-radius: 50%; border: 1px solid rgb(255 255 255 / .35);
+  background: rgb(0 0 0 / .5); color: #fff; font-size: 15px; cursor: pointer;
+}
+.lightbox-close:hover { background: rgb(0 0 0 / .8); }
+figure.asset a { cursor: zoom-in; display: block; }
 
 button.tool.accept { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, transparent); }
 button.tool.accept:hover { background: var(--ok-soft); }

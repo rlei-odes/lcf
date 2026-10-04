@@ -14,7 +14,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from lcf.core.config import settings
 from lcf.core.db import session
 from lcf.ingest import language as lang
-from lcf.ingest.commands import TIER_LABELS, Command
+from lcf.ingest.commands import COMMAND_KINDS, TIER_LABELS, Command, parse_commands
 from lcf.ingest.retrieval import PatternInvalid, PatternTooSlow
 from lcf.ingest.values import TYPE_NAMES
 from lcf.services import evidence, extraction, jobs
@@ -383,41 +383,77 @@ async def add_command(request: Request, question_id: UUID):
     return await _formulate(request, case_id, problems=problems, finding=str(question_id))
 
 
-@router.post("/evidence/questions/{question_id}/commands/{at}", response_class=HTMLResponse)
-async def edit_command(request: Request, question_id: UUID, at: int):
-    """Save an edited way to find something, in place.
+@router.post("/evidence/questions/{question_id}/ways", response_class=HTMLResponse)
+async def set_ways(request: Request, question_id: UUID):
+    """Save how a question is found: all three ways, from one form.
 
-    The same reading and the same verification as adding one: a corrected
-    pattern is no more trusted than a proposed one, and a keyword list edited
-    down to nothing is refused rather than stored as a command that selects
-    every passage.
+    The question being asked is written once and shared by the two ways that ask
+    anything, which is what it always was in practice - both were prefilled from
+    the prompt and both are about the same thing. A way that is not ticked is not
+    stored, so unticking is how one is removed.
+
+    A pattern is verified here exactly as it is when proposed: the field is
+    editable, so a person may correct the assistant's regex or write their own,
+    and either way it must compile, must not match everywhere, and must still
+    match the examples it was built from.
     """
     form = await request.form()
-    ticked = [str(v) for v in form.getlist("keywords") if str(v).strip()]
+    asked = str(form.get("ask") or "").strip()
     problems: list[str] = []
+    commands: list[Command] = []
 
     async with session() as s:
         question = await evidence.get_question(s, question_id)
         case_id = question.case_id
+        # Ways of a kind beyond the first are kept untouched: the form edits one
+        # of each, and silently dropping a second pattern somebody added would
+        # lose work they cannot see from here.
+        existing = parse_commands(question.commands)
+        extra = [c for kind in COMMAND_KINDS for c in [x for x in existing if x.kind == kind][1:]]
+
         try:
-            command = Command.model_validate(
-                {
-                    "kind": str(form.get("kind") or "pattern"),
-                    "pattern": str(form.get("pattern") or "") or None,
-                    "keywords": ticked if len(ticked) > 1 else (ticked[0] if ticked else []),
-                    "ask": str(form.get("ask") or "") or None,
-                    "examples": str(form.get("examples") or ""),
-                    "note": str(form.get("note") or "") or None,
-                }
-            )
-            if command.kind == "pattern":
-                _verify(command)
-            await evidence.replace_command(s, question_id, at, command)
-        except (evidence.Refused, evidence.NotFound, PatternInvalid, PatternTooSlow) as exc:
+            if form.get("use_pattern"):
+                commands.append(
+                    Command.model_validate(
+                        {
+                            "kind": "pattern",
+                            "pattern": str(form.get("pattern") or "") or None,
+                            "examples": str(form.get("examples") or ""),
+                            "note": str(form.get("note") or "") or None,
+                        }
+                    )
+                )
+                _verify(commands[-1])
+            if form.get("use_keyword_ask"):
+                # Typed terms and ticked boxes arrive under the same name and
+                # have to merge: the field holds a comma-separated list and each
+                # box holds one word, so every value is split and the lot is
+                # flattened. Deduplication is the model's own validator.
+                words = [
+                    part.strip()
+                    for value in form.getlist("keywords")
+                    for part in str(value).split(",")
+                    if part.strip()
+                ]
+                commands.append(
+                    Command.model_validate(
+                        {"kind": "keyword_ask", "keywords": words, "ask": asked or None}
+                    )
+                )
+            if form.get("use_ask"):
+                commands.append(Command.model_validate({"kind": "ask", "ask": asked or None}))
+
+            await evidence.set_commands(s, question_id, commands + extra)
+        except (evidence.Refused, PatternInvalid, PatternTooSlow) as exc:
             problems.append(str(exc))
         except ValueError as exc:
             problems.append(_readable(exc))
-    return await _formulate(request, case_id, problems=problems, finding=str(question_id))
+
+    # A save that worked closes the editor; one that did not keeps it open on
+    # what was typed, because the message is about a field in it.
+    return await _formulate(
+        request, case_id, problems=problems, finding=str(question_id) if problems else ""
+    )
 
 
 def _verify(command: Command) -> None:

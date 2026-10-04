@@ -240,7 +240,7 @@ Chunking is structural first and budgeted second:
    model, and a reader, what a bare row of numbers is about.
 
 The budget is in **characters, not tokens**, and that is a knowing approximation. Nothing in the
-application counts tokens yet ([BACKLOG §4](BACKLOG.md#4-context-budget)); the budget here is set
+application counts tokens yet ([BACKLOG §6](BACKLOG.md#6-context-budget)); the budget here is set
 conservatively enough that the difference cannot matter, and when a tokenizer lands it replaces this
 bound rather than being retrofitted around it.
 
@@ -985,4 +985,4 @@ rather than fails.
 | Per-chunk language detection | A mixed-language thread is mis-stemmed in its minority chunks, which costs a rank position. Cheap to add if that ever costs a finding ([§4.4](#44-language-is-a-property-of-the-source)) |
 | Cross-case search | A case is a pile about one problem. Searching across piles is the retrieval product again |
 | Question-set versioning | Something pins a set. Nothing does ([§5.5](#55-question-sets)) |
-| Auth on the desk | [BACKLOG §7](BACKLOG.md#7-accounts-and-roles), with everything else |
+| Auth on the desk | [BACKLOG §9](BACKLOG.md#9-accounts-and-roles), with everything else |

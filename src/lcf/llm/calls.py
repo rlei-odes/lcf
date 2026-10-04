@@ -371,14 +371,43 @@ async def propose_pattern(prompt: str, examples: list[str]) -> ProposedPattern:
         f"## Real examples, every one of which your pattern must match\n\n{listed}"
     )
 
-    completion = await complete_json(
-        system, user, PATTERN_SCHEMA, schema_name="pattern", purpose="propose_pattern"
-    )
-    return ProposedPattern(
-        pattern=str(completion.data.get("pattern") or "").strip(),
-        note=" ".join(str(completion.data.get("note") or "").split()),
-        completion=completion,
-    )
+    # One retry, told exactly which examples it missed. The verification that
+    # makes this call safe is a function, so its result is something the model
+    # can be handed back - and a person who pasted two differently shaped
+    # examples should not have to press the button again to get the alternation
+    # the model is perfectly capable of writing.
+    for attempt in (1, 2):
+        completion = await complete_json(
+            system, user, PATTERN_SCHEMA, schema_name="pattern", purpose="propose_pattern"
+        )
+        written = ProposedPattern(
+            pattern=str(completion.data.get("pattern") or "").strip(),
+            note=" ".join(str(completion.data.get("note") or "").split()),
+            completion=completion,
+        )
+        if attempt == 2 or not written.pattern:
+            return written
+        missed = _unmatched(written.pattern, wanted)
+        if not missed:
+            return written
+        user += (
+            f"\n\n## Your previous answer\n\n`{written.pattern}` does not match "
+            + ", ".join(f"`{m}`" for m in missed)
+            + ". Write one that matches every example above. Where the examples have "
+            "genuinely different shapes, alternation is the right answer: "
+            "`(?:SHAPE-A|SHAPE-B)`."
+        )
+    return written
+
+
+def _unmatched(pattern: str, examples: list[str]) -> list[str]:
+    """Which examples this pattern fails, or none. Never raises."""
+    from lcf.ingest import retrieval
+
+    try:
+        return retrieval.fullmatch_all(pattern, examples)
+    except Exception:  # noqa: BLE001 - an unusable pattern is the caller's to report
+        return list(examples)
 
 
 @dataclass

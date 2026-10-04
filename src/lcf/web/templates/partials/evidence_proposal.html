@@ -1,62 +1,53 @@
-{# A pattern or a word list the assistant has just proposed, waiting to be kept.
+{# What the assistant just proposed, shown under the form it was asked from.
 
-   Neither is data yet. A pattern has already been held to the examples it was
-   built from and run over this pile; a word list is inert until somebody ticks
-   something. That verification-or-confirmation step is the whole reason these are
-   safe to ask a model for (EVIDENCE-DESK §8). #}
+   Neither a pattern nor a word list is data yet. The pattern has already been
+   held to the examples it was built from and run over this pile; the words are
+   inert until somebody ticks them. That verification-or-confirmation step is the
+   whole reason these are safe to ask a model for (EVIDENCE-DESK §8).
+
+   Nothing here saves on its own. The proposed pattern is already in the field
+   above - this is its evidence, not a second copy of it - and the one Save
+   button on the form is what commits it. Two save buttons for one setting is
+   how a person ends up looking at a field that says one thing and a stored
+   value that says another. #}
 
 {% if proposal.pattern is defined %}
 <div class="proposal {{ 'proposal-bad' if proposal.problem }}">
   {% if proposal.problem %}
   <p class="lead">
-    <strong>That pattern was refused.</strong> {{ proposal.problem }}
+    <strong>That pattern will not do.</strong> {{ proposal.problem }}
   </p>
   <p class="hint">
-    It is here so you can correct it rather than start again. The field below is
-    editable, and it is checked again when you keep it.
+    It has been put in the field above anyway, so you can correct it rather than
+    start again. It is checked once more when you save.
   </p>
   {% else %}
   <p class="lead">
-    <strong>{{ count(proposal.matches|length, 'match') }}</strong>
-    in {{ count(proposal.scanned, 'passage') }} of this pile.
+    <strong>{{ count(proposal.matches|length, 'match', 'matches') }}</strong>
+    in {{ count(proposal.scanned, 'passage') }} of this pile, for
+    <code>{{ proposal.pattern }}</code>.
     {%- if not proposal.matches %}
     Nothing matched, which usually means the pattern is too tight, or that what
     you are looking for is not in the files yet.
     {%- endif %}
   </p>
+  {% if proposal.note %}<p class="hint">{{ proposal.note }}</p>{% endif %}
   {% endif %}
 
-  <form hx-post="/evidence/questions/{{ proposal.question_id }}/commands"
-        hx-target="#formulate-card" hx-swap="outerHTML">
-    <input type="hidden" name="kind" value="pattern">
-    <input type="hidden" name="examples" value="{{ proposal.examples|join(', ') }}">
-    <input type="hidden" name="note" value="{{ proposal.note }}">
-    <div class="field">
-      <label for="pat-{{ proposal.question_id }}">The pattern</label>
-      <input type="text" id="pat-{{ proposal.question_id }}" name="pattern"
-             value="{{ proposal.pattern }}" class="mono">
-      {% if proposal.note %}<span class="hint">{{ proposal.note }}</span>{% endif %}
-    </div>
-
-    {% if proposal.matches %}
-    <ul class="plain matches">
-      {% for m in proposal.matches %}
-      <li>
-        <code>{{ m.value }}</code>
-        <span class="where">{{ m.where }}</span>
-        <blockquote class="quote">{{ m.quote }}</blockquote>
-      </li>
-      {% endfor %}
-    </ul>
-    {% endif %}
-
-    <div class="actions">
-      <button class="primary" type="submit">Keep this pattern</button>
-      <span class="why">
-        It is checked against your examples again before it is saved.
-      </span>
-    </div>
-  </form>
+  {% if proposal.matches %}
+  <ul class="plain matches">
+    {% for m in proposal.matches %}
+    <li>
+      <span class="value">{{ m.value }}</span>
+      <span class="where">{{ m.where }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  <p class="hint">
+    Keep it with <strong>Save how this is found</strong> above, or edit the
+    pattern first.
+  </p>
+  {% endif %}
 </div>
 {% endif %}
 
@@ -66,16 +57,14 @@
     Words worth searching for, read in <strong>{{ proposal.language }}</strong>
     because that is what the material is in. Tick the ones to keep.
   </p>
-  <form hx-post="/evidence/questions/{{ proposal.question_id }}/commands"
+  {# Posts the whole finder, not just these boxes: `hx-include` pulls in the
+     question being asked and the other ways, so keeping words is a save of the
+     same configuration rather than a second, partial one. #}
+  <form hx-post="/evidence/questions/{{ proposal.question_id }}/ways"
+        hx-include="#finder-{{ proposal.question_id }}"
         hx-target="#formulate-card" hx-swap="outerHTML">
-    <input type="hidden" name="kind" value="keyword_ask">
+    <input type="hidden" name="use_keyword_ask" value="1">
     <fieldset class="choices">
-      {% for k in proposal.keywords %}
-      <label class="option">
-        <input type="checkbox" name="keywords" value="{{ k }}" checked>
-        <span>{{ k }}</span> <span class="why">already on the list</span>
-      </label>
-      {% endfor %}
       {% for t in proposal.terms %}
       <label class="option">
         <input type="checkbox" name="keywords" value="{{ t.term }}" checked>
@@ -86,15 +75,11 @@
     {% if not proposal.terms %}
     <p class="hint">Nothing further was suggested.</p>
     {% endif %}
-    <div class="field">
-      <label for="kwa-{{ proposal.question_id }}">What to ask of passages that hit</label>
-      <input type="text" id="kwa-{{ proposal.question_id }}" name="ask" required
-             value="{{ proposal.prompt }}">
-    </div>
     <div class="actions">
       <button class="primary" type="submit">Keep the ticked words</button>
       <span class="why">
-        A word in every document of this kind narrows nothing, so untick those.
+        Added to the words already in the field above. One that appears in every
+        document of this kind narrows nothing, so untick those.
       </span>
     </div>
   </form>

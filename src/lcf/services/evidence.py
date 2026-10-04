@@ -699,24 +699,19 @@ async def add_command(
     return question
 
 
-async def replace_command(
-    session: AsyncSession, question_id: UUID, at: int, command: Command
+async def set_commands(
+    session: AsyncSession, question_id: UUID, commands: list[Command]
 ) -> EvidenceQuestion:
-    """Put an edited command back where the old one was.
+    """Replace every way this question is found, in one go.
 
-    In place rather than drop-and-add, because position is what a person reads
-    the list by and what the remove button is indexed on. A keyword list is the
-    thing most often got slightly wrong, and retyping the question to fix one
-    word is how a list stops being maintained.
+    The whole list rather than one entry, because the surface that writes it is
+    one form: how a question is found is a single decision with three parts, not
+    three independent ones, and the question it asks is shared between the two
+    parts that ask anything. Editing them one at a time is what made the same
+    sentence appear three times on the panel.
     """
     question = await get_question(session, question_id)
-    current = parse_commands(question.commands)
-    if not 0 <= at < len(current):
-        raise NotFound(f"no way to find it at position {at}")
-    if current[at].kind != command.kind:
-        raise Refused("A way to find something cannot change kind. Drop it and add another.")
-    current[at] = command
-    question.commands = dump_commands(current)
+    question.commands = dump_commands(commands)
     await touch(session, question.case_id)
     await session.flush()
     return question

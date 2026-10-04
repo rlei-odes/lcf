@@ -50,7 +50,11 @@
   <div class="tray">
     {% for a in pending + kept %}
     <figure class="asset {{ 'asset-kept' if a.status == 'accepted' }}">
-      <a href="/evidence/images/{{ a.id }}" target="_blank" rel="noopener">
+      {# Opens in the page rather than a tab: looking at a photograph is part of
+         deciding about it, and a tab loses the card it belongs to. The link is a
+         real href, so it still works with the script absent. #}
+      <a href="/evidence/images/{{ a.id }}" target="_blank" rel="noopener"
+         data-lightbox="{{ a.label or a.caption or 'image from the pile' }}">
         <img src="/evidence/images/{{ a.id }}/thumb" alt="{{ a.caption or 'image from the pile' }}"
              loading="lazy" width="160">
       </a>
@@ -115,7 +119,10 @@
     <div class="tray">
       {% for a in gone %}
       <figure class="asset asset-gone">
-        <img src="/evidence/images/{{ a.id }}/thumb" alt="dropped image" loading="lazy" width="90">
+        <a href="/evidence/images/{{ a.id }}" target="_blank" rel="noopener"
+           data-lightbox="{{ a.caption or 'dropped image' }}">
+          <img src="/evidence/images/{{ a.id }}/thumb" alt="dropped image" loading="lazy" width="90">
+        </a>
         <figcaption>
           <span class="hint">{{ a.caption|truncate(70) if a.caption else 'no description' }}</span>
         </figcaption>

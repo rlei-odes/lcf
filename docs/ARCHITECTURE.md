@@ -604,7 +604,7 @@ requires of a service on a network with no egress.
 
 | Need | Library | When |
 |---|---|---|
-| Tokenizer | **tiktoken** or the model's own | A real context budget, and a chunk budget in tokens rather than characters ([BACKLOG §4](BACKLOG.md#4-context-budget)) |
+| Tokenizer | **tiktoken** or the model's own | A real context budget, and a chunk budget in tokens rather than characters ([BACKLOG §6](BACKLOG.md#6-context-budget)) |
 | `.msg`, `.xlsx` | **extract-msg**, **openpyxl** | Somebody is sent one. Each is a module behind the existing dispatch |
 | Git sync | **dulwich** | Pure-Python, no libgit2 — if export/import ever proves insufficient |
 

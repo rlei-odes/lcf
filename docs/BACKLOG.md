@@ -26,7 +26,48 @@ The renderer half is the smaller one and now has bytes to place: docxtpl has `In
 `BlockValue.rows` already carries the caption dicts, so it is a change to `_write_block` and
 `_write_tags` plus a decision about where the image comes from.
 
-## 2. The editor island
+## 2. Findings into a document
+
+The last piece of [EVIDENCE-DESK §11](EVIDENCE-DESK.md#11-the-seam-to-the-rest-of-the-app), and the
+smallest: a button under *Download findings* that starts a document from them. Every part exists —
+`doc_types.list_types` for the selector, `documents.create`, `intake.record`, and the `intake` job —
+so it is one route, one form and no schema change.
+
+It works because `extraction.as_markdown` already emits every accepted value with the passage it came
+from, which is what `map_evidence_to_sections` requires. The case keeps no link to the document
+([EVIDENCE-DESK §4.6](EVIDENCE-DESK.md#46-a-schema-level-below-evidence_item)); the export's own
+heading names the case.
+
+The open question is empirical: whether `map_evidence_to_sections` files that shape well, since it was
+built for loose notes rather than for a structured list. If it does not, the export format is what
+changes.
+
+## 3. Summarising a pile
+
+Extraction answers questions that were asked. *"What does this say?"* is a different request, and the
+two ways to serve it are not the same feature:
+
+| | What it gives | Verifiable | May reach a document |
+|---|---|---|---|
+| **A digest** | Several claims per source, each with a verbatim quote | Yes, by `quoted_from` | Yes |
+| **An overview** | Prose, for deciding which file to open | No | **No** |
+
+The digest is the smaller build and the one that fits: it is `answer_from_chunk` asked for the notable
+claims rather than one value, returning a list. Candidate storage, deduplication, the review surface
+and the export all work unchanged — the only gap is that the call returns one value per passage.
+
+The overview must never reach a document. In an intake box, `map_evidence_to_sections` would file
+model-written sentences as the author's evidence and `quoted_from` would verify them against the
+summary rather than the source, which is [invariant I](DESIGN.md#i-content-exists-only-after-a-human-accepted-it)
+broken silently.
+
+Whichever is built: summarise **per source**, not per case. A source never changes, so its summary is
+computed once and stored on its row; the case-level one folds those, bounded by file count rather than
+passage count. And fold only when a source does not fit a single call — most do, which makes the
+recursion a fallback rather than the design. That fit check is [§6](#6-context-budget)'s tokenizer,
+earning itself.
+
+## 4. The editor island
 
 Step 6, and the only substantial JavaScript the design calls for. Nothing exists —
 `assets/` is not in the repo, and `web/static/` holds only small page scripts.
@@ -39,7 +80,7 @@ Step 6, and the only substantial JavaScript the design calls for. Nothing exists
 See [ARCHITECTURE §6](ARCHITECTURE.md#6-the-editor-island). Block-level accept/reject works today,
 so this is a refinement of a working flow rather than a gap in it.
 
-## 3. Markdown normalisation
+## 5. Markdown normalisation
 
 [DESIGN §9](DESIGN.md#9-markdown-integrity) specifies three mechanisms for keeping prose inside the
 subset. The second — parse every LLM output to an AST server-side and re-render it canonically,
@@ -50,7 +91,7 @@ dropping anything outside the subset — is not built. `src/lcf/markdown/` does 
 When this lands, `render/docx.py`'s `_rich_paragraphs` should consume the normalised AST rather
 than parsing the source itself.
 
-## 4. Context budget
+## 6. Context budget
 
 [ARCHITECTURE §5.3](ARCHITECTURE.md#53-context-budget) says the budget check is "a token count
 against a configured window, not a guess". It is currently neither — nothing counts tokens.
@@ -66,7 +107,7 @@ budget is in characters, set low enough that the difference cannot matter
 ([EVIDENCE-DESK §4.5](EVIDENCE-DESK.md#45-chunking-and-what-a-chunk-carries)). One tokenizer would
 serve both, and would replace that bound rather than being retrofitted around it.
 
-## 5. Exemplars
+## 7. Exemplars
 
 The data model has an `exemplar` table and `llm/calls.py:60` marks where they belong in the prompt.
 Neither harvesting accepted content nor injecting it is built, and neither is the n-gram leakage
@@ -74,7 +115,7 @@ check from [ARCHITECTURE §5.4](ARCHITECTURE.md#exemplar-leakage).
 
 Worth doing only once there is enough accepted content in one deployment to harvest from.
 
-## 6. Structured spec editor follow-ups
+## 8. Structured spec editor follow-ups
 
 From [ARCHITECTURE §15.5](ARCHITECTURE.md#155-what-it-cost-and-what-it-bought):
 
@@ -90,7 +131,7 @@ From [ARCHITECTURE §15.5](ARCHITECTURE.md#155-what-it-cost-and-what-it-bought):
 - **A diff against the version a draft is based on.** People stop thinking in versions once there is
   autosave. A text diff against `based_on` is the honest first version.
 
-## 7. Accounts and roles
+## 9. Accounts and roles
 
 There is no authentication. Anyone who can reach the application can use all of it, including
 `/setup`, which writes the database URL, the S3 credentials, the LLM endpoint and the house style
@@ -110,7 +151,7 @@ Worth noting what it would *not* fix: the LLM endpoint is settable from that pag
 reaches it can point drafting at a server they control and have the author's material sent there.
 That makes the endpoint setting the most sensitive thing on the page, ahead of the database URL.
 
-## 8. Known issues
+## 10. Known issues
 
 **LibreOffice warns "non-standard file format" on generated `.docx` files.** The file opens, edits
 and round-trips correctly. Verified about the generated starter: it is a valid OPC package,
@@ -125,11 +166,11 @@ but it makes the file look noisier than the document it produces. A more compact
 testing against a restyled table before adopting.
 
 **The markdown subset is enforced on the way out but not on the way in.** See
-[§3](#3-markdown-normalisation). Nothing else in [ARCHITECTURE §3](ARCHITECTURE.md#3-repository-layout)
+[§5](#5-markdown-normalisation). Nothing else in [ARCHITECTURE §3](ARCHITECTURE.md#3-repository-layout)
 names a module that does not exist any more: `evidence/` and `jobs/` live inside `services/` and are
 unlikely to move, `schemas/` is `llm/schemas.py`, and `ingest/` arrived with the evidence desk.
 
-## 9. Deliberately deferred
+## 11. Deliberately deferred
 
 Not forgotten — decided against for now, with the condition that would change the answer.
 
