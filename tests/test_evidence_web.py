@@ -631,6 +631,24 @@ async def test_a_pattern_that_stops_matching_its_examples_is_refused(client, cas
     assert "no way to find it yet" in refused.text, "nothing was stored"
 
 
+async def test_an_upload_gets_a_card_that_polls_for_its_parse(client, case):
+    """A parse is queued per file; the panel reporting on it is per case.
+
+    Asking for a job filed under the case id finds nothing, because none was ever
+    filed there — so the card that polls never appeared and a row sat on
+    "waiting" until somebody reloaded the page.
+    """
+    data = fixtures.docx([("Heading 1", "1. Vorgang"), ("", "Charge LOT-2026-0417.")])
+    panel = client.post(
+        f"/evidence/{case}/sources",
+        files={"files": ("Reklamation.docx", data, FORMAT_DOCX)},
+    )
+    # The job card, with the URL it reloads the panel from when the parse ends.
+    assert "/evidence/" in panel.text and "gather" in panel.text
+    assert "hx-get" in panel.text, "something has to poll"
+    await _settle(case)
+
+
 async def test_the_same_file_twice_is_listed_once_and_read_once(client, case):
     """Dropping a `.eml` in brings its attachments as sources, so dropping one of
     those in directly as well is the ordinary way a case holds a document twice,

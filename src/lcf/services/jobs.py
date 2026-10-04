@@ -184,6 +184,27 @@ async def running_for_scope(scope: str, kind: str | None = None) -> Job | None:
         return await s.scalar(query.order_by(Job.created_at.desc()).limit(1))
 
 
+async def running_for_any(scopes: list[str], kind: str | None = None) -> Job | None:
+    """The job somebody is waiting on, across several scopes.
+
+    Parsing is queued per *file*, because eight files should parse concurrently
+    and one unreadable PDF among them should fail alone. The panel that reports
+    on them is per *case*, so it has to ask about all of its sources at once —
+    asking about the case id finds nothing, since no job was ever filed under it.
+    """
+    if not scopes:
+        return None
+    async with session() as s:
+        query = select(Job).where(
+            Job.scope.in_(scopes),
+            Job.document_id.is_(None),
+            Job.status.in_(("queued", "running")),
+        )
+        if kind is not None:
+            query = query.where(Job.kind == kind)
+        return await s.scalar(query.order_by(Job.created_at).limit(1))
+
+
 async def _update(job_id: UUID, **fields: Any) -> None:
     async with session() as s:
         job = await s.get(Job, job_id)

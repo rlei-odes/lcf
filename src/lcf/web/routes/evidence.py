@@ -87,7 +87,10 @@ async def _desk_context(case_id: UUID) -> dict:
         # to it rather than only in the plan.
         "top_k": settings().extract_top_k,
         "max_images": settings().llm_max_images_per_call,
-        "parsing": await jobs.running_for_scope(str(case_id), "parse_source"),
+        # Asked across the case's own sources: a parse is queued per file, so a
+        # job filed under the case id has never existed and the card that polls
+        # for one never appeared.
+        "parsing": await jobs.running_for_any([str(s.id) for s in sources], "parse_source"),
         "running": await jobs.running_for_scope(str(case_id), "extract"),
         "captioning": await jobs.running_for_scope(str(case_id), "caption_assets"),
     }

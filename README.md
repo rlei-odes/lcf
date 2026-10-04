@@ -19,6 +19,14 @@ A **rule builder** defines document types: sections, the questions a creator mus
 requirements, quality criteria, and a branded docx template. A **document creator** then works
 through a guided flow that drafts what it can from the material supplied and asks about the rest.
 
+An **evidence desk** handles what comes before that. A complaint does not arrive as a document; it
+arrives as a pile — the customer's form, a measurement report, photographs, a mail thread four
+forwards deep, every customer's template different. Drop the lot in, write down once what has to come
+out of it (*which batches? what was measured? what is their complaint number?*), and the desk finds
+candidates and shows the passage behind each one for you to accept or dismiss. Patterns cost no model
+calls at all, and the questions save as a set, so the next complaint from the same customer starts
+pre-wired.
+
 Made for quality management and technical writing, where a document has to obey a standard rather
 than merely read well: every section carries its own pass/fail checks, and the document cannot be
 exported until they pass or someone records, permanently, why they overrode them.

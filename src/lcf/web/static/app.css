@@ -159,6 +159,12 @@ header.top .sub {
   border-left: 1px solid var(--line); padding-left: var(--s5);
 }
 header.top .sub:empty { display: none; }
+/* Pushed to the far right by the margin rather than by a spacer element, and in
+   the subtitle's own colour and size: it is a label on the page, not a reading. */
+header.top .version {
+  margin-left: auto; flex: none;
+  color: var(--muted); font-size: 13px; font-family: var(--mono);
+}
 header.top .sub a { color: var(--muted); }
 header.top .sub a:hover { color: var(--accent); }
 header.top .spacer { margin-left: auto; }

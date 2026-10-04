@@ -7,6 +7,7 @@ would fail at render time rather than at import — which is why routers import
 """
 
 from datetime import UTC
+from functools import lru_cache
 from pathlib import Path
 
 from fastapi import Request
@@ -141,6 +142,26 @@ def highlight(quote: str, value: str) -> Markup:
 
 
 templates.env.globals["highlight"] = highlight
+
+
+@lru_cache(maxsize=1)
+def version() -> str:
+    """What is running, from the package metadata rather than a second copy.
+
+    `pyproject.toml` already declares it; restating it here would be one more
+    thing to remember on a release. An editable install reads it straight from
+    the project, so it is right in development too.
+    """
+    from importlib.metadata import PackageNotFoundError
+    from importlib.metadata import version as installed
+
+    try:
+        return installed("lcf")
+    except PackageNotFoundError:  # pragma: no cover — only outside an install
+        return "dev"
+
+
+templates.env.globals["version"] = version
 
 
 def page(request: Request, name: str, **ctx) -> HTMLResponse:

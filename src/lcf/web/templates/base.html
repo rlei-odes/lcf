@@ -38,6 +38,10 @@
     </nav>
     {% endif %}
     <span class="sub">{% block subtitle %}{% endblock %}</span>
+    {# Far right, so it is the last thing read rather than something competing
+       with where you are. Worth having on screen: the first question about any
+       behaviour is which build is showing it. #}
+    <span class="version">v{{ version() }}</span>
   </header>
   <main>{% block content %}{% endblock %}</main>
 </body>
