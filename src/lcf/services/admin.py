@@ -14,7 +14,7 @@ import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lcf.core.config import settings
@@ -93,9 +93,11 @@ def _redact(url: str) -> str:
 
 
 async def probe_database(session: AsyncSession) -> Probe:
+    from lcf.services.setup import VERSION_SQL, backend_of
+
     s = settings()
     try:
-        version = await session.scalar(select(func.version()))
+        version = await session.scalar(select(text(VERSION_SQL[backend_of(s.db_url)])))
         return Probe("Database", _redact(s.db_url), True, str(version).split(" on ")[0])
     except Exception as exc:  # noqa: BLE001 — a probe reports every failure the same way
         return Probe(

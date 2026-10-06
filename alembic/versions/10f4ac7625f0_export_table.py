@@ -28,7 +28,7 @@ def upgrade() -> None:
     sa.Column('gate_passed', sa.Boolean(), nullable=False),
     sa.Column('blockers', sa.Integer(), nullable=False),
     sa.Column('override_reason', sa.Text(), nullable=True),
-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     sa.ForeignKeyConstraint(['document_id'], ['document.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )

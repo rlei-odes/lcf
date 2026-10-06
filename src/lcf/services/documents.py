@@ -107,6 +107,7 @@ async def create(
         category="document",
         document_id=document.id,
         meta={"doc_type": spec.title, "version": spec.version},
+        session=session,
     )
     return document
 

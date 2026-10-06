@@ -1,0 +1,29 @@
+{# The rail. Re-rendered out of band by every step that finishes, so the ticks
+   and the meter follow the steps rather than waiting for a reload. #}
+<nav class="sections card">
+  <div class="rail-head">
+    <p class="rail-title">Setting up</p>
+    <div class="rail-sub">nothing is stored until a step passes</div>
+    {# Readiness counts the steps the installation cannot work without. An
+       optional one is shown and can be ticked, but leaving it undone is not an
+       unfinished setup, so it must not hold the meter below full. #}
+    {% set needed = state.steps|rejectattr('optional')|list %}
+    {% set done = needed|selectattr('done')|list|length %}
+    <div class="meter {{ 'done' if done == needed|length }}">
+      <span style="width: {{ (100 * done / needed|length)|round|int }}%"></span>
+    </div>
+    <div class="meter-note">{{ done }} of {{ needed|length }} ready</div>
+  </div>
+
+  {% for s in state.steps %}
+  <a href="#step-{{ s.key }}">
+    <span class="step-n">{{ loop.index }}</span>
+    <span class="dot {{ 's-complete' if s.done else 's-empty' }}">{{ '✓' if s.done else '·' }}</span>
+    <span class="step-name">{{ s.title }}{% if s.optional %} <span class="hint" style="display:inline">optional</span>{% endif %}</span>
+  </a>
+  {% endfor %}
+
+  <div class="hint" style="margin-top:var(--s4);padding:0 var(--s2)">
+    Configuration is written to<br><code style="font-size:11px">{{ state.env_path }}</code>
+  </div>
+</nav>

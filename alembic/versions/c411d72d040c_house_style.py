@@ -16,6 +16,14 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    # SQLite has no clock_timestamp(), and CURRENT_TIMESTAMP resolves to the
+    # second — too coarse for a column whose job is to order rows. See
+    # models/tables.py:wall_clock.
+    statement_time = sa.text(
+        "clock_timestamp()"
+        if op.get_bind().dialect.name == "postgresql"
+        else "strftime('%Y-%m-%d %H:%M:%f000', 'now')"
+    )
     op.create_table(
         'house_style',
         sa.Column('id', sa.Uuid(), nullable=False),
@@ -28,7 +36,7 @@ def upgrade() -> None:
         sa.Column(
             'uploaded_at',
             sa.DateTime(timezone=True),
-            server_default=sa.text('clock_timestamp()'),
+            server_default=statement_time,
             nullable=False,
         ),
         sa.PrimaryKeyConstraint('id'),

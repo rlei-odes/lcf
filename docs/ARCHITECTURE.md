@@ -19,14 +19,14 @@
 │          spec · engine · llm · evidence · render · jobs    │
 └───────────┬──────────────┬──────────────┬──────────────────┘
             │              │              │
-   OpenAI-compatible    asyncpg      S3 (boto3)
+   OpenAI-compatible  SQLAlchemy   S3 (boto3)
             │              │              │
             ▼              ▼              ▼
    ┌────────────────┐  ┌──────────────────────────┐
    │  LLM host      │  │  data host               │
    │                │  │                          │
    │  vLLM          │  │  PostgreSQL   versitygw  │
-   │  multimodal    │  │               (S3 API)   │
+   │  multimodal    │  │  or SQLite    (S3 API)   │
    │  (image budget │  │                          │
    │   per call)    │  │                          │
    └────────────────┘  └──────────────────────────┘
@@ -67,7 +67,7 @@ an HTTP-first mandate did.
 | CSS | Tailwind CLI (standalone binary) | No Node project required |
 | Validation | Pydantic v2 | Also the source of every LLM output schema |
 | Settings | pydantic-settings | `.env` driven |
-| ORM | SQLAlchemy 2 (async) + asyncpg | |
+| ORM | SQLAlchemy 2 (async) + asyncpg or aiosqlite | |
 | Migrations | Alembic | From commit 1 |
 | LLM client | `openai` SDK → vLLM | OpenAI-compatible, guided decoding |
 | Markdown | markdown-it-py | Parse, restrict, normalise (DESIGN §9) |
@@ -178,6 +178,40 @@ question_set         key, title, questions JSONB   (unpinned, mutable, copied on
 **Spec stored as one JSONB document, validated by Pydantic on read.** A spec version is authored,
 validated and published as a unit. Shredding it across a dozen tables would buy query flexibility
 we don't need while making versioning and diffing painful.
+
+**Two backends, no abstraction over them.** PostgreSQL or SQLite, chosen on the setup page; there is
+no default, so an installation that has not chosen is not configured. Nothing was built to make this
+work: SQLAlchemy's dialect layer *is* the abstraction, the service layer already speaks only ORM, and
+the only place that branches on the backend is `core/db.py:engine`, which SQLite needs for three
+pragmas — `foreign_keys` above all, because it is off by default and every `ondelete="CASCADE"` in
+the schema is silent without it.
+
+PostgreSQL is what this is deployed on and keeps the better of anything the two do differently;
+SQLite takes the lesser. Today that is one column, `house_style.uploaded_at`: `clock_timestamp()`
+on PostgreSQL, `strftime` to the millisecond on SQLite. It decides which upload is in force and
+which three are kept, so it must not tie — which rules out `CURRENT_TIMESTAMP`, the obvious SQLite
+spelling, because it resolves only to the second. Milliseconds can still tie in principle; they
+cannot through the only path that writes this column, where each upload carries a .docx to storage
+and successive ones land tens of milliseconds apart.
+
+There are two standing rules, and they are the whole ongoing cost.
+
+**A migration must run on both.** In practice:
+`sa.JSON().with_variant(postgresql.JSONB(...), "postgresql")` rather than `JSONB` directly,
+`sa.func.now()` rather than `sa.text('now()')`, and `op.batch_alter_table` for anything SQLite
+cannot do in place — altering a column, dropping a default. Writing it is mechanical; forgetting it
+breaks one backend silently until someone installs it. `tests/test_migrations.py` is the guard: it
+walks every revision on a scratch SQLite file and compares the result against `Base.metadata`.
+
+**A unit of work opens one session.** SQLite has a single write lock for the whole file, so a second
+session opened while the first holds an uncommitted write is a request waiting on itself — it stalls
+for `busy_timeout` and then fails. On PostgreSQL the same code is two harmless transactions, so
+nothing there will catch a breach of this. The service layer holds the same discipline for a second
+reason — a session must not be held across a model call
+([§7](#7-jobs-and-streaming)) — and SQLite turns it from a good habit into a correctness rule.
+Something that needs to write inside a caller's transaction takes the caller's session
+(`events.record(..., session=s)`); something that must happen after it commits is returned for the
+caller to do, which is how `remove_source` hands back the source it promoted.
 
 **Content stored as rows.** The opposite choice for the opposite reason: blocks are written
 constantly and individually, and each needs its own history.
@@ -616,7 +650,7 @@ requires of a service on a network with no egress.
 | Deterministic checks | Pure functions, table-driven, no LLM, no DB |
 | State machine | Readiness and staleness propagation over the example specs |
 | Markdown subset | Property test: normalise(arbitrary markdown) ∈ subset |
-| Services | Real Postgres, no HTTP |
+| Services | A real database, no HTTP |
 | Composition | Recorded LLM responses via respx; assert merge logic and proposal creation |
 | Live LLM | Small suite against the real host, run on demand, not in CI |
 | Rendering | Render a known document; assert docx contains expected text and images |

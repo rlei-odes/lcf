@@ -1,0 +1,36 @@
+{# Step 2, whole. Swapped as a unit — by the database step, which is what
+   releases the button, and by the migration itself, so the pill, the button and
+   the result never disagree about where the schema stands.
+
+   `fresh` and `schema` are blanked before the result partial is included: both
+   carry out-of-band blocks, and this template is reached from inside one. #}
+<div class="block-head">
+  <span class="step-of">Step 2</span>
+  <span class="pill {{ 'complete' if schema_step.done else 'needs_input' }}">
+    {{ 'at head' if schema_step.done else 'required' }}</span>
+</div>
+<h2>Schema</h2>
+<p class="lead">
+  The tables, brought up to the version this build expects. Safe to run
+  again: it applies what is missing and nothing else.
+</p>
+<form hx-post="/setup/migrate" hx-target="#schema-card" hx-swap="innerHTML"
+      hx-disabled-elt="find button">
+  <div class="actions" style="margin-top:0">
+    <button class="primary" type="submit"
+            {{ 'disabled' if not db_connected }}>Run the migrations</button>
+    <span class="htmx-indicator working">Migrating…</span>
+    {% if not db_connected %}
+    <span class="why">Connect the database first.</span>
+    {% endif %}
+  </div>
+</form>
+<div id="out-schema">
+  {% if schema_step.detail %}
+  {% with step = schema_step, saved = false, oob = false, fresh = none, schema = none %}
+    {% include "partials/setup_step.html" %}
+  {% endwith %}
+  {% endif %}
+</div>
+
+{% include "partials/setup_oob.html" %}

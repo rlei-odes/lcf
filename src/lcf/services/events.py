@@ -61,19 +61,30 @@ async def record(
     ok: bool = True,
     document_id: UUID | None = None,
     meta: dict[str, Any] | None = None,
+    session: AsyncSession | None = None,
 ) -> None:
+    """Pass `session` whenever the caller holds one.
+
+    Opening a second one to write this row is two independent transactions on
+    PostgreSQL, where an `Event` conflicts with nothing — it has no foreign
+    keys by design. On SQLite there is one write lock for the whole file, so the
+    second connection waits on the first's uncommitted write, which is the
+    caller waiting on itself until `busy_timeout` gives up and the row is lost.
+    """
     try:
+        event = Event(
+            kind=kind,
+            summary=summary,
+            category=category,
+            ok=ok,
+            document_id=document_id,
+            meta=meta or None,
+        )
+        if session is not None:
+            session.add(event)
+            return
         async with db_session() as s:
-            s.add(
-                Event(
-                    kind=kind,
-                    summary=summary,
-                    category=category,
-                    ok=ok,
-                    document_id=document_id,
-                    meta=meta or None,
-                )
-            )
+            s.add(event)
     except Exception as exc:  # noqa: BLE001 — bookkeeping never breaks the work
         logger.warning("could not record event {}: {}", kind, exc)
 

@@ -14,11 +14,25 @@
   </div>
 </div>
 
-{# Only when this partial *is* the response to the database step. Included
-   inside the setup page it would emit a fifth copy of the commands, one per
-   step, all sharing an id. #}
-{% if oob is defined and oob and not live %}
+{# The blocks below are only for when this partial *is* a step's response.
+   Included inside the setup page they would emit one copy per step, all sharing
+   an id, so each is gated on something only a route passes. #}
+{% if oob and not live %}
 <div id="db-commands" hx-swap-oob="innerHTML">
-  {% include "partials/setup_commands.html" %}
+  {% with commands_open = not step.done %}
+    {% include "partials/setup_commands.html" %}
+  {% endwith %}
 </div>
 {% endif %}
+
+{# The database step releases step 2, which was rendered before there was a
+   database to connect to. #}
+{% if schema %}
+<div id="schema-card" hx-swap-oob="innerHTML">
+  {% with schema_step = schema, db_connected = step.done, oob = false, fresh = none, schema = none %}
+    {% include "partials/setup_schema.html" %}
+  {% endwith %}
+</div>
+{% endif %}
+
+{% include "partials/setup_oob.html" %}

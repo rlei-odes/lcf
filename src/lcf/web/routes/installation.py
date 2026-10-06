@@ -36,7 +36,9 @@ async def setup_page(request: Request):
     """
     s = settings()
     state = await setup.state()
-    db = setup.parse_url(s.db_url) if s.db_url else setup.Database()
+    backend = setup.backend_of(s.db_url)
+    db = setup.parse_url(s.db_url) if backend == "postgres" else setup.Database()
+    sqlite = setup.parse_sqlite(s.db_url) if backend == "sqlite" else setup.SqliteFile()
     # The stored password is never sent back to the browser: it would sit in a
     # form field and, worse, inside a command block built for copying. Only a
     # password typed into this page appears in the commands it generates.
@@ -47,9 +49,12 @@ async def setup_page(request: Request):
         "setup.html",
         state=state,
         db=db,
+        backend=backend,
+        backends=setup.BACKENDS,
+        sqlite=sqlite,
+        sqlite_default=setup.default_sqlite_path(),
         stored_password=stored_password,
         suggested=setup.SUGGESTED,
-        env_path=setup.env_file(),
         s3_endpoint=s.s3_endpoint,
         live=await setup.live(),
         shadowed=setup.shadowed(),
@@ -73,13 +78,22 @@ def _house_blank() -> dict:
 
 @router.post("/setup/database", response_class=HTMLResponse)
 async def setup_database(request: Request):
-    """Test a database URL, and save it only if it answered."""
+    """Test a database URL, and save it only if it answered.
+
+    Which backend is being configured comes from the form, not from what is
+    stored: the page offers both and nothing is assumed until one is chosen.
+    """
     form = await request.form()
+    backend = str(form.get("backend") or "").strip()
     typed = str(form.get("password") or "")
     # An empty box means "keep the one you have", not "use no password": the
     # stored one is never rendered into the form, so asking someone to retype it
     # to change a hostname would be a trap.
-    stored = setup.parse_url(settings().db_url).password if settings().db_url else ""
+    stored = (
+        setup.parse_url(settings().db_url).password
+        if setup.backend_of(settings().db_url) == "postgres"
+        else ""
+    )
     db = setup.Database(
         host=str(form.get("host") or "").strip() or "localhost",
         port=str(form.get("port") or "").strip() or "5432",
@@ -87,29 +101,47 @@ async def setup_database(request: Request):
         user=str(form.get("user") or "").strip() or "lcf",
         password=typed or stored,
     )
+    sqlite = setup.SqliteFile(path=str(form.get("path") or "").strip())
     try:
+        if backend not in ("postgres", "sqlite"):
+            raise setup.Refused("Choose PostgreSQL or SQLite first.")
         await setup.guard(changes_database=True, writes=("LCF_DB_URL",))
-        ok, detail = await setup.test_database(db.url())
+        url = sqlite.url() if backend == "sqlite" else db.url()
+        ok, detail = await setup.test_database(url)
         if ok:
-            setup.write({"LCF_DB_URL": db.url()})
+            setup.write({"LCF_DB_URL": url})
     except setup.Refused as exc:
         ok, detail = False, str(exc)
     # The commands are rebuilt from what was typed, never from what was stored,
     # so a password already on disk cannot reappear in a copyable block.
     shown = setup.Database(db.host, db.port, db.name, db.user, typed)
+    # Recomputed rather than inferred from `ok`: connecting is what releases step
+    # 2, and step 2 can only say where the schema stands by going and looking.
+    state = await setup.state()
     return page(
         request,
         "partials/setup_step.html",
         step=setup.Step("database", "Database", "", ok, detail),
         db=shown,
+        backend=backend,
         saved=ok,
-        live=await setup.live(),
+        # Step 2 being done is exactly what `live` means — a reachable database
+        # at the current revision — so asking twice would only cost two probes.
+        live=state.steps[1].done,
         oob=True,
+        schema=state.steps[1],
+        fresh=state,
     )
 
 
 @router.post("/setup/migrate", response_class=HTMLResponse)
 async def setup_migrate(request: Request):
+    """Run the migrations, and re-render step 2 whole.
+
+    The card rather than just its output: the pill and the button are as much a
+    statement about where the schema stands as the log is, and the three must not
+    be able to disagree.
+    """
     try:
         await setup.guard()
         ok, detail = await setup.migrate()
@@ -117,9 +149,12 @@ async def setup_migrate(request: Request):
         ok, detail = False, str(exc)
     return page(
         request,
-        "partials/setup_step.html",
-        step=setup.Step("schema", "Schema", "", ok, detail),
-        saved=False,
+        "partials/setup_schema.html",
+        # The migration's own account of what it did, which is what there is to
+        # read here — not the bare revision a fresh probe would report.
+        schema_step=setup.Step("schema", "Schema", "", ok, detail),
+        db_connected=True,
+        fresh=await setup.state(),
     )
 
 
@@ -144,6 +179,7 @@ async def setup_storage(request: Request):
         "partials/setup_step.html",
         step=setup.Step("storage", "Storage", "", ok, detail),
         saved=ok,
+        fresh=await setup.state(),
     )
 
 
@@ -173,6 +209,7 @@ async def setup_assistant(request: Request):
         "partials/setup_step.html",
         step=setup.Step("assistant", "Assistant", "", ok, detail),
         saved=ok,
+        fresh=await setup.state(),
     )
 
 
@@ -257,7 +294,7 @@ async def _house_context(*, lint=None, error: str | None = None) -> dict:
 
 async def _house_card(request: Request, *, lint=None, error: str | None = None) -> HTMLResponse:
     context = await _house_context(lint=lint, error=error)
-    return page(request, "partials/setup_house.html", **context)
+    return page(request, "partials/setup_house.html", fresh=await setup.state(), **context)
 
 
 @router.post("/setup/seed")

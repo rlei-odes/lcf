@@ -768,6 +768,15 @@ fieldset.choices .indent { padding-left: var(--s6); }
 label.inline-check { margin: 0; display: flex; justify-content: center; }
 label.inline-check input { width: auto; }
 
+/* The database step offers two backends. The form for one appears once it has
+   been chosen and neither before that, so there is nothing to submit until a
+   choice is made. */
+.backend-pick .pane, .backend-pick .actions { display: none; }
+.backend-pick:has(input[name=backend]:checked) .no-pick { display: none; }
+.backend-pick:has(input[name=backend]:checked) .actions { display: flex; }
+.backend-pick:has(#be-postgres:checked) .pane-postgres,
+.backend-pick:has(#be-sqlite:checked) .pane-sqlite { display: block; }
+
 /* Add-one-more, at the foot of every list. Deliberately the same shape
    everywhere, so it is recognisable rather than read each time. */
 form.add-row {

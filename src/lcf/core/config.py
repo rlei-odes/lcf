@@ -58,8 +58,9 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     debug: bool = False
 
-    # No default: an installation without a database is not configured, and the
-    # setup wizard exists to say so rather than let a wrong guess through.
+    # PostgreSQL or SQLite, and no default either way: an installation that has
+    # not chosen is not configured, and the setup wizard exists to say so rather
+    # than let a guess through.
     db_url: str = ""
 
     llm_base_url: str = ""

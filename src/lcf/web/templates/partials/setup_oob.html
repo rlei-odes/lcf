@@ -1,0 +1,21 @@
+{# Everything on the page that a finished step can change but that does not sit
+   inside the step's own card: the ticks and the meter, and the last card, whose
+   offer turns on the schema being live.
+
+   Included by every template that can be a step's response, and inert unless
+   that route passed `fresh` — a step answers with its own result swapped into
+   place, and these follow out of band so the page does not need a reload.
+   Included inside the page itself it would emit one copy per step, all sharing
+   an id, so the guard is what keeps it to the response. #}
+{% if fresh %}
+<div id="setup-rail" hx-swap-oob="innerHTML">
+  {% with state = fresh %}
+    {% include "partials/setup_rail.html" %}
+  {% endwith %}
+</div>
+<div id="setup-finish" hx-swap-oob="innerHTML">
+  {% with state = fresh %}
+    {% include "partials/setup_finish.html" %}
+  {% endwith %}
+</div>
+{% endif %}

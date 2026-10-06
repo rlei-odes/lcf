@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
-from lcf.core.config import env_file, reload, settings
+from lcf.core.config import data_dir, env_file, reload, settings
 from lcf.core.text import count
 
 # Everything the wizard is allowed to write. A key not on this list cannot be set
@@ -184,6 +184,21 @@ def write(values: dict[str, str]) -> Path:
 
 # --- step one: the database --------------------------------------------------
 
+# Two backends, and the deployer picks one — there is no default, so an
+# installation that has not chosen is not configured. PostgreSQL is what this is
+# built for; SQLite is one file and no server, for a single machine.
+BACKENDS = (
+    ("postgres", "PostgreSQL", "A server, shared by whoever needs it. What this is built for."),
+    ("sqlite", "SQLite", "One file on this machine. Nothing to install or run."),
+)
+
+
+def backend_of(url: str) -> str:
+    """Which backend a stored URL names, or `""` when nothing is stored."""
+    if url.startswith("sqlite"):
+        return "sqlite"
+    return "postgres" if url.strip() else ""
+
 
 @dataclass
 class Database:
@@ -226,6 +241,21 @@ class Database:
         ]
 
 
+@dataclass
+class SqliteFile:
+    path: str = ""
+
+    def resolved(self) -> Path:
+        return Path(self.path).expanduser() if self.path.strip() else default_sqlite_path()
+
+    def url(self) -> str:
+        return f"sqlite+aiosqlite:///{self.resolved()}"
+
+
+def default_sqlite_path() -> Path:
+    return data_dir() / "lcf.db"
+
+
 def parse_url(url: str) -> Database:
     """Split a URL back into fields, so the form can show what is configured."""
     parts = urlsplit(url.replace("postgresql+asyncpg://", "postgresql://", 1))
@@ -238,18 +268,41 @@ def parse_url(url: str) -> Database:
     )
 
 
+def parse_sqlite(url: str) -> SqliteFile:
+    from sqlalchemy.engine import make_url
+
+    return SqliteFile(path=make_url(url).database or "")
+
+
+# How each backend says what it is, for the one line the step reports on success.
+VERSION_SQL = {
+    "postgres": "version()",
+    "sqlite": "'SQLite ' || sqlite_version()",
+}
+
+
 async def test_database(url: str) -> tuple[bool, str]:
-    """Open one connection and let go of it. Never creates anything."""
+    """Open one connection and let go of it. Never creates anything.
+
+    Except for SQLite, where connecting *is* creating: the file appears on first
+    open, and its directory has to exist before that works.
+    """
     from sqlalchemy import select, text
     from sqlalchemy.ext.asyncio import create_async_engine
     from sqlalchemy.pool import NullPool
 
+    from lcf.core.db import make_room
+
     if not url.strip():
         return False, "No database URL."
+    try:
+        make_room(url)
+    except OSError as exc:
+        return False, _explain(exc)
     engine = create_async_engine(url, poolclass=NullPool)
     try:
         async with engine.connect() as conn:
-            version = await conn.scalar(select(text("version()")))
+            version = await conn.scalar(select(text(VERSION_SQL[backend_of(url)])))
         return True, str(version).split(" on ")[0]
     except Exception as exc:  # noqa: BLE001 — every failure is reported the same way
         return False, _explain(exc)
@@ -269,14 +322,13 @@ def _explain(exc: Exception) -> str:
         return f"{text}\nNothing is listening there. Is PostgreSQL running?"
     if "could not translate host name" in low or "name or service not known" in low:
         return f"{text}\nThat hostname does not resolve from this machine."
+    if "unable to open database file" in low or "permission denied" in low:
+        return f"{text}\nThe directory for that file cannot be written by this user."
+    if "readonly database" in low:
+        return f"{text}\nThe file is there but not writable by this user."
+    if "not a database" in low:
+        return f"{text}\nThat file exists and is not a SQLite database."
     return text
-
-
-TABLES = (
-    "SELECT table_name FROM information_schema.tables "
-    "WHERE table_schema = current_schema() AND table_type = 'BASE TABLE' "
-    "ORDER BY table_name"
-)
 
 
 async def snapshot() -> tuple[str | None, list[str]]:
@@ -292,14 +344,14 @@ async def snapshot() -> tuple[str | None, list[str]]:
     could be asked for. `alembic_version` itself is left out of the list — it is
     Alembic's ledger, not part of the schema it keeps.
     """
-    from sqlalchemy import text
+    from sqlalchemy import inspect, text
     from sqlalchemy.ext.asyncio import create_async_engine
     from sqlalchemy.pool import NullPool
 
     engine = create_async_engine(settings().db_url, poolclass=NullPool)
     try:
         async with engine.connect() as conn:
-            names = list(await conn.scalars(text(TABLES)))
+            names = sorted(await conn.run_sync(lambda c: inspect(c).get_table_names()))
             revision = None
             if "alembic_version" in names:
                 revision = await conn.scalar(text("SELECT version_num FROM alembic_version"))
@@ -469,7 +521,7 @@ async def state() -> State:
     may have created the database in a terminal while this page was open."""
     s = settings()
 
-    db_ok, db_detail = (False, "Not configured yet.")
+    db_ok, db_detail = (False, "Nothing chosen yet.")
     schema_ok, schema_detail = False, "Waiting on the database."
     if s.db_url:
         db_ok, db_detail = await test_database(s.db_url)
@@ -494,7 +546,7 @@ async def state() -> State:
             Step(
                 "database",
                 "Database",
-                "PostgreSQL, for everything the app remembers.",
+                "Where everything the app remembers is kept.",
                 db_ok,
                 db_detail,
             ),

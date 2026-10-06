@@ -1,19 +1,27 @@
 {# Two ways to get a database, generated from the values in the form above.
 
+   PostgreSQL only: SQLite has nothing to install, nothing to run and no role to
+   create, which is the whole of why it is on offer.
+
    The password is only ever the one just typed into this page. A stored one is
    never rendered back: a command block is read over shoulders and copied into
    chat windows, and nothing here needs the old password to be legible. #}
-{% for label, why, command in db.commands() %}
-<h4>{{ label }}</h4>
-<p class="hint" style="margin-top:0">{{ why }}</p>
-<pre class="prompt">{{ command }}</pre>
-{% endfor %}
-<p class="hint">
-  Built from the values above, so these and the settings cannot disagree. They
-  are rewritten each time you press Test.
-</p>
-<p class="hint">
-  The application never creates a database or a role itself, and never needs a
-  superuser: owning <code>{{ db.name }}</code> is the whole of what it wants. It
-  creates its own tables in step 2, and no PostgreSQL extensions are required.
-</p>
+{% if backend == 'postgres' %}
+<details class="quiet-details" style="margin-top:var(--s4)" {{ 'open' if commands_open }}>
+  <summary>No database there yet? Create one</summary>
+  {% for label, why, command in db.commands() %}
+  <h4>{{ label }}</h4>
+  <p class="hint" style="margin-top:0">{{ why }}</p>
+  <pre class="prompt">{{ command }}</pre>
+  {% endfor %}
+  <p class="hint">
+    Built from the values above, so these and the settings cannot disagree. They
+    are rewritten each time you press Test.
+  </p>
+  <p class="hint">
+    The application never creates a database or a role itself, and never needs a
+    superuser: owning <code>{{ db.name }}</code> is the whole of what it wants. It
+    creates its own tables in step 2, and no PostgreSQL extensions are required.
+  </p>
+</details>
+{% endif %}

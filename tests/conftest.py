@@ -113,6 +113,28 @@ async def db():
     """Skip rather than fail when the database from .env is unreachable."""
     if not await _database_available():
         pytest.skip("database from .env not reachable")
+    yield
+    await _drain_jobs()
+
+
+async def _drain_jobs() -> None:
+    """Let no background job outlive the test that started it.
+
+    A test that posts to a route which queues work and then asserts on the
+    response leaves the task running. Abandoned when the test's event loop
+    closes, it keeps its connection — and with it SQLite's one write lock — until
+    the garbage collector gets to it, which fails an unrelated insert in a later
+    test. PostgreSQL locks per row and never notices.
+    """
+    import asyncio
+
+    from lcf.services import jobs
+
+    leftover = list(jobs._running)
+    for task in leftover:
+        task.cancel()
+    if leftover:
+        await asyncio.gather(*leftover, return_exceptions=True)
 
 
 @pytest.fixture

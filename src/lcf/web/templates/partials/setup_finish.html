@@ -1,0 +1,26 @@
+{# The last card. What it offers turns on the schema being live, so it is
+   re-rendered whenever a step changes that. #}
+<div class="card {{ 'hero' if state.steps[1].done }}">
+  <h2>Finish</h2>
+  {% if state.steps[1].done %}
+  <p class="lead">
+    The database is up and the schema is current. Start with the two example
+    document types — a 4D report and a product specification — so the first
+    screen has something in it, or go straight in and build your own.
+  </p>
+  <div class="actions" style="margin-top:0">
+    <form method="post" action="/setup/seed">
+      <button class="primary" type="submit">Add the examples and open the app</button>
+    </form>
+    <a href="/"><button type="button">Just open the app</button></a>
+  </div>
+  {% else %}
+  <p class="lead">
+    Once the database and schema are green, this is where you come back to
+    finish. Reload the page at any point to re-check every step.
+  </p>
+  <div class="actions" style="margin-top:0">
+    <a href="/setup"><button type="button">Re-check everything</button></a>
+  </div>
+  {% endif %}
+</div>

@@ -8,33 +8,9 @@
 {% block content %}
 <div class="layout">
 
-  <nav class="sections card">
-    <div class="rail-head">
-      <p class="rail-title">Setting up</p>
-      <div class="rail-sub">nothing is stored until a step passes</div>
-      {# Readiness counts the steps the installation cannot work without. An
-         optional one is shown and can be ticked, but leaving it undone is not an
-         unfinished setup, so it must not hold the meter below full. #}
-      {% set needed = state.steps|rejectattr('optional')|list %}
-      {% set done = needed|selectattr('done')|list|length %}
-      <div class="meter {{ 'done' if done == needed|length }}">
-        <span style="width: {{ (100 * done / needed|length)|round|int }}%"></span>
-      </div>
-      <div class="meter-note">{{ done }} of {{ needed|length }} ready</div>
-    </div>
-
-    {% for s in state.steps %}
-    <a href="#step-{{ s.key }}">
-      <span class="step-n">{{ loop.index }}</span>
-      <span class="dot {{ 's-complete' if s.done else 's-empty' }}">{{ '✓' if s.done else '·' }}</span>
-      <span class="step-name">{{ s.title }}{% if s.optional %} <span class="hint" style="display:inline">optional</span>{% endif %}</span>
-    </a>
-    {% endfor %}
-
-    <div class="hint" style="margin-top:var(--s4);padding:0 var(--s2)">
-      Configuration is written to<br><code style="font-size:11px">{{ env_path }}</code>
-    </div>
-  </nav>
+  <div id="setup-rail">
+    {% include "partials/setup_rail.html" %}
+  </div>
 
   <div>
     {% if shadowed %}
@@ -89,44 +65,79 @@
       </div>
       <h2>Database</h2>
       <p class="lead">
-        PostgreSQL holds every document, revision and decision. Tell the app where
-        it is; it will not create one for you.
+        Everything the app remembers — every document, revision and decision —
+        lives here. Pick one; there is no default, and an installation that has
+        not picked is not set up.
       </p>
 
-      <form hx-post="/setup/database" hx-target="#out-database" hx-swap="innerHTML"
-            hx-disabled-elt="find button">
+      {# No form is shown until a backend is chosen. The two are configured
+         differently enough that a merged form would be mostly disabled boxes. #}
+      <form class="backend-pick" hx-post="/setup/database" hx-target="#out-database"
+            hx-swap="innerHTML" hx-disabled-elt="find button">
         <fieldset style="border:0;padding:0;margin:0" {{ 'disabled' if live }}>
-        <div class="row">
-          <div class="field">
-            <label for="db-host">Host</label>
-            <input type="text" id="db-host" name="host" value="{{ db.host }}">
+
+        <fieldset class="choices">
+          <legend>Backend</legend>
+          {% for key, title, why in backends %}
+          <label class="option">
+            <input type="radio" name="backend" value="{{ key }}" id="be-{{ key }}"
+                   {{ 'checked' if backend == key }}>
+            <span>
+              <strong>{{ title }}</strong>
+              <span class="hint" style="display:inline">— {{ why }}</span>
+            </span>
+          </label>
+          {% endfor %}
+        </fieldset>
+
+        <p class="hint no-pick">Choose one to configure it.</p>
+
+        <div class="pane pane-postgres">
+          <div class="row">
+            <div class="field">
+              <label for="db-host">Host</label>
+              <input type="text" id="db-host" name="host" value="{{ db.host }}">
+            </div>
+            <div class="field" style="max-width:120px">
+              <label for="db-port">Port</label>
+              <input type="text" id="db-port" name="port" value="{{ db.port }}">
+            </div>
           </div>
-          <div class="field" style="max-width:120px">
-            <label for="db-port">Port</label>
-            <input type="text" id="db-port" name="port" value="{{ db.port }}">
+          <div class="row">
+            <div class="field">
+              <label for="db-name">Database</label>
+              <input type="text" id="db-name" name="name" value="{{ db.name }}">
+            </div>
+            <div class="field">
+              <label for="db-user">User</label>
+              <input type="text" id="db-user" name="user" value="{{ db.user }}">
+            </div>
+          </div>
+          <div class="field">
+            <label for="db-pass">Password</label>
+            <input type="password" id="db-pass" name="password"
+                   placeholder="{{ 'one is already stored' if stored_password }}">
+            {% if stored_password %}
+            <div class="hint">
+              A password is already stored and is never shown here. Leave this
+              empty to keep it.
+            </div>
+            {% endif %}
           </div>
         </div>
-        <div class="row">
+
+        <div class="pane pane-sqlite">
           <div class="field">
-            <label for="db-name">Database</label>
-            <input type="text" id="db-name" name="name" value="{{ db.name }}">
-          </div>
-          <div class="field">
-            <label for="db-user">User</label>
-            <input type="text" id="db-user" name="user" value="{{ db.user }}">
+            <label for="db-path">File</label>
+            <input type="text" id="db-path" name="path" value="{{ sqlite.path }}"
+                   placeholder="{{ sqlite_default }}">
+            <div class="hint">
+              Created if it is not there. Left empty it is
+              <code>{{ sqlite_default }}</code>. Back it up by copying the file.
+            </div>
           </div>
         </div>
-        <div class="field">
-          <label for="db-pass">Password</label>
-          <input type="password" id="db-pass" name="password"
-                 placeholder="{{ 'one is already stored' if stored_password }}">
-          {% if stored_password %}
-          <div class="hint">
-            A password is already stored and is never shown here. Leave this
-            empty to keep it.
-          </div>
-          {% endif %}
-        </div>
+
         </fieldset>
         <div class="actions">
           <button class="primary" type="submit" {{ 'disabled' if live }}>Test and save</button>
@@ -147,46 +158,23 @@
       </div>
 
       {% if not live %}
-      <details class="quiet-details" style="margin-top:var(--s4)" {{ 'open' if not state.steps[0].done }}>
-        <summary>No database there yet? Create one</summary>
-        {# Re-rendered out of band by the database step, so the commands always
-           carry the values that were last tested rather than the page's. #}
-        <div id="db-commands">
+      {# Re-rendered out of band by the database step, so the commands always
+         carry the values that were last tested rather than the page's. SQLite
+         needs none of this, so the block is empty for it. #}
+      <div id="db-commands">
+        {% with commands_open = not state.steps[0].done %}
           {% include "partials/setup_commands.html" %}
-        </div>
-      </details>
+        {% endwith %}
+      </div>
       {% endif %}
     </div>
 
     {# --- 2. schema --- #}
     <div class="card" id="step-schema">
-      <div class="block-head">
-        <span class="step-of">Step 2</span>
-        <span class="pill {{ 'complete' if state.steps[1].done else 'needs_input' }}">
-          {{ 'at head' if state.steps[1].done else 'required' }}</span>
-      </div>
-      <h2>Schema</h2>
-      <p class="lead">
-        The tables, brought up to the version this build expects. Safe to run
-        again: it applies what is missing and nothing else.
-      </p>
-      <form hx-post="/setup/migrate" hx-target="#out-schema" hx-swap="innerHTML"
-            hx-disabled-elt="find button">
-        <div class="actions" style="margin-top:0">
-          <button class="primary" type="submit"
-                  {{ 'disabled' if not state.steps[0].done }}>Run the migrations</button>
-          <span class="htmx-indicator working">Migrating…</span>
-          {% if not state.steps[0].done %}
-          <span class="why">Connect the database first.</span>
-          {% endif %}
-        </div>
-      </form>
-      <div id="out-schema">
-        {% if state.steps[1].detail %}
-        {% with step = state.steps[1], saved = false %}
-          {% include "partials/setup_step.html" %}
+      <div id="schema-card">
+        {% with schema_step = state.steps[1], db_connected = state.steps[0].done %}
+          {% include "partials/setup_schema.html" %}
         {% endwith %}
-        {% endif %}
       </div>
     </div>
 
@@ -309,29 +297,8 @@
     </div>
 
     {# --- finish --- #}
-    <div class="card {{ 'hero' if state.steps[1].done }}">
-      <h2>Finish</h2>
-      {% if state.steps[1].done %}
-      <p class="lead">
-        The database is up and the schema is current. Start with the two example
-        document types — a 4D report and a product specification — so the first
-        screen has something in it, or go straight in and build your own.
-      </p>
-      <div class="actions" style="margin-top:0">
-        <form method="post" action="/setup/seed">
-          <button class="primary" type="submit">Add the examples and open the app</button>
-        </form>
-        <a href="/"><button type="button">Just open the app</button></a>
-      </div>
-      {% else %}
-      <p class="lead">
-        Once the database and schema are green, this is where you come back to
-        finish. Reload the page at any point to re-check every step.
-      </p>
-      <div class="actions" style="margin-top:0">
-        <a href="/setup"><button type="button">Re-check everything</button></a>
-      </div>
-      {% endif %}
+    <div id="setup-finish">
+      {% include "partials/setup_finish.html" %}
     </div>
   </div>
 

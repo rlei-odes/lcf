@@ -160,6 +160,7 @@ async def create(
             "gate_passed": report.passed,
             "stored": bool(uri),
         },
+        session=session,
     )
 
     if reason:

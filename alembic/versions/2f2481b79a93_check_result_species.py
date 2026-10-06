@@ -30,7 +30,9 @@ def upgrade() -> None:
             server_default="deterministic",
         ),
     )
-    op.alter_column("check_result", "species", server_default=None)
+    # Batch mode: SQLite cannot drop a default in place and rebuilds the table.
+    with op.batch_alter_table("check_result") as batch:
+        batch.alter_column("species", server_default=None)
 
 
 def downgrade() -> None:

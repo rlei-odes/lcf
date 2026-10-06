@@ -221,8 +221,10 @@ async def reparse(request: Request, source_id: UUID):
 @router.post("/evidence/sources/{source_id}/remove", response_class=HTMLResponse)
 async def drop_source(request: Request, source_id: UUID):
     async with session() as s:
-        case_id = await evidence.remove_source(s, source_id)
-    return await _gather(request, case_id)
+        removed = await evidence.remove_source(s, source_id)
+    if removed.promoted is not None:
+        await jobs.enqueue("parse_source", None, str(removed.promoted))
+    return await _gather(request, removed.case_id)
 
 
 # ───────────────────────────────────────────────────────────────── formulate

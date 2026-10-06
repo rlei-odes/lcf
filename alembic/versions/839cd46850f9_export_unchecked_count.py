@@ -23,7 +23,9 @@ def upgrade() -> None:
         "export",
         sa.Column("unchecked", sa.Integer(), nullable=False, server_default="0"),
     )
-    op.alter_column("export", "unchecked", server_default=None)
+    # Batch mode: SQLite cannot drop a default in place and rebuilds the table.
+    with op.batch_alter_table("export") as batch:
+        batch.alter_column("unchecked", server_default=None)
     # ### end Alembic commands ###
 
 

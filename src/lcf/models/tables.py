@@ -13,6 +13,7 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     DateTime,
     Float,
@@ -24,7 +25,35 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.sql.functions import FunctionElement
+
+# JSONB on PostgreSQL, plain JSON on SQLite. Serialised identically either way.
+Json = JSON().with_variant(JSONB(), "postgresql")
+
+
+class wall_clock(FunctionElement):  # noqa: N801 — a SQL function, named like one
+    """Statement time, not transaction time, for a column that orders rows.
+
+    `CURRENT_TIMESTAMP` would be the obvious SQLite spelling and is useless
+    here: it resolves to the second, so rows written together tie and "newest"
+    becomes arbitrary. `%f` gives milliseconds, and the trailing zeroes pad it
+    to the six digits the result parser reads as microseconds.
+    """
+
+    type = DateTime(timezone=True)
+    inherit_cache = True
+
+
+@compiles(wall_clock)
+def _wall_clock(element, compiler, **kw) -> str:
+    return "strftime('%Y-%m-%d %H:%M:%f000', 'now')"
+
+
+@compiles(wall_clock, "postgresql")
+def _wall_clock_pg(element, compiler, **kw) -> str:
+    return "clock_timestamp()"
 
 
 class Base(DeclarativeBase):
@@ -61,7 +90,7 @@ class DocTypeVersion(Base):
     id: Mapped[UUID] = _pk()
     doc_type_id: Mapped[UUID] = mapped_column(ForeignKey("doc_type.id", ondelete="CASCADE"))
     version: Mapped[int] = mapped_column(Integer, nullable=False)
-    spec: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    spec: Mapped[dict] = mapped_column(Json, nullable=False)
     published_at: Mapped[datetime] = _created()
 
     # The docx template, bound to this version and carried forward when the next
@@ -98,7 +127,7 @@ class DocTypeDraft(Base):
     # Null while the type is new: it has no published versions to belong to yet.
     doc_type_key: Mapped[str | None] = mapped_column(String(100), index=True)
     title: Mapped[str] = mapped_column(String(300), nullable=False, default="")
-    spec: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    spec: Mapped[dict] = mapped_column(Json, nullable=False)
     based_on: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = _created()
     updated_at: Mapped[datetime] = mapped_column(
@@ -167,7 +196,7 @@ class EvidenceItem(Base):
     text: Mapped[str | None] = mapped_column(Text)
     uri: Mapped[str | None] = mapped_column(Text)
     caption: Mapped[str | None] = mapped_column(Text)
-    meta: Mapped[dict | None] = mapped_column(JSONB)
+    meta: Mapped[dict | None] = mapped_column(Json)
     created_at: Mapped[datetime] = _created()
 
     links: Mapped[list["EvidenceLink"]] = relationship(
@@ -216,7 +245,7 @@ class Answer(Base):
     id: Mapped[UUID] = _pk()
     section_id: Mapped[UUID] = mapped_column(ForeignKey("section.id", ondelete="CASCADE"))
     question_key: Mapped[str] = mapped_column(String(100), nullable=False)
-    value: Mapped[dict] = mapped_column(JSONB, nullable=False)  # {"v": ...}
+    value: Mapped[dict] = mapped_column(Json, nullable=False)  # {"v": ...}
     source: Mapped[str] = mapped_column(String(30), nullable=False, default="user")
     created_at: Mapped[datetime] = _created()
 
@@ -250,7 +279,7 @@ class Revision(Base):
     id: Mapped[UUID] = _pk()
     block_id: Mapped[UUID] = mapped_column(ForeignKey("block.id", ondelete="CASCADE"))
     seq: Mapped[int] = mapped_column(Integer, nullable=False)
-    value: Mapped[dict] = mapped_column(JSONB, nullable=False)  # {"v": ...}
+    value: Mapped[dict] = mapped_column(Json, nullable=False)  # {"v": ...}
     author: Mapped[str] = mapped_column(String(40), nullable=False)  # user|llm_accepted|...
     actor: Mapped[str] = mapped_column(String(100), nullable=False, default="local")
     proposal_id: Mapped[UUID | None] = mapped_column(ForeignKey("proposal.id", ondelete="SET NULL"))
@@ -267,10 +296,10 @@ class Proposal(Base):
 
     id: Mapped[UUID] = _pk()
     block_id: Mapped[UUID] = mapped_column(ForeignKey("block.id", ondelete="CASCADE"))
-    anchor: Mapped[dict | None] = mapped_column(JSONB)  # null = whole block
-    proposed_value: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    anchor: Mapped[dict | None] = mapped_column(Json)  # null = whole block
+    proposed_value: Mapped[dict] = mapped_column(Json, nullable=False)
     rationale: Mapped[str | None] = mapped_column(Text)
-    based_on: Mapped[list | None] = mapped_column(JSONB)
+    based_on: Mapped[list | None] = mapped_column(Json)
     confidence: Mapped[float | None] = mapped_column(Float)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="pending")
     created_at: Mapped[datetime] = _created()
@@ -299,7 +328,7 @@ class Job(Base):
     step: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     message: Mapped[str | None] = mapped_column(Text)
-    result: Mapped[dict | None] = mapped_column(JSONB)
+    result: Mapped[dict | None] = mapped_column(Json)
     error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _created()
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -370,7 +399,7 @@ class CheckResult(Base):
     result: Mapped[str] = mapped_column(String(20), nullable=False)
     severity: Mapped[str] = mapped_column(String(20), nullable=False)
     reason: Mapped[str | None] = mapped_column(Text)
-    evidence: Mapped[list | None] = mapped_column(JSONB)
+    evidence: Mapped[list | None] = mapped_column(Json)
     confidence: Mapped[float | None] = mapped_column(Float)
 
     assessment: Mapped[Assessment] = relationship(back_populates="results")
@@ -403,7 +432,7 @@ class Event(Base):
     document_id: Mapped[UUID | None] = mapped_column()
     # Numbers worth showing beside the row: duration_ms, tokens, per_second.
     # A column apiece would be mostly nulls, since each kind measures its own.
-    meta: Mapped[dict | None] = mapped_column(JSONB)
+    meta: Mapped[dict | None] = mapped_column(Json)
 
 
 class EvidenceCase(Base):
@@ -487,7 +516,7 @@ class EvidenceSource(Base):
     sender_domain: Mapped[str | None] = mapped_column(String(300), index=True)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     subject: Mapped[str | None] = mapped_column(Text)
-    meta: Mapped[dict | None] = mapped_column(JSONB)
+    meta: Mapped[dict | None] = mapped_column(Json)
     created_at: Mapped[datetime] = _created()
 
     case: Mapped[EvidenceCase] = relationship(back_populates="sources")
@@ -542,7 +571,7 @@ class EvidenceChunk(Base):
     kind: Mapped[str] = mapped_column(String(20), nullable=False, default="text")
     # What the unit knew about itself — for a mail thread, the sender and date of
     # the reply this came from.
-    meta: Mapped[dict | None] = mapped_column(JSONB)
+    meta: Mapped[dict | None] = mapped_column(Json)
 
     source: Mapped[EvidenceSource] = relationship(back_populates="chunks")
 
@@ -622,7 +651,7 @@ class QuestionSet(Base):
     key: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     title: Mapped[str] = mapped_column(String(300), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    questions: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    questions: Mapped[list] = mapped_column(Json, nullable=False, default=list)
     created_at: Mapped[datetime] = _created()
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
@@ -650,12 +679,12 @@ class EvidenceQuestion(Base):
     # The spec model's QuestionType, plus `identifier`. Shared vocabulary so the
     # seam to doc-type questions is a mapping rather than a translation.
     type: Mapped[str] = mapped_column(String(20), nullable=False, default="text")
-    options: Mapped[list | None] = mapped_column(JSONB)
+    options: Mapped[list | None] = mapped_column(Json)
     # Whether several values are an answer or a contradiction. "Which part
     # number?" has one; "which batches?" has four, and the review surface has to
     # let a person take all of them.
     multiple: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    commands: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    commands: Mapped[list] = mapped_column(Json, nullable=False, default=list)
     created_at: Mapped[datetime] = _created()
 
     case: Mapped[EvidenceCase] = relationship(back_populates="questions")
@@ -688,8 +717,8 @@ class EvidenceRun(Base):
     chunks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     duration_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    stats: Mapped[dict | None] = mapped_column(JSONB)
-    errors: Mapped[list | None] = mapped_column(JSONB)
+    stats: Mapped[dict | None] = mapped_column(Json)
+    errors: Mapped[list | None] = mapped_column(Json)
     created_at: Mapped[datetime] = _created()
 
 
@@ -740,7 +769,7 @@ class EvidenceCandidate(Base):
     # occurrence is only ever read beside the candidate it belongs to, so a row
     # apiece would be a join to render a bullet list.
     found_by: Mapped[str | None] = mapped_column(Text)
-    occurrences: Mapped[list | None] = mapped_column(JSONB)
+    occurrences: Mapped[list | None] = mapped_column(Json)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
     created_at: Mapped[datetime] = _created()
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -776,5 +805,5 @@ class HouseStyle(Base):
     # `now()` is the *transaction* time, so two rows written in one transaction
     # tie and "newest" becomes whatever order the index felt like.
     uploaded_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.clock_timestamp(), nullable=False
+        DateTime(timezone=True), server_default=wall_clock(), nullable=False
     )

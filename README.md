@@ -76,7 +76,7 @@ two, and both are additive — nothing already built is waiting on them:
 | Done | |
 |---|---|
 | ✓ | Spec model, linter, YAML round-trip |
-| ✓ | PostgreSQL schema, Alembic migrations |
+| ✓ | Schema and Alembic migrations, PostgreSQL or SQLite |
 | ✓ | Deterministic check engine (6 kinds) |
 | ✓ | Section state machine, dependency gating, staleness |
 | ✓ | Service layer: publish, create, answer, edit, assess, blame |
@@ -127,8 +127,10 @@ editing a completed section (d2_problem)
 
 ## Setup
 
-Requires Python 3.13, a PostgreSQL database, and an LLM endpoint. Files are kept on the local disk
-unless you point it at an S3-compatible store. All local; nothing leaves the network.
+Requires Python 3.13, a database, and an LLM endpoint. The database is PostgreSQL, or SQLite if you
+would rather have one file and no server — the setup page makes you pick, and an installation that
+has not picked is not configured. Files are kept on the local disk unless you point it at an
+S3-compatible store. All local; nothing leaves the network.
 
 ```bash
 uv sync --extra dev     # exact versions from uv.lock
@@ -140,10 +142,17 @@ served that morning. Without [uv](https://docs.astral.sh/uv/), `python3.13 -m ve
 `.venv/bin/pip install -e ".[dev]"` still work — you just resolve your own versions.
 
 That is the whole of it. An installation with no configuration serves a **setup page** instead of
-the app: it asks where PostgreSQL is, tests the connection before saving anything, and hands you the
-`psql` or `docker run` command to create the database — generated from the values you typed, so the
-command and the configuration cannot disagree. Then it runs the migrations, checks storage, and
-tests the model endpoint.
+the app: it asks which database you want and where it is, tests the connection before saving
+anything, and for PostgreSQL hands you the `psql` or `docker run` command to create it — generated
+from the values you typed, so the command and the configuration cannot disagree. SQLite needs none
+of that; it creates the file. Then it runs the migrations, checks storage, and tests the model
+endpoint.
+
+PostgreSQL is the deployment this is built for and keeps the better of anything the two dialects do
+differently; SQLite takes the lesser. The whole of that difference today is the resolution of one
+timestamp — milliseconds rather than microseconds — and the same test suite passes on both. What
+SQLite gives up in exchange for having no server is concurrent writers: it takes one lock for the
+whole file, so background jobs that would overlap on PostgreSQL queue instead.
 
 Setup is reachable from anywhere the app is, because this normally runs on a headless server and the
 administrator is always remote. It has **no login**: what it may write is bounded by an allowlist of
@@ -289,6 +298,7 @@ model. The parser fixtures are **generated in Python** rather than committed, in
 PDF, so what each test asserts against is known content rather than a binary nobody can read in a
 diff.
 
-Service tests use the real PostgreSQL from `.env` and skip if it is unreachable. A boundary test
-asserts that `spec/`, `engine/` and `ingest/` never import a database, because that purity is what
-keeps the rest testable.
+Service tests use the real database from `.env` and skip if it is unreachable. Pointing `LCF_DB_URL`
+at a scratch SQLite file runs them with nothing to set up, and is also how the SQLite backend is
+tested: the suite is the same either way. A boundary test asserts that `spec/`, `engine/` and
+`ingest/` never import a database, because that purity is what keeps the rest testable.

@@ -67,7 +67,12 @@ async def create_case(session: AsyncSession, title: str, from_set: str = "") -> 
     await session.flush()
     if from_set.strip():
         await load_set(session, case.id, from_set.strip())
-    await events.record("case.created", f"Started case {case.title}", category="document")
+    await events.record(
+        "case.created",
+        f"Started case {case.title}",
+        category="document",
+        session=session,
+    )
     return case
 
 
@@ -503,7 +508,16 @@ async def get_source(session: AsyncSession, source_id: UUID) -> EvidenceSource:
     return source
 
 
-async def remove_source(session: AsyncSession, source_id: UUID) -> UUID:
+@dataclass
+class Removed:
+    """What dropping a source left behind, for the caller to act on once the
+    transaction is closed."""
+
+    case_id: UUID
+    promoted: UUID | None = None
+
+
+async def remove_source(session: AsyncSession, source_id: UUID) -> Removed:
     source = await get_source(session, source_id)
     case_id, digest, was_real = source.case_id, source.sha256, source.counts
     await session.delete(source)
@@ -512,6 +526,11 @@ async def remove_source(session: AsyncSession, source_id: UUID) -> UUID:
     # Removing the copy that was being read promotes the next one. Otherwise a
     # case that holds a document twice loses it entirely when the first is
     # dropped, while still listing the second as a repeat of nothing.
+    #
+    # Parsing it is the caller's to queue: enqueueing here opens a second
+    # session while this one still holds an uncommitted write, which SQLite
+    # resolves by making the request wait on itself.
+    promoted: UUID | None = None
     if was_real and digest:
         heir = await session.scalar(
             select(EvidenceSource)
@@ -526,10 +545,10 @@ async def remove_source(session: AsyncSession, source_id: UUID) -> UUID:
         if heir is not None:
             heir.status = "queued"
             await session.flush()
-            await jobs.enqueue("parse_source", None, str(heir.id))
+            promoted = heir.id
 
     await touch(session, case_id)
-    return case_id
+    return Removed(case_id, promoted)
 
 
 async def set_language(session: AsyncSession, source_id: UUID, code: str) -> EvidenceSource:
