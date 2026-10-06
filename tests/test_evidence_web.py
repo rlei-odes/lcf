@@ -16,7 +16,7 @@ from tests import fixtures
 
 from lcf.core.db import session
 from lcf.ingest.commands import Command
-from lcf.models.tables import EvidenceCase, QuestionSet
+from lcf.models.tables import EvidenceCase, EvidenceSource, QuestionSet
 from lcf.services import evidence
 from lcf.web.app import app
 
@@ -802,6 +802,12 @@ async def _settle(case: str, timeout: float = 20.0) -> None:
     Awaited against the job rows rather than guessed at from the HTML: parsing
     eight dropped files queues eight jobs, so "the latest one finished" is not
     the same question as "they all did".
+
+    A parse job is filed under the *source* it reads, not the case — the same
+    shape `routes/evidence.py` asks about through `running_for_any`. Waiting on
+    the case id alone matches none of them and returns at once, which leaves
+    every assertion about a parsed file racing the parser: green on a fast
+    machine, red on a loaded one, and nothing in the failure says so.
     """
     import asyncio
 
@@ -813,9 +819,18 @@ async def _settle(case: str, timeout: float = 20.0) -> None:
     deadline = loop.time() + timeout
     while loop.time() < deadline:
         async with session() as s:
+            scopes = [
+                str(i)
+                for i in await s.scalars(
+                    select(EvidenceSource.id).where(EvidenceSource.case_id == uuid.UUID(str(case)))
+                )
+            ]
             unfinished = await s.scalar(
                 select(Job)
-                .where(Job.scope == str(case), Job.status.in_(("queued", "running")))
+                .where(
+                    Job.scope.in_([*scopes, str(case)]),
+                    Job.status.in_(("queued", "running")),
+                )
                 .limit(1)
             )
         if unfinished is None:
