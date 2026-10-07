@@ -182,3 +182,12 @@ Not forgotten — decided against for now, with the condition that would change 
 | Worker in its own process | Load needs it. A deployment change, not a rewrite: `SKIP LOCKED` and `LISTEN/NOTIFY` become worth adding then ([ARCHITECTURE §7](ARCHITECTURE.md#7-jobs-and-streaming)) |
 | Git sync (`dulwich`) | YAML export/import proves insufficient |
 | `prosemirror-changeset` | Accept/reject needs to survive concurrent edits |
+
+
+## 12. Notes from use case discussions
+
+- Extract Requirements from input documents. A sentence saying "and" would have to be split in two reqs
+- Give Feedback on a draft, ask a re-write
+- Mark the text that is fine, and where we want a re-write. Dialog / Interaktivität
+- Or re-run, for a new proposal
+- New type of Quality criteria: Typ "Have you thought about this?" - Just as input, maybe as a bubble type on the right?

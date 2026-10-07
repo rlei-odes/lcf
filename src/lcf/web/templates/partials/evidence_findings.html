@@ -38,6 +38,13 @@
   <div class="notice blocker">{{ problem }}</div>
   {% endfor %}
 
+  {# Something that happened rather than something that went wrong: a
+     single-answer question swapping one accepted value for another changes
+     nothing a person can see, so it has to be said. #}
+  {% for note in notices or [] %}
+  <div class="notice">{{ note }}</div>
+  {% endfor %}
+
   {# The plan, before anybody spends it. Every number here is one the run has to
      compute anyway, so this is the real cost rather than a guess, and adding a
      keyword to a question visibly drops it. #}

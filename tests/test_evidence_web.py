@@ -52,6 +52,11 @@ def _problems(html: str) -> list[str]:
     return [p.strip() for p in re.findall(r'notice blocker">([^<]+)', html)]
 
 
+def _assets_tags(html: str) -> list[str]:
+    """The opening tags of every image tray in a response, attributes and all."""
+    return re.findall(r'<div[^>]*id="assets-card"[^>]*>', html)
+
+
 # ───────────────────────────────────────────────────────────── gather
 
 
@@ -97,6 +102,31 @@ async def test_uploading_a_pdf_parses_it_and_reports_its_pages(client, case):
     panel = client.get(f"/evidence/{case}/gather")
     assert "reklamation.pdf" in panel.text
     assert "2 pages" in panel.text
+
+
+async def test_the_image_tray_rides_along_with_the_panel_that_parsed_it(client, case):
+    """Images are harvested by the parse, which is reported in the Gather card.
+
+    The tray is a different panel, so the card that finishes and the card that
+    changed are not the same one and the tray sat empty until the next full page
+    load — which is what had people reloading to see what a run had found.
+    """
+    client.post(
+        f"/evidence/{case}/sources",
+        files={"files": ("messung.png", fixtures.png(), "image/png")},
+    )
+    await _settle(case)
+
+    panel = client.get(f"/evidence/{case}/gather")
+    assert "Images found" in panel.text, "the tray is appended to the gather response"
+    tags = _assets_tags(panel.text)
+    assert len(tags) == 1 and "hx-swap-oob" in tags[0]
+
+    # And the page that holds the tray in place must not mark it, or the swap
+    # would be looking for one of two cards sharing an id.
+    desk = client.get(f"/evidence/{case}")
+    tags = _assets_tags(desk.text)
+    assert len(tags) == 1 and "hx-swap-oob" not in tags[0]
 
 
 async def test_uploading_an_eml_shows_who_sent_it(client, case):
@@ -410,6 +440,42 @@ async def test_a_dismissed_candidate_can_be_put_back(client, case):
     findings = client.get(f"/evidence/{case}/findings")
     candidate = re.search(r"/evidence/candidates/([0-9a-f-]{36})/dismiss", findings.text).group(1)
     assert "1 dismissed" in client.post(f"/evidence/candidates/{candidate}/dismiss").text
+
+
+async def test_swapping_the_answer_to_a_single_answer_question_says_so(client, case):
+    """The one change on the desk that looks exactly like a lost click.
+
+    A question that takes one answer demotes the value it held when a second is
+    accepted. One accepted before, one after: the card turns green, another one
+    further down quietly goes back to pending, and nothing on the page reports
+    the trade. Read as "accept is broken", which is what happened.
+    """
+    client.post(f"/evidence/{case}/paste", data={"text": fixtures.NOTES})
+    added = client.post(
+        f"/evidence/{case}/questions", data={"prompt": "Which batch?", "type": "identifier"}
+    )
+    question = _question_id(added.text)
+    client.post(
+        f"/evidence/questions/{question}/commands",
+        data={"kind": "pattern", "pattern": r"LOT-\d{4}-\d{4}"},
+    )
+    client.post(f"/evidence/{case}/run")
+    await _settle(case)
+
+    findings = client.get(f"/evidence/{case}/findings")
+    candidates = re.findall(r"/evidence/candidates/([0-9a-f-]{36})/accept", findings.text)
+    assert len(candidates) >= 2, "the notes carry two batches"
+
+    first = client.post(f"/evidence/candidates/{candidates[0]}/accept")
+    assert "went back to the list" not in first.text, "nothing was given up for the first"
+    assert "HX-Reswap" not in first.headers, "and the page is not pulled about for nothing"
+
+    second = client.post(f"/evidence/candidates/{candidates[1]}/accept")
+    assert "went back to the list" in second.text
+    assert "There may be several answers" in second.text, "and the way out is named"
+    # The notice is at the head of the panel and the click was down the list, so
+    # it has to be brought into view or it is never read.
+    assert second.headers["HX-Reswap"] == "outerHTML show:#findings-card:top"
 
 
 async def test_the_runs_page_shows_the_funnel(client, case):

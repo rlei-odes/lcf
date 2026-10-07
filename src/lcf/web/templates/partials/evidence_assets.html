@@ -5,9 +5,14 @@
    is one asset, and anything under 80×80 is a bullet or a rule and was dropped.
 
    Assignment is by clicking, never dragging — the tray holds what was found and a
-   person decides what is worth keeping. #}
+   person decides what is worth keeping.
+
+   `oob` renders the tray as an out-of-band swap. Images are harvested by the
+   parse, which is reported in the Gather card, so the panel that changes and the
+   panel that answers are not the same one — without it the tray only appeared on
+   the next full page load. #}
 {% if assets %}
-<div class="card" id="assets-card">
+<div class="card" id="assets-card" {% if oob %}hx-swap-oob="true"{% endif %}>
   <h3>Images found · {{ assets|length }}</h3>
 
   {% set pending = assets|selectattr('status', 'equalto', 'pending')|list %}
@@ -141,5 +146,5 @@
 {% else %}
 {# No images: an empty card would be a panel about nothing. The id stays so a
    swap after a parse has somewhere to land. #}
-<div id="assets-card"></div>
+<div id="assets-card" {% if oob %}hx-swap-oob="true"{% endif %}></div>
 {% endif %}

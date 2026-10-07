@@ -39,7 +39,8 @@ Two invariants shape everything:
   ordinary Python; the model answers narrow, schema-constrained questions inside it.
 
 Design: [docs/DESIGN.md](docs/DESIGN.md) · Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) ·
-Evidence desk: [docs/EVIDENCE-DESK.md](docs/EVIDENCE-DESK.md)
+Evidence desk: [docs/EVIDENCE-DESK.md](docs/EVIDENCE-DESK.md) ·
+Using the evidence desk: [docs/EVIDENCE-DESK-GUIDE.md](docs/EVIDENCE-DESK-GUIDE.md)
 
 ## What this is for
 

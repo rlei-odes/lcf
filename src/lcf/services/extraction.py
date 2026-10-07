@@ -864,7 +864,23 @@ def _still_matches(pattern: str, row: EvidenceCandidate) -> bool:
         return False
 
 
-async def decide(session: AsyncSession, candidate_id: UUID, status: str) -> EvidenceCandidate:
+@dataclass
+class Decision:
+    """What accepting or dismissing one candidate actually did.
+
+    `demoted` carries the values a single-answer question gave up to make room
+    for this one. It is returned rather than left implicit because the whole of
+    it happens where nobody is looking: the card that was clicked turns green, a
+    card further down the list quietly goes back to pending, and the number of
+    accepted values beside the question does not move. "It did not save" is the
+    only conclusion available to whoever clicked, and it is the wrong one.
+    """
+
+    row: EvidenceCandidate
+    demoted: list[EvidenceCandidate] = field(default_factory=list)
+
+
+async def decide(session: AsyncSession, candidate_id: UUID, status: str) -> Decision:
     """Accept or dismiss one candidate. Neither deletes anything.
 
     `proposal` rows survive their outcome and so do these: what the material
@@ -884,6 +900,7 @@ async def decide(session: AsyncSession, candidate_id: UUID, status: str) -> Evid
     # than silently holding two answers to "what is the part number?". Demoted,
     # not dismissed: the person changed their mind about which is right, they did
     # not judge the old one worthless.
+    demoted: list[EvidenceCandidate] = []
     if status == "accepted" and question is not None and not question.multiple:
         for other in await session.scalars(
             select(EvidenceCandidate).where(
@@ -894,11 +911,12 @@ async def decide(session: AsyncSession, candidate_id: UUID, status: str) -> Evid
         ):
             other.status = "pending"
             other.decided_at = None
+            demoted.append(other)
 
     if question is not None:
         await evidence.touch(session, question.case_id)
     await session.flush()
-    return row
+    return Decision(row, demoted)
 
 
 async def runs_of(session: AsyncSession, case_id: UUID, limit: int = 10) -> list[EvidenceRun]:

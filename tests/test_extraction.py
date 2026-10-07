@@ -385,8 +385,14 @@ async def test_a_single_answer_question_demotes_the_previous_answer(case):
             (r for g in (await extraction.review(s, case))[0].groups for r in g.rows),
             key=lambda r: r.value,
         )
-        await extraction.decide(s, rows[0].id, "accepted")
-        await extraction.decide(s, rows[1].id, "accepted")
+        first = await extraction.decide(s, rows[0].id, "accepted")
+        second = await extraction.decide(s, rows[1].id, "accepted")
+
+    assert first.demoted == [], "nothing was accepted before it"
+    # The swap is the whole of what the second click did, and it is invisible:
+    # one accepted value before, one after. Reported, so the page can say so
+    # rather than leave it looking like the click was lost.
+    assert [r.value for r in second.demoted] == ["LOT-2026-0417"]
 
     async with session() as s:
         after = await extraction.review(s, case)

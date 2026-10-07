@@ -153,7 +153,8 @@ async def gather_panel(request: Request, case_id: UUID):
 async def _gather(request: Request, case_id: UUID, problems: list[str] | None = None):
     ctx = await _desk_context(case_id)
     ctx["problems"] = problems or []
-    return page(request, "partials/evidence_gather.html", **ctx)
+    html = page(request, "partials/evidence_gather.html", **ctx)
+    return _with_assets(request, html, ctx)
 
 
 @router.get("/evidence/sources/{source_id}/text", response_class=HTMLResponse)
@@ -303,6 +304,21 @@ def _with_findings(request: Request, response: HTMLResponse, ctx: dict) -> HTMLR
     """
     ctx = dict(ctx, problems=[], oob=True)
     extra = page(request, "partials/evidence_findings.html", **ctx)
+    return HTMLResponse(response.body.decode() + extra.body.decode())
+
+
+def _with_assets(request: Request, response: HTMLResponse, ctx: dict) -> HTMLResponse:
+    """Append the image tray as an out-of-band swap.
+
+    Images are harvested by the parse, and the parse is reported in the Gather
+    card — so the panel that finishes and the panel that changed are different
+    panels, and the tray sat there empty until the next full page load. Dropping
+    a source is the same shape in reverse: its images go with it.
+
+    Rendered from the same context, so it costs no extra queries.
+    """
+    ctx = dict(ctx, oob=True)
+    extra = page(request, "partials/evidence_assets.html", **ctx)
     return HTMLResponse(response.body.decode() + extra.body.decode())
 
 
@@ -680,24 +696,62 @@ async def findings_panel(request: Request, case_id: UUID):
     return await _findings(request, case_id)
 
 
-async def _findings(request: Request, case_id: UUID, problems: list[str] | None = None):
+async def _findings(
+    request: Request,
+    case_id: UUID,
+    problems: list[str] | None = None,
+    notices: list[str] | None = None,
+):
     ctx = await _desk_context(case_id)
     ctx["problems"] = problems or []
+    # Not a problem, and not nothing: something happened off-screen that the
+    # person would otherwise have to deduce from a count that did not move.
+    ctx["notices"] = notices or []
     return page(request, "partials/evidence_findings.html", **ctx)
 
 
 @router.post("/evidence/candidates/{candidate_id}/{decision}", response_class=HTMLResponse)
 async def decide_candidate(request: Request, candidate_id: UUID, decision: str):
     problems: list[str] = []
+    notices: list[str] = []
     async with session() as s:
         row = await extraction.get_candidate(s, candidate_id)
         question = await evidence.get_question(s, row.question_id)
         case_id = question.case_id
         try:
-            await extraction.decide(s, candidate_id, _decision(decision))
+            outcome = await extraction.decide(s, candidate_id, _decision(decision))
+            notices.extend(_demotion_notice(question, outcome))
         except evidence.Refused as exc:
             problems.append(str(exc))
-    return await _findings(request, case_id, problems=problems)
+
+    response = await _findings(request, case_id, problems=problems, notices=notices)
+    if notices:
+        # The notice renders at the head of the panel; the click that caused it
+        # was somewhere down the list. A swap leaves the browser at the pixel
+        # offset it had, so without naming what to bring into view the message
+        # sits off-screen — the same silence it exists to break. Only when there
+        # is something to read: pulling the page up after every accept would be
+        # its own nuisance on a question that takes several.
+        response.headers["HX-Reswap"] = "outerHTML show:#findings-card:top"
+    return response
+
+
+def _demotion_notice(question, outcome: extraction.Decision) -> list[str]:
+    """Say so when a single-answer question swapped one answer for another.
+
+    Without this the page reports the swap as nothing at all — the accepted
+    count is one before the click and one after — and the reasonable reading is
+    that the click was lost. It also names the way out, because a question that
+    keeps losing answers is usually one that should have been allowed several.
+    """
+    if not outcome.demoted:
+        return []
+    gave_up = ", ".join(f"“{other.value}”" for other in outcome.demoted)
+    return [
+        f"“{outcome.row.value}” is now the answer to “{question.prompt}”, and {gave_up} "
+        "went back to the list. This question takes one answer — edit it and tick "
+        "“There may be several answers” if it should hold more than one."
+    ]
 
 
 def _decision(word: str) -> str:
@@ -744,7 +798,10 @@ async def start_captions(request: Request, case_id: UUID):
         "partials/job.html",
         job=job,
         done_url=f"/evidence/{case_id}/assets",
-        done_target="#assets",
+        # The card, not the `<section>` that holds it: the response is the card,
+        # so swapping its outerHTML into the section replaced the section and took
+        # its id with it — and the next captioning run then had no target to find.
+        done_target="#assets-card",
         working_title="Looking at the images",
     )
 
