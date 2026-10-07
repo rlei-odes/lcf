@@ -151,12 +151,17 @@ document ───────────────────────�
    │      ├──< answer        question_key, value, source
    │      └──< block         key, kind
    │             ├──< revision    seq, value, author, proposal_id     (append-only)
-   │             └──< proposal    anchor, proposed_value, rationale,
+   │             ├──< block_pin   quote — a passage a rewrite may not move
+   │             └──< proposal    anchor, proposed_value, remark, rationale,
    │                              based_on, confidence, status
    ├──< assessment ──< check_result
-   ├──< llm_call             call_type, prompt, response, tokens, ms
    ├──< job
    └──< export               format, uri
+
+event ──< llm_exchange     the log, and what one model call was asked and
+   kind, ok, summary,      answered. `event` has no foreign key to anything
+   meta, document_id       by design; the exchange's is the one exception,
+                           and cascades, so rotating the log rotates payloads
 
                                            (the evidence desk — its own root,
                                             deliberately not joined to document)
@@ -224,8 +229,35 @@ consecutive revisions, not stored per character.
 **`proposal` rows survive their outcome.** Accepted, edited or rejected, they stay. What the model
 suggested and what the human did about it is the audit trail.
 
-**`llm_call` logs every call** — type, resolved prompt, resolved style, response, tokens, duration.
-"Why did it write it that way" must be answerable weeks later.
+**A `proposal` row is also one turn of the conversation about a block.** `remark` is what the author
+asked for, and it is written *before* the call — so an instruction survives a model that was
+unreachable, the way intake stores a paste before trying to sort it. A turn nobody has answered yet
+is `requested` and carries no value, so there is nothing to accept; one a later remark was written
+from is `superseded`. Both statuses exist so the transcript can be read off the same rows in
+creation order, rather than out of a second table that would have to be kept in step with this one.
+
+`anchor` is where a rewrite records the pins it was held to and any it moved. The column means "span
+or whole block", and a rewrite is whole-block, so it would otherwise be null — but *what was fixed
+at the time* is provenance worth keeping, because the pin set changes as the author pins and unpins.
+
+**Every model call is logged, in two tables rather than one.** `event` carries the row — what was
+called, whether it worked, how long it took, how many attempts — and `llm_exchange` carries the
+resolved prompt and the reply, hanging off it by a foreign key that cascades. *Why did it write it
+that way* has to be answerable weeks later, and the admin page answers it from these.
+
+The split is because the two are read completely differently: the log is scanned sixty rows at a
+time and must stay cheap, while an exchange is kilobytes of the author's material opened one at a
+time. A query for the log never touches the payloads, and the cascade means the log's rotation is
+the only retention rule either of them has.
+
+`event` deliberately has no foreign key to `document` — a document deleted later should not take
+the record of the work done on it — so the exchange's key is the single exception, and for the
+opposite reason: an exchange is meaningless without the row it explains.
+
+Because the payloads are the author's material, `LCF_LOG_PROMPTS=false` stops them being written at
+all, and the page says which it is. On an installation with no authentication
+([BACKLOG §9](BACKLOG.md#9-accounts-and-roles)) that switch is the only thing between a visitor and
+every prompt the installation has sent.
 
 **Versions are immutable; documents pin one.** Publishing freezes a version. Without this, editing
 a rule silently invalidates every document in progress.
@@ -274,6 +306,75 @@ logged retry. Never trust the constraint alone.
   tokens, and this model routinely exploits it: generations pad thousands of newlines *mid-object*
   and run to the token ceiling without ever closing. Measured on all three calls of a typical
   section.
+- **The padding starts where the grammar's next obligation is a name or a value, and nothing said
+  in the prompt moves it.** Captured mid-stream, an aborted object is complete up to such a point:
+  after a closed array, before `"confidence"`; inside a list element, after `"question": "…"` and
+  before `"why"`; or — on a table block — immediately after `"value":`, before the array opens at
+  all. Unlimited whitespace is the one continuation always permitted there, and the model takes it.
+
+  What was tried against the deployment host, because most of it looks like it should work:
+
+  | Tried | Result |
+  |---|---|
+  | Four promptings to answer compactly, in the system and the user message | **No effect.** 4 of 4 each |
+  | Dropping the last field, or the last two, from `draft_section` | **No effect.** 4 of 4 each |
+  | Making the trailing fields optional rather than required | **Worse.** The stall moves *inside* a list element, where closing the object would silently drop entries |
+  | Dropping `minItems` so an empty table is grammatical | **No effect.** 3 of 3 either way |
+  | Reordering so the short fields come first | **0 of 12** on a prose block — and on a *table* block the stall moved in front of `value`, both attempts produced nothing, and the author got an error instead of a draft |
+
+  The last row is the one worth keeping, and it is why `draft_response_schema` asks for `value`
+  first: **field order does not decide whether a generation stalls, it decides what a stall costs.**
+  Whatever comes first is written before there is anything left to stall on, so the answer goes at
+  the front and the fields a reader can do without go behind it. The order that reads better — a
+  score and a provenance list before the draft they describe — is the one that loses the draft.
+
+- **The retry works because of the echo, not the instruction.** Its user message asks for compact
+  JSON, and that wording changes nothing on a first attempt; what recovers the call is the
+  *assistant* turn carrying the collapsed partial, which the model finishes. Worth knowing before
+  anybody tries to save the second call by moving the instruction earlier.
+
+- **So a stall at the tail is closed off, and every other one is retried.** Where the only open
+  structure is the root object, the answer is whole and the newlines stand where a later field name
+  would have gone: `_closed_at_root` supplies the `}` and the call costs one generation instead of
+  two. Where anything else is open, closing it would invent structure — a draft silently two gaps
+  short is worse than a retry, because gap detection is the product — so the retry runs. Which
+  fields may be missing is named per call (`complete_json(optional=…)`) rather than read off the
+  schema, because moving a field out of `required` changes where the model stalls, measured above,
+  and for the worse.
+
+- **A grammar that forbids the honest answer is the one thing that makes this fatal.** A table's
+  `min_rows` became `minItems`, so with nothing supplied the model could neither emit the empty
+  array nor invent rows, and padded *before* `value` — too early for anything to close off, and the
+  author got an error where a draft should be. `min_rows` is now a floor only when there is material
+  to fill the rows from (`schemas.block_value_schema`); dropping it outright was tried and is worse,
+  because with answers to draw on the floor is what stops the model preferring a gap to reading
+  them. Row bounds are checked at the gate regardless.
+
+#### The padding is vLLM's bug, and the fix is a serving flag
+
+The cause is upstream and known: xgrammar compiles the schema without a whitespace bound, so its
+FSM has an **unlimited whitespace self-loop at every JSON value position**, and a model that puts
+high probability on a newline there takes it until `max_tokens`. Confirmed locally — with the guard
+lifted, a generation ran the full 4096 tokens in 98 seconds and emitted one unbroken run of 10,081
+whitespace characters without closing the object.
+
+The fix is `disable_any_whitespace`, which is `max_whitespace_cnt = 0`, and on this build it is
+**engine-level only**:
+
+```
+vllm serve <model> --structured-outputs-config '{"backend":"xgrammar","disable_any_whitespace":true}'
+```
+
+Setting it per request does not work and does not say so. `{"structured_outputs":
+{"disable_any_whitespace": true}}` alone is a 400 — the validator wants a constraint in the same
+object — and moving the schema in beside it as `structured_outputs.json` is **accepted and silently
+ignored**: measured, still a 4,091-character whitespace run. That is the same trap §5.2's table
+records for `guided_json`, and the reason the result is validated locally no matter what the
+request claimed.
+
+So the guards here are not a workaround for a mystery. They are what keeps the application working
+on a server started without that flag, and the flag is the actual repair — set it where vLLM is
+launched and every guard above becomes redundant rather than load-bearing.
 
 Because the padding happens inside the object, no amount of token budget fixes it — the object
 never closes. So requests are **streamed**, with two aborts:
@@ -301,7 +402,7 @@ returns one schema. The complete set:
 | `caption_images` | ≤ image budget | caption per image |
 | `prefill_answers` | one section's questions + mapped evidence | proposed answers, or "ask the user" |
 | `draft_section` | one section: spec, style, answers, evidence | block proposals + open gaps + unsupported claims |
-| `suggest_span` | one span + instruction | proposed replacement + rationale |
+| `revise_block` | one prose block + the author's remark + their pinned passages | the block rewritten + rationale |
 | `evaluate_check` | one LLM check + referenced blocks | pass/fail + reason + confidence |
 | `evaluate_consistency` | one criterion across 2–n sections | pass/fail + reason + evidence refs |
 | `summarize` | one section or the evidence pool | compact standing summary for later context |
@@ -312,6 +413,12 @@ returns one schema. The complete set:
 Eleven call types. Each has a fixed response schema, a prompt frame in `llm/prompts/`, and test
 fixtures. **A twelfth requires a design decision** — the pressure to add "just one more
 general-purpose call" is exactly what this table exists to resist.
+
+`revise_block` took the slot an unbuilt `suggest_span` held, and subsumes it rather than displacing
+it. A pin is the inverse of a scope: pinning everything but one span *is* a span-scoped
+instruction, so the mechanism that holds a settled passage would also serve a suggestion aimed at
+one. What it does not supply is the way to *show* such a suggestion inline, which is a UI question
+and lives in [§6](#6-working-on-a-prose-block).
 
 The last three belong to the evidence desk, and they split into two species that the table above
 does not distinguish but the rule does:
@@ -370,8 +477,8 @@ Part 8 is not overridable:
 Enforced by ordering and covered by a test that composes a hostile doc-type style and asserts the
 rule still terminates the prompt.
 
-The assembled prompt is **stored on the `llm_call` row** and viewable per section in the spec
-editor. The rule builder cannot edit it — but they cannot debug guidance they cannot see.
+The assembled prompt is **stored with the call** (`llm_exchange`) and readable on the admin page,
+as well as viewable per section in the spec editor before any document exists. The rule builder cannot edit it — but they cannot debug guidance they cannot see.
 
 #### Exemplar leakage
 
@@ -379,29 +486,70 @@ Exemplars carry facts from a different case. A proposal sharing a distinctive n-
 exemplar it was shown is flagged for review rather than presented as a clean draft — cheap to
 compute, and it catches the specific way few-shot prompting fails.
 
-## 6. The editor island
+## 6. Working on a prose block
 
-The only substantial JavaScript. A TipTap (ProseMirror) instance per prose block, restricted to the
-markdown subset from [DESIGN §9](DESIGN.md#9-markdown-integrity) by its schema — the editor is
-structurally incapable of producing a heading or a table.
+A block-level accept or decline settles a draft in one gesture, which is the right shape when the
+draft is right. When it is nearly right, the author has something to say about it — *shorter*, *drop
+that sentence*, *this part is finished, leave it alone* — and a single Accept/Decline cannot carry
+that. So a prose block has a conversation surface beneath it, and the two halves of what an author
+needs are a **pin** and a **remark**.
 
 | Concern | Mechanism |
 |---|---|
-| Markdown ↔ document | `tiptap-markdown`, serialising to the same subset the server enforces |
-| Suggestion spans | ProseMirror **decorations** — marked ranges with a hover card |
-| Accept / reject | HTMX `POST` to `/proposals/{id}/accept`; server returns the new block HTML |
-| Edit in place | Accept, then edit normally; the revision records `llm_accepted_edited` |
-| Blame view | Decorations again, coloured by revision, from a server-computed diff |
-| Table paste | Clipboard TSV/CSV parsed client-side, column mapping confirmed server-side and remembered per doc type ([DESIGN §14.3](DESIGN.md#143-tables-are-pasted-not-typed)) |
+| A settled passage | A `block_pin` row holding the text. Rendered into the draft as `<mark>` **by the server** |
+| Asking for a change | A remark, stored as `proposal.remark` before any call, then a `revise_block` job |
+| Holding a pin | `llm/quoting.py` checks every pin against the answer; one retry naming what moved |
+| Accept / reject | Unchanged — HTMX `POST` to `/proposals/{id}/accept`, which appends the revision |
+| Editing by hand | Unchanged — the textarea and its Save button stay exactly as they were |
+| The transcript | The block's `proposal` rows in order: each remark and what came of it |
 | Decision log | Server-rendered collapsed strip; no JS beyond the disclosure toggle |
 
-Decorations are the reason for TipTap: they mark ranges *without* altering the document, which is
-precisely a suggestion — visible, hoverable, and not yet content. That maps onto invariant I with
-no impedance mismatch at all.
+### Why this is not a framework
+
+The surface needs exactly one fact the server cannot have: **what the author just selected**. Not
+where it falls, not how to draw it — the server knows the block's text and the pins, so it renders
+the marks itself. `static/pins.js` reads `selectionStart`/`selectionEnd` from a textarea or
+`window.getSelection()` from a rendered draft, puts the text in a hidden field, and stops. That is
+the whole island, and it is why this repo still has no build step.
 
 Everything else in the UI is plain server-rendered HTML with HTMX swaps. The few behaviours that
 are not worth a round trip — the dirty-form tracker, the scrollspy, the dropdown placement — are
 small vanilla scripts in `static/`, not a framework.
+
+### A pin is text, not a position
+
+Offsets would be the obvious representation and they are the wrong one: a pin's purpose is to
+survive a rewrite, so by the time it matters the text around it has moved and the offsets are void.
+Storing the passage itself makes resolving a pin a search of whatever the author is looking at —
+the block's content, or a draft they have not accepted — and makes a pin taken from an unaccepted
+draft work without anchoring it to something that is not yet content.
+
+It also sets where strictness belongs. Verification (`quoted_from`) forgives reflowed whitespace,
+because a model reflows what it reproduces and rejecting a good rewrite over a line break would be
+absurd. Highlighting matches exactly, case aside, because a highlight that guesses marks the wrong
+words. A pin whose passage is in neither the content nor the live draft is shown struck through: the
+author edited it away by hand, and a pin silently constraining text nobody can see is worse than
+saying so.
+
+### A rewrite that breaks a pin is shown, not refused
+
+The retry hands the model the passages it dropped, by name, and that recovers it in practice. A
+second failure still produces a proposal, carrying a blocker line naming what accepting it would
+lose. Refusing outright would be the stricter-looking choice and the worse one: a proposal is not
+content, so nothing is at risk, and discarding a rewrite that is right apart from one sentence costs
+the author more than a warning does.
+
+### Still not built
+
+TipTap, and the thing it is actually for. Decorations mark ranges *without* altering the document,
+which is precisely an inline suggestion — visible, hoverable, not yet content — and that is a
+different feature from this one: a **span** proposal with a hover card, rather than a whole-block
+rewrite the author reads and answers. The blame view wants decorations too. Both are
+[BACKLOG §4](BACKLOG.md#4-span-suggestions-and-the-editor-island); neither is needed to pin a
+passage or ask for a change, which is why neither was built to do it.
+
+Table paste ([DESIGN §14.3](DESIGN.md#143-tables-are-pasted-not-typed)) is server-side today: the
+clipboard text goes into a textarea and `web/forms.py` parses it.
 
 ## 7. Jobs and streaming
 
@@ -483,6 +631,9 @@ POST  /documents/{id}/sections/{key}/draft                      → job
 POST  /proposals/{id}/accept              → new block HTML
 POST  /proposals/{id}/reject
 PATCH /blocks/{id}                        direct user edit → revision
+POST  /documents/{id}/sections/{key}/blocks/{block}/pins     settle a selected passage
+POST  /pins/{id}/remove                   let a rewrite change it again
+POST  /documents/{id}/sections/{key}/blocks/{block}/revise   remark → job (prose only)
 POST  /documents/{id}/sections/{key}/complete
 POST  /documents/{id}/assess                                    → job
 GET   /documents/{id}/blame
@@ -553,6 +704,12 @@ values and is git-ignored.
 Values that are not credentials but *model properties* — notably
 `LCF_LLM_MAX_IMAGES_PER_CALL` and the context window — are configuration rather than constants,
 because they change when the model does and the batching logic must read them rather than assume.
+
+Two settings are policy rather than plumbing, and belong to whoever runs the installation rather
+than to whoever wrote it. `LCF_EVENT_LOG_KEEP` bounds the activity log, which nothing else bounds
+and which grows with every model call. `LCF_LOG_PROMPTS` decides whether that log keeps what the
+assistant was asked and answered — diagnosis against the author's material, on a page with no
+authentication. Neither has a right answer we could pick for them.
 
 ## 12. Library shortlist
 
@@ -658,6 +815,15 @@ requires of a service on a network with no egress.
 | Chunking | Property tests: nothing lost, `source.text[char_from:char_to]` is exactly the chunk, the budget holds |
 | Extraction | Monkeypatched `answer_from_chunk`; tier order, dedupe, re-run semantics, and a funnel whose numbers reconcile |
 | Boundaries | Assert `spec/`, `engine/` and `ingest/` import no database, storage or service, and that `render/` and `engine/` do not import each other |
+| Activity log | Its **own scratch SQLite file**, not the configured database — see below |
+
+"A real database" means the one from `.env`, which is also a real installation's. Almost every test
+owns rows and cleans up the rows it made, which is safe. The event log is the exception, because
+rotation is a claim about the *whole table* — keep the newest N — so a test for it has to own the
+table rather than some rows in it, and pointed at the configured database it deletes the
+installation's activity. `tests/test_events_log.py` therefore builds its own SQLite file per test,
+and asserts that isolation rather than trusting it. Anything else that acquires a table-wide
+operation belongs on the same footing.
 
 The parts that must be right — deterministic checks, the state machine, composition, the parser, the
 chunker, the pattern tier — are all testable without a model. That is by design. If the flow can only
@@ -677,8 +843,11 @@ be tested by talking to an LLM, the architecture has failed.
 9. Export: JSON, then Markdown, then docx with template linting.
 10. Spec editor UI for the rule builder.
 
-Steps 1–5 and 7–10 are done; drafting, assessment and intake all run as background jobs. What
-remains of the original ten is the editor island (step 6).
+Steps 1–5 and 7–10 are done; drafting, assessment and intake all run as background jobs. Step 6
+split in two. The half that answers *what does an author do with a draft that is nearly right* is
+built, and needed no framework ([§6](#6-working-on-a-prose-block)): a prose block can be talked
+about, with settled passages held verbatim through each rewrite. The half that wants ProseMirror —
+inline span suggestions, and blame as decorations — is still [BACKLOG §4](BACKLOG.md).
 
 Step 7 grew an eleventh step the list did not anticipate, because paste turned out to be the wrong
 gesture for the material people are actually sent: the **evidence desk**
@@ -1061,7 +1230,7 @@ beside a regex match would invite the reading that the other numbers are on the 
 
 Six candidates out of 48 passages is either a precise instrument or a broken one, and the difference
 is invisible unless the run says which. So a run is a row — `evidence_run`, with per-stage counts —
-for the same reason `llm_call` is one: *why did it say that* has to be answerable weeks later.
+for the same reason a model call is one: *why did it say that* has to be answerable weeks later.
 
 The counts that matter most are the ones for what was **dropped**: a quote that was not in its
 passage, a value the question's type could not hold, a duplicate merged. A question returning nothing

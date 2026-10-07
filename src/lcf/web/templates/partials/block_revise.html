@@ -1,0 +1,112 @@
+{# The conversation about one prose block.
+
+   Three things in one place, in the order they are used: what is settled, what
+   has been asked so far, and the box for asking the next thing. The live
+   proposal renders here as the assistant's last turn rather than above the
+   text, because reading a rewrite and asking for another change are the same
+   gesture and should not be at opposite ends of the card.
+
+   `static/pins.js` fills the hidden `quote` field from whatever the author has
+   selected — in the text box or in a proposal. It is the only script involved:
+   the marks themselves are rendered by the server. #}
+<div class="revise" data-revise>
+  <div class="revise-head">
+    <h4>Work on this with the assistant</h4>
+    {% if b.pins %}<span class="pill">{{ count(b.pins|length, 'passage') }} settled</span>{% endif %}
+  </div>
+
+  {% if b.pins %}
+  {% set stale = b.stale_pins %}
+  <ul class="pins plain">
+    {% for pin in b.pins %}
+    <li class="pin{{ ' stale' if pin in stale }}">
+      <span class="pin-quote">{{ pin.quote|truncate(160) }}</span>
+      <form hx-post="/pins/{{ pin.id }}/remove" hx-target="#workspace" hx-swap="outerHTML">
+        <input type="hidden" name="document_id" value="{{ document.id }}">
+        <input type="hidden" name="section" value="{{ section.key }}">
+        <button type="submit" class="unpin" title="Let the assistant change this again">✕</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% if stale %}
+  <p class="why blocker">
+    {{ count(stale|length, 'passage') }} {{ verb(stale|length) }} no longer in this block —
+    edited away by hand. Unpin {{ 'it' if stale|length == 1 else 'them' }}, or put the wording back.
+  </p>
+  {% endif %}
+  {% endif %}
+
+  <form class="pin-form"
+        hx-post="/documents/{{ document.id }}/sections/{{ section.key }}/blocks/{{ b.block.key }}/pins"
+        hx-target="#workspace" hx-swap="outerHTML">
+    <input type="hidden" name="quote" data-pin-quote>
+    <button type="submit" data-pin-button disabled>Pin the selection</button>
+    <span class="why" data-pin-note>
+      Select a passage in the text above to settle it. Settled text is reproduced
+      word for word in every rewrite.
+    </span>
+  </form>
+
+  {# Turns already decided. The live one is rendered below, where the answer to
+     it is typed. #}
+  {% set past = b.turns|rejectattr('status', 'equalto', 'pending')|rejectattr('status', 'equalto', 'requested')|list %}
+  {% if past %}
+  <details class="transcript">
+    <summary>Earlier remarks ({{ past|length }})</summary>
+    <ul class="plain">
+      {% for t in past %}
+      <li class="turn">
+        <span class="remark">{{ t.remark }}</span>
+        <span class="where">
+          {%- if t.status == 'failed' -%}
+            not answered — {{ t.proposed_value.get('error') or 'the assistant could not be reached' }}
+          {%- elif t.status == 'superseded' -%}
+            overtaken by a later remark
+          {%- else -%}
+            {{ t.status|replace('_', ' ') }} · {{ t.proposed_value['v']|string|truncate(140) }}
+          {%- endif -%}
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+
+  {% for p in b.proposals %}
+    {% include "partials/proposal_card.html" %}
+  {% endfor %}
+
+  <div id="revise-slot-{{ b.block.key }}">
+    {% if revise_job and revise_in == b.block.key %}
+      {% with job = revise_job,
+              done_url = "/documents/" ~ document.id ~ "/sections/" ~ section.key ~ "/panel?job=" ~ revise_job.id,
+              done_target = "#workspace",
+              working_title = "The assistant is rewriting" %}
+        {% include "partials/job.html" %}
+      {% endwith %}
+    {% endif %}
+  </div>
+
+  <form hx-post="/documents/{{ document.id }}/sections/{{ section.key }}/blocks/{{ b.block.key }}/revise"
+        hx-target="#revise-slot-{{ b.block.key }}" hx-swap="innerHTML"
+        hx-disabled-elt="find button" hx-on::after-request="this.reset()">
+    <textarea name="remark" rows="2" required
+              placeholder="Shorten the second paragraph. Say when containment started."></textarea>
+    <div class="actions">
+      <button class="primary" type="submit" {{ 'disabled' if revise_job or not b.revisable }}>
+        Ask for a rewrite
+      </button>
+      <span class="why">
+        {%- if revise_job -%}
+          The assistant is working. One rewrite at a time.
+        {%- elif not b.revisable -%}
+          Nothing to rewrite yet. Write something here, or ask for a draft above.
+        {%- else -%}
+          It is given your answers, the material you supplied, what this block says
+          now, and the draft it last proposed.
+        {%- endif -%}
+      </span>
+    </div>
+  </form>
+</div>

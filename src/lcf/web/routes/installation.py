@@ -14,6 +14,7 @@ from fastapi.responses import HTMLResponse, Response
 
 from lcf.core.config import settings
 from lcf.core.db import session
+from lcf.models.tables import Event
 from lcf.services import admin, doc_types, events, setup
 from lcf.services import templates as templates_service
 from lcf.spec import loader
@@ -328,4 +329,27 @@ async def admin_page(request: Request, category: str = "", failures: str = ""):
         categories=events.CATEGORIES,
         category=category,
         failures_only=failures_only,
+        keep=settings().event_log_keep,
+        prompts_kept=settings().log_prompts,
+    )
+
+
+@router.get("/admin/calls/{event_id}", response_class=HTMLResponse)
+async def call_exchange(request: Request, event_id: UUID, side: str = "prompt"):
+    """What one model call was asked, or what it answered.
+
+    Its own request rather than part of the log, because an exchange is
+    kilobytes and the log is sixty rows: nobody should pay for ninety prompts to
+    read one. `side` picks which half, so the two buttons are one route.
+    """
+    async with session() as s:
+        row = await events.exchange(s, event_id)
+        event = await s.get(Event, event_id)
+    return page(
+        request,
+        "partials/exchange.html",
+        event_id=event_id,
+        event=event,
+        exchange=row,
+        side="response" if side == "response" else "prompt",
     )

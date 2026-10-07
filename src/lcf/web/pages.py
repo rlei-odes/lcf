@@ -13,7 +13,7 @@ from pathlib import Path
 from fastapi import Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
-from markupsafe import Markup, escape
+from markupsafe import Markup
 
 from lcf.core.text import count, verb
 from lcf.engine.state import Status
@@ -21,6 +21,7 @@ from lcf.ingest import commands as ingest_commands
 from lcf.services import drafts, events
 from lcf.spec.describe import describe_criterion, describe_requirement, scope_of
 from lcf.web import builder
+from lcf.web.presenters import marked
 
 HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=str(HERE / "templates"))
@@ -120,25 +121,12 @@ def highlight(quote: str, value: str) -> Markup:
     the sentence under it, and a pattern hit puts it there verbatim. Marking it
     turns that check into a glance.
 
-    Case-insensitive, because a pattern may be and the surrounding text decides
-    the casing. Escaped piece by piece and assembled as markup: the quote is
-    somebody else's document and the value may have come from a model, so
-    neither is ever trusted as HTML.
+    One needle, where a block's settled passages are many, so this is
+    `presenters.marked` with a single quote rather than a second copy of the
+    escape-and-assemble loop.
     """
-    text = str(quote or "")
     needle = str(value or "").strip()
-    if not text or not needle:
-        return Markup(escape(text))
-
-    out: list[str] = []
-    low_text, low_needle = text.casefold(), needle.casefold()
-    at = 0
-    while (found := low_text.find(low_needle, at)) != -1:
-        out.append(str(escape(text[at:found])))
-        out.append(f"<mark>{escape(text[found : found + len(needle)])}</mark>")
-        at = found + len(needle)
-    out.append(str(escape(text[at:])))
-    return Markup("".join(out))
+    return marked(str(quote or ""), [needle] if needle else [])
 
 
 templates.env.globals["highlight"] = highlight

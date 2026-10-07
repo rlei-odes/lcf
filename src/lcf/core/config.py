@@ -92,6 +92,19 @@ class Settings(BaseSettings):
 
     worker_in_process: bool = True
 
+    # The event log grows with every model call and nothing else bounds it, so
+    # the bound is here rather than in a cron nobody installed. Rotation runs
+    # when a background job finishes — the thing that fills the log is the thing
+    # that trims it, which is what makes a busy installation nobody looks at
+    # safe as well as a quiet one.
+    event_log_keep: int = 20000
+    # Store the resolved prompt and the reply alongside a model call, so "why did
+    # it write that" is answerable on the admin page rather than only in theory
+    # (DESIGN §5.8). They are the author's material, so this is a switch: off,
+    # the log keeps what a call cost and nothing it said. Rotation applies either
+    # way — an exchange belongs to its log row and goes when that row goes.
+    log_prompts: bool = True
+
     # The evidence desk. `auto` prefers docling for PDFs when the extra is
     # installed and falls back to the built-in parser without complaint when it
     # is not; `builtin` never reaches for it even if it is there.

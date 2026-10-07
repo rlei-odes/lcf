@@ -4,6 +4,11 @@ This module is where DESIGN invariant I is enforced. Drafting writes `Proposal`
 rows and nothing else — no revision, no content. Only `accept` appends a revision,
 and only in response to a person. `reject` records the refusal, because what was
 suggested and turned down is part of the document's history (DESIGN §14.1).
+
+Revising lives here too, with the pins it is constrained by. A pin is meaningless
+on its own — it exists to stop a rewrite moving a passage — so keeping it beside
+`revise` rather than with the block it belongs to puts the constraint next to the
+only thing that reads it.
 """
 
 import asyncio
@@ -18,9 +23,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from lcf.core.config import settings
 from lcf.core.db import session as db_session
+from lcf.llm import calls
 from lcf.llm.calls import draft_block, resolve_style
 from lcf.llm.provider import LLMMalformed, LLMUnavailable
-from lcf.models.tables import Block, Proposal, Section
+from lcf.models.tables import Block, BlockPin, Proposal, Section
 from lcf.services import jobs
 from lcf.services.doc_types import NotFound
 from lcf.services.documents import Author, set_block
@@ -28,10 +34,17 @@ from lcf.services.documents import view as load_view
 
 
 class Status:
+    # A turn the author has started and the assistant has not answered yet. It
+    # carries the remark and no value, so nothing can accept it.
+    REQUESTED = "requested"
     PENDING = "pending"
     ACCEPTED = "accepted"
     ACCEPTED_EDITED = "accepted_edited"
     REJECTED = "rejected"
+    # A later turn was written from this one, so it is no longer the live
+    # candidate. The row stays, because the conversation is the record.
+    SUPERSEDED = "superseded"
+    FAILED = "failed"
 
 
 @dataclass
@@ -136,6 +149,190 @@ async def draft_section(
     return DraftOutcome(created, gaps, errors)
 
 
+class NotRevisable(Exception):
+    """A block a conversation cannot be had about: the wrong kind, or still empty."""
+
+
+async def pin(
+    session: AsyncSession, document_id: UUID, section_key: str, block_key: str, quote: str
+) -> BlockPin | None:
+    """Settle a passage. Nothing is stored for a blank or duplicate selection."""
+    quote = " ".join(quote.split())
+    if not quote:
+        return None
+    block = await _block_row(session, document_id, section_key, block_key)
+    existing = await session.scalars(select(BlockPin).where(BlockPin.block_id == block.id))
+    for row in existing:
+        if " ".join(row.quote.split()).casefold() == quote.casefold():
+            return row
+    row = BlockPin(block_id=block.id, quote=quote)
+    session.add(row)
+    await session.flush()
+    return row
+
+
+async def unpin(session: AsyncSession, pin_id: UUID) -> None:
+    row = await session.get(BlockPin, pin_id)
+    if row is not None:
+        await session.delete(row)
+        await session.flush()
+
+
+async def pins_for(
+    session: AsyncSession, document_id: UUID, section_key: str
+) -> dict[str, list[BlockPin]]:
+    """A section's pins, keyed by block key."""
+    rows = await session.execute(
+        select(Block.key, BlockPin)
+        .join(Block, BlockPin.block_id == Block.id)
+        .join(Section, Block.section_id == Section.id)
+        .where(Section.document_id == document_id, Section.key == section_key)
+        .order_by(BlockPin.created_at)
+    )
+    out: dict[str, list[BlockPin]] = {}
+    for block_key, row in rows.all():
+        out.setdefault(block_key, []).append(row)
+    return out
+
+
+async def request_revision(
+    session: AsyncSession, document_id: UUID, section_key: str, block_key: str, remark: str
+) -> Proposal:
+    """Record what the author asked for, before any call is made.
+
+    The remark is stored first for the reason intake stores a paste first: work
+    the author has done must not be lost to a model that was unreachable. The row
+    it creates is the turn the job then answers.
+    """
+    remark = remark.strip()
+    if not remark:
+        raise NotRevisable("there is nothing to ask for")
+
+    _, spec = await _load(session, document_id)
+    spec_section = spec.section(section_key)
+    spec_block = spec_section.block(block_key) if spec_section else None
+    if spec_block is None:
+        raise NotFound(f"no block {section_key}.{block_key}")
+    if str(spec_block.kind) != "prose":
+        raise NotRevisable(f"{spec_block.label} is a {spec_block.kind}, not prose")
+
+    block = await _block_row(session, document_id, section_key, block_key)
+    if await _open_turn_on(session, block.id) is not None:
+        raise NotRevisable("the assistant is already working on this block")
+
+    turn = Proposal(
+        block_id=block.id,
+        proposed_value={"v": None},
+        remark=remark,
+        status=Status.REQUESTED,
+    )
+    session.add(turn)
+    await session.flush()
+    return turn
+
+
+@jobs.handler("revise_block")
+async def revise_block_job(document_id: UUID, scope: str | None, progress) -> dict:
+    """Job entry point. `scope` is the turn the author opened."""
+    turn_id = UUID(str(scope))
+    try:
+        async with db_session() as s:
+            outcome = await revise(s, turn_id, progress=progress)
+    except (LLMUnavailable, LLMMalformed) as exc:
+        logger.error("revise {} failed: {}", turn_id, exc)
+        async with db_session() as s:
+            turn = await s.get(Proposal, turn_id)
+            if turn is not None and turn.status == Status.REQUESTED:
+                # The reason rides beside `v` rather than in a column of its own,
+                # the way a proposed answer carries its quote: it exists only for
+                # a turn that produced nothing.
+                turn.proposed_value = {"v": None, "error": str(exc)}
+                turn.status = Status.FAILED
+        return {"errors": [str(exc)], "moved": []}
+    return outcome
+
+
+async def revise(session: AsyncSession, turn_id: UUID, progress=None) -> dict:
+    """Answer one turn: rewrite the block to the remark, holding its pins.
+
+    The call is given the block's current content *and* the draft it last proposed,
+    because the author edits the one and reads the other, and a remark may be about
+    either. Producing an answer supersedes whatever was the live candidate — there
+    is one draft in front of the author at a time, and the ones before it are the
+    transcript rather than a queue of things to decide.
+    """
+    turn = await session.get(Proposal, turn_id)
+    if turn is None:
+        raise NotFound(f"no turn {turn_id}")
+
+    block = await session.get(Block, turn.block_id)
+    section = await session.get(Section, block.section_id)
+    document_id = section.document_id
+    _, spec = await _load(session, document_id)
+    spec_section = spec.section(section.key)
+    spec_block = spec_section.block(block.key)
+    view = await load_view(session, document_id)
+
+    pins = [p.quote for p in await _pins_on(session, block.id)]
+    previous = await _live_candidate(session, block.id, excluding=turn.id)
+
+    if progress is not None:
+        await progress.start(1, "Reading what is there…")
+    revision = await calls.revise_block(
+        view,
+        spec_section,
+        spec_block,
+        resolve_style(spec, spec_section),
+        remark=turn.remark or "",
+        pins=pins,
+        previous=previous,
+    )
+    if progress is not None:
+        await progress.step(f"Rewrote {spec_block.label}")
+
+    turn.proposed_value = {"v": revision.value}
+    turn.rationale = revision.rationale or None
+    # Left null: a rewrite does not report a confidence, because asking for one
+    # cost a retry per call and the model answered 1.0 to everything
+    # (`revise_response_schema`).
+    # Whole-block output, so there is no span to anchor — what this records is
+    # what the rewrite was held to, which changes as the author pins and unpins.
+    turn.anchor = {"pins": pins, "moved": revision.moved} if pins else None
+    turn.status = Status.PENDING
+
+    for other in await _pending_on(session, block.id):
+        if other.id != turn.id:
+            other.status = Status.SUPERSEDED
+            other.decided_at = datetime.now(UTC)
+
+    await session.flush()
+    return {
+        "block": spec_block.label,
+        "moved": revision.moved,
+        "errors": [],
+    }
+
+
+async def turns_for(
+    session: AsyncSession, document_id: UUID, section_key: str
+) -> dict[str, list[Proposal]]:
+    """The conversation about each block, oldest first — remarks and their answers."""
+    rows = await _proposals(session, document_id, section_key)
+    out: dict[str, list[Proposal]] = {}
+    for block_key, proposal in rows:
+        if proposal.remark:
+            out.setdefault(block_key, []).append(proposal)
+    return out
+
+
+async def open_turn(
+    session: AsyncSession, document_id: UUID, section_key: str
+) -> tuple[str, Proposal] | None:
+    """The turn the assistant is still answering in this section, if there is one."""
+    rows = await _proposals(session, document_id, section_key, Status.REQUESTED)
+    return rows[-1] if rows else None
+
+
 async def pending_for(session: AsyncSession, document_id: UUID, section_key: str):
     """Pending proposals for a section, keyed by block key."""
     rows = await _proposals(session, document_id, section_key, Status.PENDING)
@@ -145,10 +342,15 @@ async def pending_for(session: AsyncSession, document_id: UUID, section_key: str
     return out
 
 
+#: Statuses the decision log reports on. A `requested` turn has not been decided
+#: and a `failed` one never produced anything to decide about.
+DECIDED = (Status.ACCEPTED, Status.ACCEPTED_EDITED, Status.REJECTED, Status.SUPERSEDED)
+
+
 async def decided_for(session: AsyncSession, document_id: UUID, section_key: str):
-    """Everything already accepted or rejected — the decision log."""
+    """Everything already accepted, rejected or overtaken — the decision log."""
     rows = await _proposals(session, document_id, section_key)
-    return [(block_key, p) for block_key, p in rows if p.status != Status.PENDING]
+    return [(block_key, p) for block_key, p in rows if p.status in DECIDED]
 
 
 async def accept(
@@ -193,6 +395,49 @@ async def reject(session: AsyncSession, proposal_id: UUID, actor: str = "local")
     proposal.decided_at = datetime.now(UTC)
     proposal.decided_by = actor
     await session.flush()
+
+
+async def _load(session: AsyncSession, document_id: UUID):
+    from lcf.services.documents import load
+
+    return await load(session, document_id)
+
+
+async def _pins_on(session: AsyncSession, block_id: UUID) -> list[BlockPin]:
+    return list(
+        await session.scalars(
+            select(BlockPin).where(BlockPin.block_id == block_id).order_by(BlockPin.created_at)
+        )
+    )
+
+
+async def _pending_on(session: AsyncSession, block_id: UUID) -> list[Proposal]:
+    return list(
+        await session.scalars(
+            select(Proposal).where(Proposal.block_id == block_id, Proposal.status == Status.PENDING)
+        )
+    )
+
+
+async def _open_turn_on(session: AsyncSession, block_id: UUID) -> Proposal | None:
+    return await session.scalar(
+        select(Proposal).where(Proposal.block_id == block_id, Proposal.status == Status.REQUESTED)
+    )
+
+
+async def _live_candidate(
+    session: AsyncSession, block_id: UUID, excluding: UUID | None = None
+) -> Any:
+    """The draft the author is looking at but has not accepted, if there is one."""
+    query = (
+        select(Proposal)
+        .where(Proposal.block_id == block_id, Proposal.status == Status.PENDING)
+        .order_by(Proposal.created_at.desc())
+    )
+    if excluding is not None:
+        query = query.where(Proposal.id != excluding)
+    row = await session.scalar(query.limit(1))
+    return None if row is None else row.proposed_value.get("v")
 
 
 async def _block_row(

@@ -1,0 +1,56 @@
+{# One live proposal, and the two ways to answer it.
+
+   Included from two places — the generic block loop, and the conversation panel
+   of a prose block, where it reads as the assistant's last turn. The markup is
+   here once so the accept and decline forms cannot drift apart. #}
+<div class="notice proposal">
+  <div class="block-head">
+    <h3 style="margin:0">
+      {{ 'Rewritten' if p.remark else 'Proposed' }}
+      {%- if p.confidence %} · confidence {{ '%.0f'|format(p.confidence * 100) }}%{% endif %}
+    </h3>
+  </div>
+
+  {% if p.remark %}
+  <div class="remark">You asked: {{ p.remark }}</div>
+  {% endif %}
+
+  <pre class="candidate" {{ 'data-pinnable' if b.block.kind == 'prose' }}>{% if b.block.kind == 'prose' %}{{ b.marked_preview(p) }}{% else %}{{ b.preview(p) }}{% endif %}</pre>
+
+  {% set moved = (p.anchor or {}).get('moved') or [] %}
+  {% if moved %}
+  <div class="check blocker">
+    <span class="mark">✗</span>
+    <span>
+      This rewrite does not reproduce {{ count(moved|length, 'settled passage') }}, and was
+      asked twice. Accepting it would lose
+      {% for quote in moved %}“{{ quote|truncate(90) }}”{% if not loop.last %}, {% endif %}{% endfor %}.
+    </span>
+  </div>
+  {% endif %}
+
+  {% if p.rationale %}
+  <div class="hint">{{ ('Still unresolved: ' if not p.remark else '') ~ p.rationale }}</div>
+  {% endif %}
+
+  <div class="actions">
+    <form hx-post="/proposals/{{ p.id }}/accept" hx-target="#workspace" hx-swap="outerHTML">
+      <input type="hidden" name="document_id" value="{{ document.id }}">
+      <input type="hidden" name="section" value="{{ section.key }}">
+      <button class="primary" type="submit">Accept</button>
+    </form>
+    <form hx-post="/proposals/{{ p.id }}/reject" hx-target="#workspace" hx-swap="outerHTML">
+      <input type="hidden" name="document_id" value="{{ document.id }}">
+      <input type="hidden" name="section" value="{{ section.key }}">
+      <button type="submit">Decline</button>
+    </form>
+    <span class="why">
+      {%- if b.block.kind == 'prose' -%}
+        Accept to write it into the block, or ask for another change below. Nothing
+        is written until you accept.
+      {%- else -%}
+        Accept, then edit below. Nothing is written until you do.
+      {%- endif -%}
+    </span>
+  </div>
+</div>

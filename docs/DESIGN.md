@@ -409,8 +409,9 @@ Every LLM contribution is a row, not a mutation:
 ```
 proposal
   block_id, anchor (span or whole-block), proposed_value,
-  rationale, based_on [evidence ids], confidence,
-  status: pending | accepted | accepted_edited | rejected
+  remark (what the author asked for), rationale,
+  based_on [evidence ids], confidence,
+  status: requested | pending | accepted | accepted_edited | rejected | superseded | failed
 ```
 
 Accepting one appends a **revision** to the block. Rejecting it keeps the record. The block's
@@ -419,6 +420,31 @@ history.
 
 In the UI this is a marked span with a hover card: the proposal, why, what it was based on, and
 accept / reject / edit-in-place. For a still-empty block it is a full-block proposal instead.
+
+### 6.3.1 A draft that is nearly right
+
+Accept and reject are the whole vocabulary for a draft that is right or wrong, and most drafts are
+neither. What an author has to say about one is *shorter*, *drop that sentence*, *this part is
+settled, leave it alone* — and none of that fits a two-button choice.
+
+So a prose block can be **talked about**, and two things carry it:
+
+| | |
+|---|---|
+| A **pin** | A passage the author has settled. A rewrite must reproduce it word for word, and that is *checked* rather than asked for — by the same `quoted_from` the judged checks use |
+| A **remark** | What to change. One `revise_block` call, answered with the block rewritten |
+
+Each exchange is a proposal row, so invariant I is untouched: a rewrite writes no content, and the
+author can go round as many times as they like without accepting anything. Nothing about the manual
+path changes — the text box and its Save button are still there, and editing by hand is still the
+shortest way to fix a word.
+
+The pin is the part worth defending. Without it, every rewrite risks the sentence the author had
+already got right, so the only safe way to ask for a change to one paragraph is to accept the draft
+and edit the rest by hand. A pin makes *"change this, not that"* a thing the author can say, and
+makes it verifiable instead of hoped for. A rewrite that breaks a pin twice is still shown, with
+what it would lose named: a proposal is not content, so showing it costs nothing, and refusing it
+would throw away a draft that is right apart from one sentence.
 
 ### 6.4 Narrow calls, flexible context
 
@@ -616,6 +642,8 @@ wanted, it is a feature then — not scaffolding now.
 | 14 | Declined proposals are **buried but logged** ([§14.1](#141-the-decision-log)) |
 | 15 | A change to a completed section **names its dependents and asks**, rather than marking them stale silently ([§14.2](#142-staleness-asks-rather-than-assumes)) |
 | 16 | Tables accept **pasted spreadsheet cells** ([§14.3](#143-tables-are-pasted-not-typed)) |
+| 17 | A prose block is **talked about, not just accepted or rejected**: pinned passages plus a remark ([§6.3.1](#631-a-draft-that-is-nearly-right)) |
+| 18 | A pin is **verified, not requested**. The prompt asks; `quoted_from` decides |
 
 ## 14. Resolved details
 

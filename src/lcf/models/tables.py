@@ -268,6 +268,29 @@ class Block(Base):
     proposals: Mapped[list["Proposal"]] = relationship(
         back_populates="block", cascade="all, delete-orphan"
     )
+    pins: Mapped[list["BlockPin"]] = relationship(
+        back_populates="block", cascade="all, delete-orphan", order_by="BlockPin.created_at"
+    )
+
+
+class BlockPin(Base):
+    """A passage of a block the author has settled, and a rewrite may not move.
+
+    Stored as the text itself rather than as offsets, because a pin outlives the
+    text it was taken from: it is pinned, so a rewrite that satisfies it still
+    contains it, and the offsets it had before are void either way. Resolving a
+    pin is therefore a search of whatever text is in front of the author — the
+    block's content, or the draft the assistant last proposed.
+    """
+
+    __tablename__ = "block_pin"
+
+    id: Mapped[UUID] = _pk()
+    block_id: Mapped[UUID] = mapped_column(ForeignKey("block.id", ondelete="CASCADE"), index=True)
+    quote: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = _created()
+
+    block: Mapped[Block] = relationship(back_populates="pins")
 
 
 class Revision(Base):
@@ -290,7 +313,13 @@ class Revision(Base):
 
 class Proposal(Base):
     """Model output. Becomes content only when a human accepts it, and survives
-    its outcome either way — the rows behind the decision log (DESIGN §14.1)."""
+    its outcome either way — the rows behind the decision log (DESIGN §14.1).
+
+    A row is also one turn of the conversation about a block: `remark` is what the
+    author asked for, and it is written before the call is made, so an instruction
+    is never lost to a model that was unreachable. A turn the author started but
+    the assistant has not answered yet is `requested` and carries no value.
+    """
 
     __tablename__ = "proposal"
 
@@ -298,6 +327,7 @@ class Proposal(Base):
     block_id: Mapped[UUID] = mapped_column(ForeignKey("block.id", ondelete="CASCADE"))
     anchor: Mapped[dict | None] = mapped_column(Json)  # null = whole block
     proposed_value: Mapped[dict] = mapped_column(Json, nullable=False)
+    remark: Mapped[str | None] = mapped_column(Text)  # null = nobody asked; this is a first draft
     rationale: Mapped[str | None] = mapped_column(Text)
     based_on: Mapped[list | None] = mapped_column(Json)
     confidence: Mapped[float | None] = mapped_column(Float)
@@ -433,6 +463,31 @@ class Event(Base):
     # Numbers worth showing beside the row: duration_ms, tokens, per_second.
     # A column apiece would be mostly nulls, since each kind measures its own.
     meta: Mapped[dict | None] = mapped_column(Json)
+
+
+class LLMExchange(Base):
+    """What one model call was asked and what it answered.
+
+    Kept apart from `Event` rather than as two more columns on it, because the
+    two are read in completely different ways: the log is scanned sixty rows at a
+    time and must stay cheap, while an exchange is opened one at a time and is
+    kilobytes of the author's material. A query for the log never touches this
+    table.
+
+    The foreign key is the exception to `Event` having none, and it is deliberate
+    in the same way their absence is: an exchange is meaningless without the row
+    it explains, so `CASCADE` makes rotating the log rotate the payloads with it
+    and there is no second retention rule to keep in step.
+    """
+
+    __tablename__ = "llm_exchange"
+
+    id: Mapped[UUID] = _pk()
+    event_id: Mapped[UUID] = mapped_column(
+        ForeignKey("event.id", ondelete="CASCADE"), index=True, unique=True
+    )
+    prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    response: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class EvidenceCase(Base):

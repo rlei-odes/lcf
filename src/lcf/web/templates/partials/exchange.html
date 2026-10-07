@@ -1,0 +1,41 @@
+{# One half of a model call, over the page.
+
+   An overlay rather than a `<dialog>`: a dialog needs `showModal()` to behave
+   as one, and this needs no script at all — the close button removes the
+   element, and the backdrop is the same action. The other half is one more
+   request, which is cheap and keeps the markup here to one copy. #}
+<div class="modal" hx-on:click="if (event.target === this) this.remove()">
+  <div class="modal-body">
+    <div class="block-head">
+      <h3 style="margin:0">
+        {{ 'What the assistant answered' if side == 'response' else 'What the assistant was asked' }}
+      </h3>
+      {% if event %}
+      <span class="kind">{{ event.at|localtime }}</span>
+      {% endif %}
+      <button class="unpin" style="margin-left:auto;font-size:16px"
+              hx-on:click="this.closest('.modal').remove()" title="Close">✕</button>
+    </div>
+
+    {% if event %}<p class="lead" style="margin-bottom:var(--s3)">{{ event.summary }}</p>{% endif %}
+
+    {% if exchange %}
+    <div class="filters" style="margin-bottom:var(--s3)">
+      <a class="chip {{ 'on' if side == 'prompt' }}"
+         hx-get="/admin/calls/{{ event_id }}?side=prompt"
+         hx-target="closest .modal" hx-swap="outerHTML">Prompt</a>
+      <a class="chip {{ 'on' if side == 'response' }}"
+         hx-get="/admin/calls/{{ event_id }}?side=response"
+         hx-target="closest .modal" hx-swap="outerHTML">Reply</a>
+    </div>
+    <pre class="passage">{{ exchange.response if side == 'response' else exchange.prompt }}</pre>
+    {% else %}
+    <div class="empty">
+      <span class="empty-mark">·</span>
+      Nothing was kept for this call. Either it predates the log keeping prompts,
+      or <code>LCF_LOG_PROMPTS</code> is off — in which case the log records what
+      a call cost and nothing it said.
+    </div>
+    {% endif %}
+  </div>
+</div>

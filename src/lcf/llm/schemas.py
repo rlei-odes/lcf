@@ -43,14 +43,35 @@ def _field(field: KeyValueField) -> dict[str, Any]:
     return schema
 
 
-def block_value_schema(block: Block) -> dict[str, Any]:
+def block_value_schema(block: Block, floor: bool = False) -> dict[str, Any]:
     """The schema for one block's value, matching exactly what storage expects.
 
-    Arrays always carry a `maxItems`. Under constrained decoding an unbounded
-    array has no reason to stop, and the model will happily generate rows until it
-    runs out of context — a table that wants four entries otherwise takes minutes
-    and returns nonsense. `min_rows`/`max_rows` from the spec set the real bounds
-    where they exist; `_ARRAY_CEILING` is the backstop where they do not.
+    **A ceiling, never a floor**, and the asymmetry is the point. `maxItems` is
+    here because under constrained decoding an unbounded array has no reason to
+    stop: the model generates rows until it runs out of context, and a table that
+    wants four entries takes minutes and returns nonsense. `max_rows` supplies the
+    real bound where the spec has one, `_ARRAY_CEILING` where it does not.
+
+    `min_rows` becomes `minItems` only when `floor` says there is material to
+    fill the rows *from*, and both halves of that are measured.
+
+    With a floor and nothing supplied, the model can neither say "nothing" — the
+    empty array is ungrammatical — nor invent rows, which `never_invent.md`
+    forbids and `draft_block.md` explicitly asks it not to do. It satisfied
+    neither and padded, before `value` was written and so beyond recovering
+    (ARCHITECTURE §5.1): a hard failure where the honest answer was an empty
+    draft and its gaps.
+
+    Dropping the floor outright is worse, though, and that is the part a tidier
+    change would miss. With answers to draw on, the same block went from three
+    rows pulled out of them to an empty array and a longer gap list — the floor
+    is what stops the model treating "ask the author" as the cheaper option when
+    the answer is in front of it.
+
+    So the floor is applied where it is honest and withheld where it is not.
+    Withholding it costs nothing in rigour: `min_rows` is a deterministic `rows`
+    requirement checked at the gate (DESIGN §5.4), which is where a quality bound
+    belongs, and a section with no material was never going to satisfy it.
     """
     if block.kind is BlockKind.PROSE:
         return {"type": "string"}
@@ -70,7 +91,7 @@ def block_value_schema(block: Block) -> dict[str, Any]:
             },
             "maxItems": block.max_rows or _ARRAY_CEILING,
         }
-        if block.min_rows:
+        if floor and block.min_rows:
             schema["minItems"] = block.min_rows
         return schema
 
@@ -397,18 +418,34 @@ JUDGEMENT_SCHEMA: dict[str, Any] = {
 }
 
 
-def draft_response_schema(block: Block) -> dict[str, Any]:
+def draft_response_schema(block: Block, floor: bool = False) -> dict[str, Any]:
     """The full response for a `draft_block` call.
 
     `value` and `gaps` are both always present: the model answers with what it can
     support *and* what it could not, rather than choosing between them. An empty
     value with a populated gaps list is the honest outcome when the evidence does
     not carry the section.
+
+    **`value` comes first because the field order decides what a stall costs.**
+    This model pads rather than start a property name, and will not stop
+    (ARCHITECTURE §5.1), so a generation can be lost at any key — which makes the
+    position of the field that *is* the answer the thing that matters. With
+    `value` first it is written before there is any key left to stall on, and the
+    worst case is losing the commentary after it, which `complete_json`'s
+    `optional` then lets us accept short. Moving it after the two scalars was
+    tried, on the grounds that it stopped the padding on a prose block (0 of 12,
+    against 12 of 12): on a *table* block the stall simply moved to in front of
+    `value`, both attempts produced nothing, and the author got an error instead
+    of a draft. Reading order is not worth that.
+
+    So the rule generalises and the magic order did not: put the answer first,
+    and keep the fields a reader can do without behind it.
+    `tests/test_llm_schemas.py` pins it.
     """
     return {
         "type": "object",
         "properties": {
-            "value": block_value_schema(block),
+            "value": block_value_schema(block, floor=floor),
             "gaps": {
                 "type": "array",
                 "items": {
@@ -441,5 +478,41 @@ def draft_response_schema(block: Block) -> dict[str, Any]:
             },
         },
         "required": ["value", "gaps", "confidence", "based_on"],
+        "additionalProperties": False,
+    }
+
+
+def revise_response_schema(block: Block) -> dict[str, Any]:
+    """The response for a `revise_block` call: two fields, and no more.
+
+    No `gaps`, which is the difference from `draft_response_schema` and not an
+    omission: a revision answers a remark about text that already exists, so what
+    it has to report is what it did and what it could not do. Asking for gaps as
+    well invites the model to re-litigate the draft instead of changing it.
+
+    **No `confidence`, and that is measured too.** With it the model wrote
+    `value` and `rationale` and then padded where `"confidence"` should have
+    started, costing every call a retry (ARCHITECTURE §5.1); without it,
+    `revise_block` takes one attempt. It was also the least informative field on
+    the response — a rewrite answers an instruction the author is looking at, and
+    the model answered 1.0 to everything — so there was nothing to weigh against
+    removing it.
+
+    What this does *not* establish is that dropping a field fixes padding in
+    general: on `draft_response_schema` it does nothing, and only the field order
+    does. Two fields here is right because two fields is the answer, not as a
+    remedy.
+    """
+    return {
+        "type": "object",
+        "properties": {
+            "value": block_value_schema(block),
+            "rationale": {
+                "type": "string",
+                "description": "One or two sentences: what changed, and anything"
+                " the remark asked for that could not be done",
+            },
+        },
+        "required": ["value", "rationale"],
         "additionalProperties": False,
     }

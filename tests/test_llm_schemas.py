@@ -9,7 +9,11 @@ import pytest
 from tests.conftest import tiny_spec
 
 from lcf.llm.calls import _requirement_targets, resolve_style
-from lcf.llm.schemas import block_value_schema, draft_response_schema
+from lcf.llm.schemas import (
+    block_value_schema,
+    draft_response_schema,
+    revise_response_schema,
+)
 from lcf.spec.describe import describe_requirement
 from lcf.spec.models import Requirement
 
@@ -42,13 +46,20 @@ def test_date_column_is_a_string_with_a_stated_shape():
     assert "YYYY-MM-DD" in when["description"]
 
 
-def test_spec_row_bounds_reach_the_schema():
+def test_a_row_ceiling_reaches_the_schema_and_a_floor_does_not():
+    """`max_rows` bounds the grammar; `min_rows` must not.
+
+    A floor makes the empty array ungrammatical, and an empty array is the honest
+    answer when nothing was supplied — so the model could neither say "nothing"
+    nor invent rows, and padded before `value` existed. `min_rows` is checked by
+    the `rows` requirement at the gate instead. Reasoning in `block_value_schema`.
+    """
     spec = tiny_spec()
     target = block(spec, "a", "items")
     target.min_rows, target.max_rows = 2, 5
     schema = block_value_schema(target)
-    assert schema["minItems"] == 2
     assert schema["maxItems"] == 5
+    assert "minItems" not in schema
 
 
 def test_unbounded_arrays_still_get_a_ceiling():
@@ -59,6 +70,37 @@ def test_unbounded_arrays_still_get_a_ceiling():
     response = draft_response_schema(block(spec, "a", "text"))
     assert response["properties"]["gaps"]["maxItems"] > 0
     assert response["properties"]["based_on"]["maxItems"] > 0
+
+
+def test_the_draft_response_asks_for_the_answer_first(any_spec):
+    """Field order decides what a padded generation costs, so it is pinned.
+
+    The model emits properties in the order the schema lists them and pads rather
+    than start a property name, so whatever comes first is the part that is safe.
+    Putting the two scalars ahead of `value` was tried — it stopped the padding on
+    a prose block and, on a table block, moved it to in front of `value`, where
+    both attempts produced nothing and the author got an error instead of a
+    draft. The reasoning is in `draft_response_schema`.
+    """
+    wanted = ["value", "gaps", "confidence", "based_on"]
+    for section in any_spec.sections:
+        for spec_block in section.blocks:
+            schema = draft_response_schema(spec_block)
+            where = f"{section.key}.{spec_block.key}"
+            assert list(schema["properties"]) == wanted, where
+            assert schema["required"] == wanted, where
+
+
+def test_a_revision_is_asked_for_the_rewrite_and_a_note_only():
+    """Two fields, the rewrite first.
+
+    `confidence` was a third, and both the least informative — a rewrite answers
+    an instruction the author is looking at — and the field the model padded
+    rather than write, costing a retry on every call.
+    """
+    schema = revise_response_schema(block(tiny_spec(), "a", "text"))
+    assert list(schema["properties"]) == ["value", "rationale"]
+    assert schema["required"] == ["value", "rationale"]
 
 
 def test_every_array_in_a_generated_schema_is_bounded(any_spec):

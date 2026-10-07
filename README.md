@@ -213,6 +213,25 @@ locally, so a model with weak JSON adherence will produce declined proposals rat
 content. A 20B-class instruct model is comfortable; smaller ones work for drafting and struggle as
 judges.
 
+#### If you serve with vLLM, turn off free whitespace
+
+Add this to the `vllm serve` command:
+
+```bash
+--structured-outputs-config '{"backend":"xgrammar","disable_any_whitespace":true}'
+```
+
+Without it, xgrammar compiles each schema with an unbounded whitespace self-loop at every JSON
+value position, and a model that puts weight on a newline there takes it — emitting thousands of
+newlines mid-object and running to the token ceiling without ever closing it. Measured on a
+gemma-4-26b deployment: every drafting call, a 10,000-character run of whitespace, 98 seconds, and
+no usable answer.
+
+The application survives this on its own — it aborts such a generation, retries, and recovers — so
+the symptom is a doubled cost and `(after a retry)` on most assistant rows in the **Admin** log
+rather than a failure. The flag removes the cause. It cannot be set per request: passed in
+`extra_body` it is either rejected or silently ignored, so it has to go on the server.
+
 ### Trying the intake
 
 Create a document from a seeded type, then paste one of these into the **Your

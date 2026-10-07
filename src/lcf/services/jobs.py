@@ -101,6 +101,7 @@ async def enqueue(kind: str, document_id: UUID | None = None, scope: str | None 
 # What a job is called where someone reads it, rather than where it is dispatched.
 _TITLES = {
     "draft_section": "Drafted a section",
+    "revise_block": "Rewrote a block",
     "intake": "Sorted pasted material",
     "assess": "Ran the quality gate",
     "parse_source": "Read a file",
@@ -134,6 +135,7 @@ async def _run(job_id: UUID, kind: str, document_id: UUID | None, scope: str | N
             document_id=document_id,
             meta=took() | (result or {}),
         )
+        await _rotate_the_log()
     except asyncio.CancelledError:
         await _update(job_id, status="failed", error="cancelled", finished_at=datetime.now(UTC))
         await events.record(
@@ -161,6 +163,27 @@ async def _run(job_id: UUID, kind: str, document_id: UUID | None, scope: str | N
             document_id=document_id,
             meta=took(),
         )
+        await _rotate_the_log()
+
+
+async def _rotate_the_log() -> None:
+    """Trim the event log, here because this is what fills it.
+
+    A job is where events arrive in bulk — a drafting run writes one per block —
+    so rotating after one couples the bound to the growth rather than to a timer
+    nobody installed or an admin page nobody opens. In its own session and
+    swallowing its own errors, like every other piece of bookkeeping: a log that
+    cannot be trimmed must not fail the work it was recording.
+    """
+    from lcf.services import events
+
+    try:
+        async with session() as s:
+            dropped = await events.prune(s)
+        if dropped:
+            logger.info("event log rotated, {} rows dropped", dropped)
+    except Exception as exc:  # noqa: BLE001 — bookkeeping never breaks the work
+        logger.warning("could not rotate the event log: {}", exc)
 
 
 async def get(job_id: UUID) -> Job | None:

@@ -67,18 +67,24 @@ passage count. And fold only when a source does not fit a single call — most d
 recursion a fallback rather than the design. That fit check is [§6](#6-context-budget)'s tokenizer,
 earning itself.
 
-## 4. The editor island
+## 4. Span suggestions and the editor island
 
-Step 6, and the only substantial JavaScript the design calls for. Nothing exists —
-`assets/` is not in the repo, and `web/static/` holds only small page scripts.
+What is left of step 6 after the conversation surface
+([ARCHITECTURE §6](ARCHITECTURE.md#6-working-on-a-prose-block)) took the half of it that did not
+need a framework. `assets/` is still not in the repo and there is still no build step.
 
-- TipTap (ProseMirror) per prose block, restricted to the markdown subset by its schema
-- Span proposals as decorations, with a hover card
-- `suggest_span` LLM call — also not built
-- Blame view from a server-computed diff
+| Piece | State |
+|---|---|
+| Pinning a passage, remarks, whole-block rewrites | **Built**, with `revise_block` and ~90 lines of vanilla JS |
+| Span proposals as ProseMirror decorations, with a hover card | Not built — this is what TipTap is actually for |
+| Blame view from a server-computed diff | Not built; wants decorations too |
+| A markdown subset enforced by the editor's own schema | Not built — see [§5](#5-markdown-normalisation) |
 
-See [ARCHITECTURE §6](ARCHITECTURE.md#6-the-editor-island). Block-level accept/reject works today,
-so this is a refinement of a working flow rather than a gap in it.
+The LLM half needs nothing new: a pin is the inverse of a scope, so `revise_block` with everything
+but one span pinned *is* a span-scoped instruction. What is missing is entirely the way to show one
+inline — a marked range with a card over it — which is the thing decorations do and a textarea
+cannot. That makes this a presentation feature now, and the honest question before building it is
+whether an author who can already pin, remark and rewrite wants to work span by span at all.
 
 ## 5. Markdown normalisation
 
@@ -153,6 +159,8 @@ That makes the endpoint setting the most sensitive thing on the page, ahead of t
 
 ## 10. Known issues
 
+
+
 **LibreOffice warns "non-standard file format" on generated `.docx` files.** The file opens, edits
 and round-trips correctly. Verified about the generated starter: it is a valid OPC package,
 `[Content_Types].xml` is the first entry, 17 parts, and re-uploading an edited copy lints and
@@ -187,7 +195,11 @@ Not forgotten — decided against for now, with the condition that would change 
 ## 12. Notes from use case discussions
 
 - Extract Requirements from input documents. A sentence saying "and" would have to be split in two reqs
-- Give Feedback on a draft, ask a re-write
-- Mark the text that is fine, and where we want a re-write. Dialog / Interaktivität
-- Or re-run, for a new proposal
+- ~~Give Feedback on a draft, ask a re-write~~ · ~~Mark the text that is fine~~ — built, as the
+  conversation surface on a prose block ([ARCHITECTURE §6](ARCHITECTURE.md#6-working-on-a-prose-block))
+- **Re-run for a new proposal.** Asking again with no remark, for a different draft rather than a
+  changed one. Nearly free now — a remark is already a row and a rewrite is already a job — but it
+  needs an answer to what the second draft is *for*: two candidates side by side to choose between
+  is a different surface from one candidate to answer, and the cheap version (a remark reading
+  "try again") is worse than either.
 - New type of Quality criteria: Typ "Have you thought about this?" - Just as input, maybe as a bubble type on the right?

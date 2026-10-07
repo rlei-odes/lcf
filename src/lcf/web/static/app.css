@@ -1314,3 +1314,104 @@ form.inline-form { display: inline; margin: 0; }
   display: flex; flex-direction: column; gap: var(--s5);
   max-width: var(--measure); margin: 0 auto;
 }
+
+/* --- Working on a prose block with the assistant ------------------------ */
+
+/* Sunken, and inside the block rather than beside it: the conversation is about
+   this one piece of text, and reads as a workbench under it rather than as
+   another card competing with it. */
+.revise {
+  margin-top: var(--s4); padding: var(--s4);
+  background: var(--panel-2); border: 1px solid var(--line-2);
+  border-radius: var(--radius-sm);
+}
+.revise-head { display: flex; align-items: baseline; gap: var(--s3); margin-bottom: var(--s3); }
+.revise-head h4 { margin: 0; font-size: 13.5px; color: var(--muted); font-weight: 600; }
+.revise textarea { min-height: 54px; }
+.revise > form { margin-top: var(--s3); }
+
+/* A settled passage. Marked the way a pinned passage is marked inside the text,
+   so the chip and the highlight are recognisably the same thing. */
+ul.pins { margin-bottom: var(--s3); }
+ul.pins li.pin {
+  display: flex; align-items: baseline; gap: var(--s2);
+  padding: var(--s2) 0; border-top: 1px solid var(--line-2);
+}
+ul.pins li.pin:first-child { border-top: 0; }
+.pin-quote {
+  background: var(--accent-soft); color: var(--ink);
+  padding: 1px 5px; border-radius: 3px; font-size: 13px;
+}
+li.pin.stale .pin-quote {
+  background: var(--warning-soft); color: var(--ink-2);
+  text-decoration: line-through; text-decoration-color: var(--warning);
+}
+button.unpin {
+  margin-left: auto; padding: 0 var(--s2); min-height: 0;
+  background: none; border: 0; color: var(--faint); font-size: 12px;
+}
+button.unpin:hover { color: var(--blocker); background: none; }
+
+/* The pin button says what it will pin, so the author is never guessing which
+   selection the page saw. `.why` carries the quote once there is one. */
+form.pin-form { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
+form.pin-form .why { font-style: italic; }
+
+/* What the assistant proposed, with settled passages marked inside it. Prose,
+   not code: it is the document's own text and has to read like it. */
+pre.candidate {
+  margin: 0 0 var(--s3); padding: 0;
+  font: inherit; white-space: pre-wrap; word-break: break-word;
+}
+pre.candidate mark {
+  background: color-mix(in srgb, var(--accent-soft) 80%, var(--panel));
+  color: var(--ink); padding: 0 2px; border-radius: 2px;
+  box-shadow: inset 0 -1px 0 var(--accent-line);
+}
+
+/* What the author asked for, quoted back above the answer to it. */
+.remark {
+  margin: 0 0 var(--s3); padding-left: var(--s3);
+  border-left: 2px solid var(--accent-line);
+  color: var(--ink-2); font-size: 13.5px;
+}
+.remark::before { content: "“"; }
+.remark::after { content: "”"; }
+
+details.transcript { margin-bottom: var(--s3); }
+details.transcript > summary { font-size: 13px; color: var(--muted); cursor: pointer; }
+details.transcript ul.plain { margin-top: var(--s2); }
+details.transcript li.turn { display: block; }
+details.transcript .remark { margin: 0; font-size: 13px; }
+details.transcript .where {
+  display: block; margin-top: var(--s1);
+  color: var(--muted); font-size: 12px;
+}
+
+/* --- Reading one model call -------------------------------------------- */
+
+/* An overlay, not a `<dialog>`: a dialog is only modal once `showModal()` has
+   run, and this way the whole thing is server-rendered and closed by removing
+   the element. Clicking the backdrop is the same action as the ✕. */
+.modal {
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: var(--s6) var(--s4);
+  background: rgba(26, 25, 23, .38);
+  overflow: auto;
+}
+.modal-body {
+  width: min(900px, 100%);
+  padding: var(--s5);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--lift-3);
+}
+/* The prompt is long, so it scrolls inside the panel rather than the panel
+   growing past the viewport and taking the close button with it. */
+.modal-body pre.passage { max-height: 62vh; }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .modal { background: rgba(0, 0, 0, .55); }
+}

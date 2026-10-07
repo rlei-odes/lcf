@@ -31,6 +31,7 @@ from lcf.llm.schemas import (
     draft_response_schema,
     mapping_schema,
     prefill_schema,
+    revise_response_schema,
 )
 from lcf.spec.describe import describe_requirement
 from lcf.spec.models import Block, DocTypeSpec, Section
@@ -89,19 +90,167 @@ async def draft_block(view: DocumentView, section: Section, block: Block, style:
     completion = await complete_json(
         system,
         user,
-        draft_response_schema(block),
+        # A table's `min_rows` is only a grammatical floor when there is material
+        # to fill the rows from; asked for three rows about nothing, the model can
+        # neither comply nor refuse, and hangs (`block_value_schema`).
+        draft_response_schema(block, floor=_has_material(view, section)),
         schema_name=f"draft_{block.key}",
         purpose="draft_block",
+        # The draft and the gaps are the answer, and both come first in the
+        # schema for that reason. These two are commentary on it, so a generation
+        # that padded once it had written the answer is closed off rather than
+        # paid for twice (`provider._closed_at_root`).
+        optional=("confidence", "based_on"),
     )
     data = completion.data
     return BlockDraft(
         block_key=block.key,
         value=data.get("value"),
         gaps=[Gap(g.get("question", ""), g.get("why", "")) for g in data.get("gaps", [])],
-        confidence=float(data.get("confidence") or 0.0),
+        confidence=_fraction(data.get("confidence")),
         based_on=[str(b) for b in data.get("based_on", [])],
         completion=completion,
     )
+
+
+@dataclass
+class BlockRevision:
+    """A rewrite of one block, and what became of the passages it had to keep."""
+
+    value: Any
+    rationale: str = ""
+    kept: list[str] = field(default_factory=list)
+    moved: list[str] = field(default_factory=list)
+    completion: Completion | None = None
+
+    @property
+    def has_content(self) -> bool:
+        return bool(self.value.strip()) if isinstance(self.value, str) else bool(self.value)
+
+
+def revise_system_message(section: Section, block: Block, style: str) -> str:
+    """Everything the assistant is told about revising a block, before runtime data."""
+    return "\n\n".join(
+        part
+        for part in [
+            prompt_text("revise_block"),
+            "## How to write\n\n" + style,
+            _section_context(section, block),
+            _requirement_targets(section, block),
+            prompt_text("never_invent"),
+        ]
+        if part
+    )
+
+
+async def revise_block(
+    view: DocumentView,
+    section: Section,
+    block: Block,
+    style: str,
+    *,
+    remark: str,
+    pins: list[str],
+    previous: Any = None,
+) -> BlockRevision:
+    """Rewrite one block to a remark, holding the author's pinned passages.
+
+    The pins are a constraint the prompt asks for and this function *verifies*: a
+    pin the answer does not contain is reported, and on the first attempt it is
+    handed straight back to the model naming which passage moved. That is the
+    contract `propose_pattern` already has — the thing that makes it safe to let a
+    model rewrite text somebody had finished with is that the check is a function
+    rather than a sentence in a prompt.
+
+    A second failure is reported rather than refused. A proposal is not content
+    (DESIGN invariant I), so the useful answer is to show the author the rewrite
+    and tell them which passage it moved; refusing outright would throw away a
+    draft that may be exactly what they wanted apart from one sentence.
+    """
+    system = revise_system_message(section, block, style)
+    user = _revision_data(view, section, block, remark=remark, pins=pins, previous=previous)
+    schema = revise_response_schema(block)
+
+    for attempt in (1, 2):
+        completion = await complete_json(
+            system,
+            user,
+            schema,
+            schema_name=f"revise_{block.key}",
+            purpose="revise_block",
+            optional=("rationale",),  # the rewrite is the answer; the note is not
+        )
+        data = completion.data
+        value = data.get("value")
+        moved = [p for p in pins if not quoted_from(p, _render(value))]
+        written = BlockRevision(
+            value=value,
+            rationale=" ".join(str(data.get("rationale") or "").split()),
+            kept=[p for p in pins if p not in moved],
+            moved=moved,
+            completion=completion,
+        )
+        if attempt == 2 or not moved or not written.has_content:
+            return written
+        user += (
+            "\n\n## Your previous answer dropped a settled passage\n\n"
+            "It no longer contains "
+            + ", ".join(f"“{m}”" for m in moved)
+            + ". Those are settled: reproduce each one word for word, and rewrite"
+            " around them. If what was asked for cannot be done without changing"
+            " one, keep it and say so in `rationale`."
+        )
+    return written
+
+
+def _revision_data(
+    view: DocumentView,
+    section: Section,
+    block: Block,
+    *,
+    remark: str,
+    pins: list[str],
+    previous: Any = None,
+) -> str:
+    """The runtime half: the author's material, the text, and the remark last.
+
+    Deliberately *not* `_runtime_data`. That builder frames the block's content
+    with drafting's instruction — "improve on it; do not discard anything it
+    establishes" — which is right when filling a block in and wrong here: it
+    contradicts every remark that asks for something to be cut, and the model
+    obeys the paragraph over the sentence. Observed as a rewrite that returned
+    its input unchanged.
+    """
+    parts = _material(view, section)
+
+    current = view.block_value(section.key, block.key)
+    if current and _render(current).strip():
+        parts.append(
+            "## What this block says now\n\n"
+            "This is the text to work on. The author's remark below says what to do"
+            " with it — follow it, including where it asks for something to be"
+            " removed, shortened or replaced.\n\n"
+            f"{_render(current)}"
+        )
+    if previous is not None and _render(previous).strip():
+        parts.append(
+            "## The draft you proposed last time\n\n"
+            "The author has not accepted this. Their remark is about this text, and"
+            " your answer replaces it.\n\n"
+            f"{_render(previous)}"
+        )
+    parts += _upstream(view, section)
+
+    if pins:
+        listed = "\n\n".join(f"{i}. {p}" for i, p in enumerate(pins, start=1))
+        parts.append(f"## Settled passages — reproduce each of these word for word\n\n{listed}")
+    parts.append(
+        f"## What the author has asked you to change\n\n{remark}\n\n"
+        "This is the task. If the text already satisfies it, say so in `rationale`"
+        " and return the text unchanged rather than rewriting it for the sake of"
+        " answering."
+    )
+    return "\n\n".join(parts)
 
 
 @dataclass
@@ -594,7 +743,34 @@ def _requirement_targets(section: Section, block: Block) -> str:
     )
 
 
-def _runtime_data(view: DocumentView, section: Section, block: Block) -> str:
+def _fraction(value: Any) -> float:
+    """A confidence the UI can multiply by 100.
+
+    `{"type": "number"}` described as "0 to 1" does not stop a model answering
+    `5`, and the panel printed "confidence 500%". A grammar cannot express a
+    range, so the clamp belongs here rather than in the schema or the template.
+    """
+    try:
+        return min(1.0, max(0.0, float(value)))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _has_material(view: DocumentView, section: Section) -> bool:
+    """Has the author supplied anything about this section to draft from?"""
+    answers = view.answers.get(section.key) or {}
+    return any(v not in (None, "", []) for v in answers.values()) or bool(
+        view.evidence.get(section.key)
+    )
+
+
+def _material(view: DocumentView, section: Section) -> list[str]:
+    """What the author has supplied about a section — the same for every call.
+
+    Split out from `_runtime_data` because the *content* of a block has to be
+    framed differently depending on what is being asked about it, and everything
+    around it does not.
+    """
     parts: list[str] = []
 
     answers = view.answers.get(section.key, {})
@@ -616,6 +792,22 @@ def _runtime_data(view: DocumentView, section: Section, block: Block) -> str:
             " not go beyond them.\n\n"
             f"{passages}"
         )
+    return parts
+
+
+def _upstream(view: DocumentView, section: Section) -> list[str]:
+    """Sections this one was built on, so what is written stays consistent."""
+    upstream = []
+    for key in section.depends_on:
+        content = view.content.get(key)
+        if not content:
+            continue
+        upstream.append(f"### {key}\n\n{_render(content)}")
+    return ["## Sections this one follows from\n\n" + "\n\n".join(upstream)] if upstream else []
+
+
+def _runtime_data(view: DocumentView, section: Section, block: Block) -> str:
+    parts = _material(view, section)
 
     current = view.block_value(section.key, block.key)
     if current:
@@ -625,15 +817,7 @@ def _runtime_data(view: DocumentView, section: Section, block: Block) -> str:
             f"{_render(current)}"
         )
 
-    # Sections this one was built on, so a draft can be consistent with them.
-    upstream = []
-    for key in section.depends_on:
-        content = view.content.get(key)
-        if not content:
-            continue
-        upstream.append(f"### {key}\n\n{_render(content)}")
-    if upstream:
-        parts.append("## Sections this one follows from\n\n" + "\n\n".join(upstream))
+    parts += _upstream(view, section)
 
     if not parts:
         return (

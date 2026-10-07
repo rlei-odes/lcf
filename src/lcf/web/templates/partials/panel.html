@@ -269,27 +269,13 @@
       </p>
 
       {% for b in blocks %}
+      {# A prose block renders its proposals inside the conversation panel below
+         the text, where the next remark is typed. Every other kind keeps them
+         above it, which is where its only decision is. #}
       <div class="block">
-        {% for p in b.proposals %}
-        <div class="notice proposal">
-          <h3>Proposed · confidence {{ '%.0f'|format((p.confidence or 0) * 100) }}%</h3>
-          <pre style="white-space:pre-wrap;margin:0 0 10px;font:inherit">{{ b.preview(p) }}</pre>
-          {% if p.rationale %}<div class="hint">Still unresolved: {{ p.rationale }}</div>{% endif %}
-          <div class="actions">
-            <form hx-post="/proposals/{{ p.id }}/accept" hx-target="#workspace" hx-swap="outerHTML">
-              <input type="hidden" name="document_id" value="{{ document.id }}">
-              <input type="hidden" name="section" value="{{ section.key }}">
-              <button class="primary" type="submit">Accept</button>
-            </form>
-            <form hx-post="/proposals/{{ p.id }}/reject" hx-target="#workspace" hx-swap="outerHTML">
-              <input type="hidden" name="document_id" value="{{ document.id }}">
-              <input type="hidden" name="section" value="{{ section.key }}">
-              <button type="submit">Decline</button>
-            </form>
-            <span class="why">Accept, then edit below. Nothing is written until you do.</span>
-          </div>
-        </div>
-        {% endfor %}
+        {% if b.block.kind != 'prose' %}
+          {% for p in b.proposals %}{% include "partials/proposal_card.html" %}{% endfor %}
+        {% endif %}
 
         <form hx-post="/documents/{{ document.id }}/sections/{{ section.key }}/blocks/{{ b.block.key }}"
               hx-target="#workspace" hx-swap="outerHTML" hx-disabled-elt="find button"
@@ -313,6 +299,10 @@
             <span class="htmx-indicator working">Saving…</span>
           </div>
         </form>
+
+        {% if b.block.kind == 'prose' %}
+          {% include "partials/block_revise.html" %}
+        {% endif %}
       </div>
       {% endfor %}
     </div>

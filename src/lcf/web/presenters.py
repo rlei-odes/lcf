@@ -5,13 +5,63 @@ so a change to how status is derived touches one place, not a dozen `{% if %}`s.
 """
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
+
+from markupsafe import Markup, escape
 
 from lcf.engine.checks.result import CheckResult
 from lcf.engine.state import SectionState, section_state
 from lcf.engine.view import DocumentView
 from lcf.spec.models import Block, DocTypeSpec, Question, Section
+
+
+def marked(text: str, pins: list[str]) -> Markup:
+    """Text with its settled passages wrapped in `<mark>`.
+
+    Server-rendered, which is what keeps the editor island small: the browser
+    never has to know where a pin falls, only what the author selected.
+
+    Matched case-insensitively but otherwise exactly, while `quoted_from` — which
+    decides whether a rewrite *kept* a pin — forgives reflowed whitespace. That is
+    the right way round: a verification that is strict about spacing would reject
+    good rewrites, and a highlight that guesses would mark the wrong words.
+    """
+    if not text:
+        return Markup("")
+
+    low = text.casefold()
+    spans: list[tuple[int, int]] = []
+    for quote in pins:
+        needle = quote.casefold()
+        if not needle:
+            continue
+        at = low.find(needle)
+        while at != -1:
+            spans.append((at, at + len(needle)))
+            at = low.find(needle, at + len(needle))
+
+    out: list[Markup] = []
+    cursor = 0
+    for start, end in _merged(spans):
+        if start < cursor:
+            continue
+        out.append(escape(text[cursor:start]))
+        out.append(Markup("<mark>{}</mark>").format(text[start:end]))
+        cursor = end
+    out.append(escape(text[cursor:]))
+    return Markup("").join(out)
+
+
+def _merged(spans: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Overlapping pins become one mark, so nesting cannot produce broken HTML."""
+    merged: list[tuple[int, int]] = []
+    for start, end in sorted(spans):
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return merged
 
 
 @dataclass
@@ -21,6 +71,9 @@ class BlockView:
     rows: list[dict[str, Any]]
     failures: list[CheckResult]
     proposals: list[Any] = None  # pending Proposal rows, awaiting a human
+    # The conversation about this block: pinned passages, and the turns so far.
+    pins: list[Any] = field(default_factory=list)
+    turns: list[Any] = field(default_factory=list)
 
     def __post_init__(self):
         self.proposals = self.proposals or []
@@ -39,6 +92,39 @@ class BlockView:
         if isinstance(value, dict):
             return "\n".join(f"{k}: {v}" for k, v in value.items() if str(v).strip())
         return str(value)
+
+    def marked_preview(self, proposal) -> Markup:
+        """A proposal with the author's settled passages shown as such."""
+        return marked(self.preview(proposal), self.pin_quotes)
+
+    @property
+    def pin_quotes(self) -> list[str]:
+        return [p.quote for p in self.pins]
+
+    @property
+    def revisable(self) -> bool:
+        """Is there anything here for a remark to be about?
+
+        A conversation needs text. An empty block with nothing proposed is a job
+        for the draft button, and an input offering to rewrite nothing reads as a
+        broken one.
+        """
+        if self.block.kind != "prose":
+            return False
+        return bool(str(self.text).strip()) or any(
+            p.proposed_value.get("v") for p in self.proposals
+        )
+
+    @property
+    def stale_pins(self) -> list[Any]:
+        """Pins whose passage is no longer in the content or the live draft.
+
+        The author edited it away by hand. Saying so beats a pin that silently
+        constrains a rewrite against text nobody can see any more.
+        """
+        texts = [str(self.text)] + [self.preview(p) for p in self.proposals]
+        haystack = " ".join(" ".join(t.split()) for t in texts).casefold()
+        return [p for p in self.pins if " ".join(p.quote.split()).casefold() not in haystack]
 
     @property
     def text(self) -> str:
@@ -83,6 +169,8 @@ def section_panel_context(
     gaps: list[dict[str, str]] | None = None,
     llm_errors: list[str] | None = None,
     evidence: list | None = None,
+    pins: dict[str, list] | None = None,
+    turns: dict[str, list] | None = None,
 ) -> dict[str, Any]:
     section: Section = spec.section(key)
     state: SectionState = section_state(view, key)
@@ -95,12 +183,22 @@ def section_panel_context(
                 by_block.setdefault(block.key, []).append(result)
 
     proposals = proposals or {}
+    pins = pins or {}
+    turns = turns or {}
     blocks = []
     for block in section.blocks:
         value = view.block_value(key, block.key)
         rows = value if isinstance(value, list) and block.kind == "table" else []
         blocks.append(
-            BlockView(block, value, rows, by_block.get(block.key, []), proposals.get(block.key, []))
+            BlockView(
+                block,
+                value,
+                rows,
+                by_block.get(block.key, []),
+                proposals.get(block.key, []),
+                pins.get(block.key, []),
+                turns.get(block.key, []),
+            )
         )
 
     answers = view.answers.get(key, {})

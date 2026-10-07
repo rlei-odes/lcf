@@ -2,14 +2,29 @@
 
 Aimed at an administrator, not a debugger. A row says what happened, whether it
 worked, and the couple of numbers worth knowing — how long a model call took and
-how fast it produced tokens. Prompts and responses are deliberately not stored:
-they are large, they contain the author's material, and nobody watching an
-installation needs them. Reading a prompt back is a different feature with
-different consequences, and this is not it.
+how fast it produced tokens.
+
+A model call also keeps **what it was asked and what it answered**, in
+`llm_exchange`, because the one question the numbers cannot answer is the one
+people actually have: *why did it write that?* DESIGN §5.8 promised this and
+nothing had built it. It is a deliberate reversal of this module's original rule,
+and the reasons for that rule are real rather than wrong, so each is answered
+rather than ignored:
+
+- *They are large.* So they live in their own table, never touched by a query for
+  the log, and they are bounded by the same rotation as the row they explain.
+- *They contain the author's material.* So `LCF_LOG_PROMPTS` turns them off, and
+  the admin page says plainly when they are on. On an installation without
+  authentication ([BACKLOG §9](../../../docs/BACKLOG.md)) that switch is the only
+  thing standing between a visitor and every prompt, which is worth knowing when
+  deciding whether to expose the page.
+- *Nobody watching an installation needs them.* True of watching; false of
+  diagnosing, which is what anybody actually opens this page to do.
 
 Recording never fails the thing it describes. Every write is in its own session
 and swallows its own errors: a full disk should not turn a successful export
-into a failed one.
+into a failed one, and an exchange too large to store must not lose the row
+saying the call happened.
 """
 
 from collections.abc import Sequence
@@ -21,10 +36,11 @@ from loguru import logger
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from lcf.core.config import settings
 from lcf.core.db import session as db_session
 from lcf.llm.provider import CallRecord
 from lcf.llm.provider import observe as observe_llm
-from lcf.models.tables import Event
+from lcf.models.tables import Event, LLMExchange
 
 # What a category means, in the order the filter offers them.
 CATEGORIES = (
@@ -62,7 +78,7 @@ async def record(
     document_id: UUID | None = None,
     meta: dict[str, Any] | None = None,
     session: AsyncSession | None = None,
-) -> None:
+) -> Event | None:
     """Pass `session` whenever the caller holds one.
 
     Opening a second one to write this row is two independent transactions on
@@ -82,11 +98,17 @@ async def record(
         )
         if session is not None:
             session.add(event)
-            return
+            # Flushed, not committed: the row has to carry its id back, because
+            # an exchange hangs off it. Still the caller's transaction.
+            await session.flush()
+            return event
         async with db_session() as s:
             s.add(event)
+            await s.flush()
+        return event
     except Exception as exc:  # noqa: BLE001 — bookkeeping never breaks the work
         logger.warning("could not record event {}: {}", kind, exc)
+    return None
 
 
 async def recent(
@@ -139,18 +161,41 @@ async def counts(session: AsyncSession, hours: int = 24) -> dict[str, Any]:
     }
 
 
-async def prune(session: AsyncSession, keep: int = 5000) -> int:
-    """Drop the oldest rows beyond `keep`.
+async def prune(session: AsyncSession, keep: int | None = None) -> int:
+    """Drop the oldest rows beyond `keep`, and their exchanges with them.
 
-    The log grows with every model call and nothing else bounds it. Called from
-    the admin page rather than on a timer: an installation nobody looks at is
-    also one nobody is generating events on.
+    The log grows with every model call and nothing else bounds it, so rotation
+    runs whenever a background job finishes (`services/jobs.py`). That couples it
+    to the thing that fills the log rather than to a timer nobody installed or an
+    admin page nobody opens — which matters, because a busy installation is
+    exactly the one whose log needs trimming and not necessarily one anybody
+    looks at.
+
+    Stored prompts and replies go too, by `llm_exchange`'s cascade. One retention
+    rule, not two that could drift.
     """
-    cutoff = await session.scalar(select(Event.at).order_by(Event.at.desc()).offset(keep).limit(1))
+    keep = settings().event_log_keep if keep is None else keep
+    if keep <= 0:
+        return (await session.execute(delete(Event))).rowcount or 0
+
+    # `offset(keep - 1)`, not `offset(keep)`: the row at that offset is the
+    # oldest one being *kept*, and everything strictly older than it goes. Taking
+    # the offset one further and deleting below it keeps `keep + 1` rows — which
+    # nothing noticed while this function had no caller.
+    cutoff = await session.scalar(
+        select(Event.at).order_by(Event.at.desc()).offset(keep - 1).limit(1)
+    )
     if cutoff is None:
         return 0
+    # Strictly older, so rows sharing the cutoff timestamp are kept. Erring
+    # towards keeping one row too many beats dropping one somebody wanted.
     result = await session.execute(delete(Event).where(Event.at < cutoff))
     return result.rowcount or 0
+
+
+async def exchange(session: AsyncSession, event_id: UUID) -> LLMExchange | None:
+    """The prompt and reply behind one logged call, if they were kept."""
+    return await session.scalar(select(LLMExchange).where(LLMExchange.event_id == event_id))
 
 
 # --- the model's own calls ---------------------------------------------------
@@ -171,9 +216,13 @@ def _readable(purpose: str) -> str:
 async def _on_llm_call(call: CallRecord) -> None:
     detail = f": {call.detail}" if call.detail else ""
     retried = " (after a retry)" if call.attempts > 1 else ""
-    await record(
+    # Not a failure, and not a clean answer either: the generation padded at a
+    # field boundary and was closed off, so a field the schema asks for may be
+    # absent. It is also a call that was not paid for twice.
+    closed = " (padded; closed off)" if call.salvaged else ""
+    event = await record(
         "llm.call",
-        f"{_readable(call.purpose)}{retried}{detail}",
+        f"{_readable(call.purpose)}{retried}{closed}{detail}",
         category="assistant",
         ok=call.ok,
         meta={
@@ -183,8 +232,26 @@ async def _on_llm_call(call: CallRecord) -> None:
             "per_second": call.per_second,
             "characters": call.chars,
             "attempts": call.attempts,
+            "salvaged": call.salvaged,
+            "exchange": bool(settings().log_prompts and call.prompt),
         },
     )
+    if event is None or not settings().log_prompts or not call.prompt:
+        return
+    # Its own write, after the log row is committed. The exchange is the large
+    # part and the optional part, and a failure to store it must not cost the
+    # row that says the call happened.
+    try:
+        async with db_session() as s:
+            s.add(
+                LLMExchange(
+                    event_id=event.id,
+                    prompt=call.prompt,
+                    response=call.response or "",
+                )
+            )
+    except Exception as exc:  # noqa: BLE001 — bookkeeping never breaks the work
+        logger.warning("could not store the exchange for {}: {}", call.purpose, exc)
 
 
 def install() -> None:

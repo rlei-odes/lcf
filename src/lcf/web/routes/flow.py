@@ -328,6 +328,59 @@ async def draft_section(request: Request, document_id: UUID, key: str):
     )
 
 
+@router.post(
+    "/documents/{document_id}/sections/{key}/blocks/{block_key}/pins",
+    response_class=HTMLResponse,
+)
+async def pin_passage(
+    request: Request, document_id: UUID, key: str, block_key: str, quote: str = Form("")
+):
+    """Settle a passage the author selected, so a rewrite cannot move it."""
+    async with session() as s:
+        await proposals.pin(s, document_id, key, block_key, quote)
+    return await _panel(request, document_id, key)
+
+
+@router.post("/pins/{pin_id}/remove", response_class=HTMLResponse)
+async def unpin_passage(
+    request: Request, pin_id: UUID, document_id: str = Form(...), section: str = Form(...)
+):
+    async with session() as s:
+        await proposals.unpin(s, pin_id)
+    return await _panel(request, UUID(document_id), section)
+
+
+@router.post(
+    "/documents/{document_id}/sections/{key}/blocks/{block_key}/revise",
+    response_class=HTMLResponse,
+)
+async def revise_block(
+    request: Request, document_id: UUID, key: str, block_key: str, remark: str = Form("")
+):
+    """Ask the assistant to rewrite this block, and return at once.
+
+    The remark is stored before the job starts, so it survives a model that is
+    unreachable. What comes back is a proposal like any other — a rewrite writes
+    no content (DESIGN invariant I).
+    """
+    try:
+        async with session() as s:
+            turn = await proposals.request_revision(s, document_id, key, block_key, remark)
+            turn_id = turn.id
+    except proposals.NotRevisable as refused:
+        return page(request, "partials/notice.html", message=str(refused))
+
+    job = await jobs.enqueue("revise_block", document_id, str(turn_id))
+    return page(
+        request,
+        "partials/job.html",
+        job=job,
+        done_url=f"/documents/{document_id}/sections/{key}/panel?job={job.id}",
+        done_target="#workspace",
+        working_title="The assistant is rewriting",
+    )
+
+
 @router.get("/jobs/{job_id}/card", response_class=HTMLResponse)
 async def job_card(request: Request, job_id: UUID, next: str = "/", target: str = "#workspace"):
     """One poll of a running job.
@@ -351,6 +404,7 @@ async def job_card(request: Request, job_id: UUID, next: str = "/", target: str 
 _WORKING_TITLES = {
     "assess": "Checking the document",
     "draft_section": "The assistant is working",
+    "revise_block": "The assistant is rewriting",
     "intake": "Sorting what you pasted",
 }
 
@@ -406,9 +460,22 @@ async def _panel_context(
         pending = await proposals.pending_for(s, document_id, key)
         decided = await proposals.decided_for(s, document_id, key)
         evidence = await intake.links_for(s, document_id, key)
+        pins = await proposals.pins_for(s, document_id, key)
+        turns = await proposals.turns_for(s, document_id, key)
+        open_turn = await proposals.open_turn(s, document_id, key)
     # A job may still be running from an earlier visit — pick it back up rather
     # than offering a second one.
     latest = await jobs.latest_for(document_id, key)
+
+    # A rewrite is scoped to the turn that asked for it rather than to the
+    # section, so it is reported where the author asked rather than in the
+    # section's drafting slot.
+    revise_job = None
+    revise_in = None
+    if open_turn is not None:
+        revise_in, turn = open_turn
+        running = await jobs.latest_for(document_id, str(turn.id))
+        revise_job = running if running is not None and not running.done else None
 
     # What the assistant said it could not write without being told is advice
     # about the section, and it stays true until another run replaces it. Reading
@@ -423,9 +490,22 @@ async def _panel_context(
                 errors.append(latest.error)
 
     context = section_panel_context(
-        document, spec, view, key, dependents or [], pending, decided, gaps, errors, evidence
+        document,
+        spec,
+        view,
+        key,
+        dependents or [],
+        pending,
+        decided,
+        gaps,
+        errors,
+        evidence,
+        pins,
+        turns,
     )
     context["running_job"] = latest if latest is not None and not latest.done else None
+    context["revise_job"] = revise_job
+    context["revise_in"] = revise_in if revise_job is not None else None
     return context
 
 

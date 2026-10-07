@@ -46,6 +46,56 @@ class _Padding(Exception):
 _WHITESPACE_RUN = 80
 
 
+def _closed_at_root(partial: str, schema: dict[str, Any], optional: tuple[str, ...]) -> str | None:
+    """A padded generation finished off, where finishing it off loses nothing.
+
+    The padding starts where the grammar's next obligation is a property name,
+    and the commonest such place is the boundary between two top-level fields:
+    the object is written, the last field the model had anything to say about is
+    closed, and the newlines stand where the next field name would go. Supplying
+    the `}` costs nothing and saves the whole second call.
+
+    That is only true at *that* boundary, which is why every other one is
+    refused. If an array or a nested object is still open, the padding began in
+    the middle of a list the model was still adding to, and closing it would drop
+    entries nobody ever saw — a draft silently short of two gaps is worse than a
+    retry, because gap detection is the product. So the sole open structure has
+    to be the root, and `optional` has to cover every required field that did not
+    arrive: the caller names what it can do without, and anything else missing
+    means this was a truncation rather than a tail.
+    """
+    depth: list[str] = []
+    in_string = escaped = False
+    for char in partial:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char in "{[":
+            depth.append("}" if char == "{" else "]")
+        elif char in "}]" and depth:
+            depth.pop()
+
+    if in_string or depth != ["}"]:
+        return None
+
+    text = partial.rstrip().rstrip(",") + "}"
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    wanted = [k for k in schema.get("required", []) if k not in optional]
+    return text if all(k in parsed for k in wanted) else None
+
+
 @dataclass
 class Completion:
     data: dict[str, Any]
@@ -60,6 +110,10 @@ class Completion:
     # against, which is why the figure is reported as approximate.
     chunks: int = 0
     chars: int = 0
+    # The generation padded at a field boundary and was closed off rather than
+    # retried. Worth reporting: it saved a call, and it means a field named in
+    # the caller's `optional` may be absent (`_closed_at_root`).
+    salvaged: bool = False
 
     @property
     def per_second(self) -> float:
@@ -78,6 +132,12 @@ class CallRecord:
     chunks: int
     chars: int
     detail: str = ""
+    salvaged: bool = False
+    # What was sent and what came back, for whoever has to answer "why did it
+    # write that" (DESIGN §5.8). Handed over on every call; whether any of it is
+    # kept is the log's decision, not this module's.
+    prompt: str = ""
+    response: str = ""
 
     @property
     def per_second(self) -> float:
@@ -124,6 +184,7 @@ async def complete_json(
     schema: dict[str, Any],
     schema_name: str = "response",
     purpose: str = "",
+    optional: tuple[str, ...] = (),
 ) -> Completion:
     """Ask for one JSON object matching `schema`, and insist on getting one.
 
@@ -133,6 +194,14 @@ async def complete_json(
     `user` is normally a string. It may be the OpenAI content-part list, which is
     how an image-bearing call is expressed; `complete_json_with_images` builds
     that form and everything else here is shared.
+
+    `optional` names the required fields this call can do without, which is what
+    lets a generation that padded at a field boundary be closed off instead of
+    retried (`_closed_at_root`). It is passed per call rather than read off the
+    schema because the two say different things to different readers: the schema
+    tells the *server* what to constrain the tokens to, and moving a field out of
+    its `required` list changes where the model stalls — measured, and for the
+    worse. This tells *us* what we are willing to accept short.
     """
     import time
 
@@ -149,6 +218,7 @@ async def complete_json(
     def elapsed() -> int:
         return int((time.monotonic() - started) * 1000)
 
+    salvaged = False
     for attempt in (1, 2):
         raw = ""
         problem: str | None = None
@@ -157,9 +227,15 @@ async def complete_json(
             chunks += streamed
             chars += len(raw)
         except _Padding as exc:
-            problem = f"degenerate output: {exc}"
             raw = exc.partial
             chars += len(raw)
+            closed = _closed_at_root(raw, schema, optional)
+            if closed is None:
+                problem = f"degenerate output: {exc}"
+            else:
+                raw = closed
+                salvaged = True
+                logger.info("attempt {} padded at a field boundary; closed it", attempt)
         except Exception as exc:  # network, timeout, refusal
             await _emit(
                 CallRecord(
@@ -171,6 +247,7 @@ async def complete_json(
                     chunks,
                     chars,
                     f"{type(exc).__name__}: {exc}",
+                    prompt=f"{system}\n\n---\n\n{_readable(user)}",
                 )
             )
             raise LLMUnavailable(f"{type(exc).__name__}: {exc}") from exc
@@ -203,11 +280,38 @@ async def complete_json(
                 )
                 continue
             await _emit(
-                CallRecord(label, s.llm_model, False, elapsed(), attempt, chunks, chars, last_error)
+                CallRecord(
+                    label,
+                    s.llm_model,
+                    False,
+                    elapsed(),
+                    attempt,
+                    chunks,
+                    chars,
+                    last_error,
+                    prompt=f"{system}\n\n---\n\n{_readable(user)}",
+                    # The unusable output itself. On a padded generation this is
+                    # the only way to see where it stalled, which is the whole
+                    # question when one of these turns up in the log.
+                    response=raw,
+                )
             )
             raise LLMMalformed(last_error)
 
-        await _emit(CallRecord(label, s.llm_model, True, elapsed(), attempt, chunks, chars))
+        await _emit(
+            CallRecord(
+                label,
+                s.llm_model,
+                True,
+                elapsed(),
+                attempt,
+                chunks,
+                chars,
+                salvaged=salvaged,
+                prompt=f"{system}\n\n---\n\n{_readable(user)}",
+                response=raw,
+            )
+        )
         return Completion(
             data=data,
             raw=raw,
@@ -217,6 +321,7 @@ async def complete_json(
             attempts=attempt,
             chunks=chunks,
             chars=chars,
+            salvaged=salvaged,
         )
 
     raise LLMMalformed(last_error)

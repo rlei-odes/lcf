@@ -141,8 +141,17 @@
       <h3>Activity</h3>
       <p class="lead">
         What this installation has been doing: every call to the assistant, every
-        piece of background work, and the documents that came out. Not a debug
-        log — prompts and replies are never stored, only what a call cost.
+        piece of background work, and the documents that came out.
+        {% if prompts_kept %}
+        An assistant call also keeps what it was asked and what it answered, so
+        <em>why did it write that</em> is answerable here — those are the author's
+        material, and <code>LCF_LOG_PROMPTS=false</code> stops them being stored.
+        {% else %}
+        What a call cost is recorded, not what it said:
+        <code>LCF_LOG_PROMPTS</code> is off.
+        {% endif %}
+        The oldest rows are dropped past {{ '{:,}'.format(keep) }}, after each
+        background job, and a dropped row takes its prompt with it.
       </p>
 
       <div class="stats" style="margin-bottom:var(--s4)">
@@ -199,6 +208,17 @@
             {% if bits %}<span class="log-meta">{{ bits|join(' · ') }}</span>{% endif %}
           </span>
           <span class="meta">
+            {# The assistant's own rows are the ones worth opening: what it was
+               asked and what came back is the only thing that explains a draft.
+               Loaded on click, never with the log — an exchange is kilobytes. #}
+            {% if e.kind == 'llm.call' and (e.meta or {}).get('exchange') %}
+            <button class="tool" hx-get="/admin/calls/{{ e.id }}?side=prompt"
+                    hx-target="#modal" hx-swap="innerHTML"
+                    title="What the assistant was asked">asked</button>
+            <button class="tool" hx-get="/admin/calls/{{ e.id }}?side=response"
+                    hx-target="#modal" hx-swap="innerHTML"
+                    title="What the assistant answered">replied</button>
+            {% endif %}
             {% if e.document_id %}
             <a href="/documents/{{ e.document_id }}" class="log-doc">open</a> ·
             {% endif %}
@@ -225,4 +245,8 @@
   </div>
 
 </div>
+
+{# Where an exchange is put when one is asked for. Empty until then, and emptied
+   again by its own close button. #}
+<div id="modal"></div>
 {% endblock %}
