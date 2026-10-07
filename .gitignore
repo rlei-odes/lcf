@@ -13,3 +13,7 @@ src/lcf/web/static/dist/
 logs/
 *.log
 .DS_Store
+# diagrams.net writes this beside the file it is editing and leaves it behind
+# when the app did not shut down cleanly, so closing the diagram is not enough.
+.$*.bkp
+*.dtmp

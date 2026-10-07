@@ -1,0 +1,114 @@
+<mxfile host="Electron" agent="Claude Code">
+  <diagram id="lcf-concept-overview" name="Concept overview">
+    <mxGraphModel dx="1350" dy="961" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900" background="#f7f5f1" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;html=1;align=left;verticalAlign=middle;fontFamily=Helvetica;fontSize=26;fontStyle=1;fontColor=#1a1917;" value="Lancy Content Flow" vertex="1">
+          <mxGeometry height="34" width="700" x="40" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" parent="1" style="text;html=1;align=left;verticalAlign=middle;fontFamily=Helvetica;fontSize=13;fontColor=#6e6b64;" value="Two people, one set of rules. The rules are written once, by the person who owns them — and every document made afterwards has to obey them." vertex="1">
+          <mxGeometry height="24" width="960" x="40" y="62" as="geometry" />
+        </mxCell>
+        <mxCell id="laneA" parent="1" style="rounded=1;arcSize=6;whiteSpace=wrap;html=1;fillColor=#f1efe9;strokeColor=#e5e1d9;dashed=1;dashPattern=6 4;verticalAlign=top;align=left;spacingTop=10;spacingLeft=16;fontFamily=Helvetica;fontSize=15;fontStyle=1;fontColor=#24483e;" value="The quality manager&#xa;&lt;font color=&quot;#6e6b64&quot; style=&quot;font-size:12px&quot;&gt;sets the rules — once per document type, not once per document&lt;/font&gt;" vertex="1">
+          <mxGeometry height="210" width="1310" x="40" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="defgroup" parent="1" style="rounded=1;arcSize=6;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#b9d2c8;dashed=1;dashPattern=4 4;verticalAlign=top;align=left;spacingTop=4;spacingLeft=12;fontFamily=Helvetica;fontSize=11;fontColor=#6e6b64;" value="&lt;i&gt;A document type is nothing but these four things&lt;/i&gt;" vertex="1">
+          <mxGeometry height="136" width="930" x="60" y="174" as="geometry" />
+        </mxCell>
+        <mxCell id="a1" parent="1" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#e5e1d9;fontFamily=Helvetica;fontSize=12;fontColor=#1a1917;spacingLeft=12;spacingRight=10;" value="&lt;b&gt;Sections&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#6e6b64&quot;&gt;What the document is made of, and which section may not be written before another one is.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="95" width="210" x="75" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="a2" parent="1" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#e5e1d9;fontFamily=Helvetica;fontSize=12;fontColor=#1a1917;spacingLeft=12;spacingRight=10;" value="&lt;b&gt;Questions&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#6e6b64&quot;&gt;What a creator has to answer in each section before anything can be drafted from it.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="95" width="210" x="305" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="a3" parent="1" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#e5e1d9;fontFamily=Helvetica;fontSize=12;fontColor=#1a1917;spacingLeft=12;spacingRight=10;" value="&lt;b&gt;Quality criteria&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#6e6b64&quot;&gt;The rules a finished section must satisfy — countable ones, and judged ones.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="95" width="210" x="535" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="a4" parent="1" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#e5e1d9;fontFamily=Helvetica;fontSize=12;fontColor=#1a1917;spacingLeft=12;spacingRight=10;" value="&lt;b&gt;Word template&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#6e6b64&quot;&gt;The branded layout the finished export is poured into.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="95" width="210" x="765" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="publish" parent="1" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#e6efec;strokeColor=#b9d2c8;fontFamily=Helvetica;fontSize=12;fontColor=#24483e;spacingLeft=12;spacingRight=10;" value="&lt;b&gt;Check it, then publish&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#24483e&quot;&gt;A published version is frozen. Changing the rules makes version 4, and documents already running stay on 3.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="95" width="230" x="1060" y="204" as="geometry" />
+        </mxCell>
+        <mxCell id="eA" edge="1" parent="1" source="defgroup" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=1;exitY=0.569;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6e6b64;strokeWidth=1.5;endArrow=blockThin;endFill=1;" target="publish">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="band" parent="1" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#2f5d50;strokeColor=none;fontFamily=Helvetica;fontSize=14;fontColor=#ffffff;" value="&lt;b&gt;The published document type&lt;/b&gt;&amp;nbsp;&amp;nbsp;·&amp;nbsp;&amp;nbsp;every document made from it inherits these sections, these questions and these checks — nobody can opt out of them halfway through" vertex="1">
+          <mxGeometry height="70" width="1310" x="40" y="370" as="geometry" />
+        </mxCell>
+        <mxCell id="ePublishBand" edge="1" parent="1" source="publish" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.8664;entryY=0;entryDx=0;entryDy=0;strokeColor=#6e6b64;strokeWidth=1.5;endArrow=blockThin;endFill=1;" target="band">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="laneB" parent="1" style="rounded=1;arcSize=6;whiteSpace=wrap;html=1;fillColor=#f1efe9;strokeColor=#e5e1d9;dashed=1;dashPattern=6 4;verticalAlign=top;align=left;spacingTop=10;spacingLeft=16;fontFamily=Helvetica;fontSize=15;fontStyle=1;fontColor=#24483e;" value="The document producer&#xa;&lt;font color=&quot;#6e6b64&quot; style=&quot;font-size:12px&quot;&gt;makes one document, guided — and never has to remember the rules&lt;/font&gt;" vertex="1">
+          <mxGeometry height="230" width="1310" x="40" y="480" as="geometry" />
+        </mxCell>
+        <mxCell id="b1" parent="1" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#e5e1d9;fontFamily=Helvetica;fontSize=12;fontColor=#1a1917;spacingLeft=12;spacingRight=10;" value="&lt;b&gt;1 · Bring the material&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#6e6b64&quot;&gt;Paste your raw notes — or drop the whole pile a complaint actually arrives as (PDFs, mails, photos) on the evidence desk.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="150" width="185" x="75" y="538" as="geometry" />
+        </mxCell>
+        <mxCell id="b2" parent="1" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#e5e1d9;fontFamily=Helvetica;fontSize=12;fontColor=#1a1917;spacingLeft=12;spacingRight=10;" value="&lt;b&gt;2 · It is sorted&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#6e6b64&quot;&gt;Each passage lands in the section it belongs to, kept as a quotation from your own text. Nothing is invented here.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="150" width="185" x="285" y="538" as="geometry" />
+        </mxCell>
+        <mxCell id="b3" parent="1" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#e5e1d9;fontFamily=Helvetica;fontSize=12;fontColor=#1a1917;spacingLeft=12;spacingRight=10;" value="&lt;b&gt;3 · Guided, section by section&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#6e6b64&quot;&gt;A section stays locked until the one it depends on is answered — so containment can&#39;t be written before the problem is.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="150" width="185" x="495" y="538" as="geometry" />
+        </mxCell>
+        <mxCell id="b4" parent="1" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#e5e1d9;fontFamily=Helvetica;fontSize=12;fontColor=#1a1917;spacingLeft=12;spacingRight=10;" value="&lt;b&gt;4 · Proposed, then decided&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#6e6b64&quot;&gt;The assistant drafts what the material supports and asks about the rest. You accept or decline. Every decision is logged.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="150" width="185" x="705" y="538" as="geometry" />
+        </mxCell>
+        <mxCell id="b5" parent="1" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#fbf3e0;strokeColor=#d9c48a;fontFamily=Helvetica;fontSize=12;fontColor=#1a1917;spacingLeft=12;spacingRight=10;" value="&lt;b&gt;5 · The quality gate&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#6e6b64&quot;&gt;Every criterion the quality manager wrote is run over the finished text. A failure names the section and quotes the offending passage.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="150" width="185" x="915" y="538" as="geometry" />
+        </mxCell>
+        <mxCell id="b6" parent="1" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#e7f1ea;strokeColor=#9bc3aa;fontFamily=Helvetica;fontSize=12;fontColor=#1a1917;spacingLeft=12;spacingRight=10;" value="&lt;b&gt;6 · The document&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#6e6b64&quot;&gt;The branded .docx — or Markdown, or JSON. Export is what the gate unlocks.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="150" width="185" x="1125" y="538" as="geometry" />
+        </mxCell>
+        <mxCell id="eb12" edge="1" parent="1" source="b1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6e6b64;strokeWidth=1.5;endArrow=blockThin;endFill=1;" target="b2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eb23" edge="1" parent="1" source="b2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6e6b64;strokeWidth=1.5;endArrow=blockThin;endFill=1;" target="b3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eb34" edge="1" parent="1" source="b3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6e6b64;strokeWidth=1.5;endArrow=blockThin;endFill=1;" target="b4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eb45" edge="1" parent="1" source="b4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6e6b64;strokeWidth=1.5;endArrow=blockThin;endFill=1;" target="b5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eb56" edge="1" parent="1" source="b5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#2f6b45;strokeWidth=1.5;endArrow=blockThin;endFill=1;" target="b6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eb43" edge="1" parent="1" source="b4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#97938b;strokeWidth=1.2;endArrow=blockThin;endFill=1;dashed=1;dashPattern=4 4;fontFamily=Helvetica;fontSize=10;fontColor=#6e6b64;labelBackgroundColor=#f1efe9;" target="b3" value="back, if you decline">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="797" y="505" />
+              <mxPoint x="587" y="505" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eBandB1" edge="1" parent="1" source="band" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.097;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#6e6b64;strokeWidth=1.5;endArrow=blockThin;endFill=1;" target="b1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eBandB5" edge="1" parent="1" source="band" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.7386;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#97938b;strokeWidth=1.2;endArrow=blockThin;endFill=1;dashed=1;dashPattern=4 4;fontFamily=Helvetica;fontSize=10;fontColor=#6e6b64;labelBackgroundColor=#f7f5f1;" target="b5" value="the same criteria, now enforced">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="invariant" parent="1" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;align=left;spacingLeft=12;spacingRight=10;fillColor=#f1efe9;strokeColor=#e5e1d9;fontFamily=Helvetica;fontSize=11;fontColor=#1a1917;" value="&lt;b&gt;Content exists only once a person accepted it.&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#6e6b64&quot;&gt;The model never writes into the document. It makes a proposal; accepting it is what appends a revision, under the name of whoever accepted.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="95" width="280" x="40" y="770" as="geometry" />
+        </mxCell>
+        <mxCell id="llm" parent="1" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#b9d2c8;fontFamily=Helvetica;fontSize=11;fontColor=#1a1917;spacingLeft=12;spacingRight=10;" value="&lt;b&gt;Your own LLM, on your own network&lt;/b&gt;&amp;nbsp;&amp;nbsp;·&amp;nbsp;&amp;nbsp;Ollama, vLLM, LM Studio, or any OpenAI-compatible endpoint&lt;br&gt;&lt;font color=&quot;#6e6b64&quot;&gt;It is a worker inside a deterministic frame, not the author: ordering, locking and composition are plain code, and the model only answers narrow questions whose shape is fixed in advance and checked locally. Nothing leaves the network.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="95" width="700" x="350" y="770" as="geometry" />
+        </mxCell>
+        <mxCell id="gatenote" parent="1" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;align=left;spacingLeft=12;spacingRight=10;fillColor=#f1efe9;strokeColor=#e5e1d9;fontFamily=Helvetica;fontSize=11;fontColor=#1a1917;" value="&lt;b&gt;The gate is not advisory.&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#6e6b64&quot;&gt;Export stays locked until the checks pass — or until someone records, permanently, why they overrode one.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="95" width="270" x="1080" y="770" as="geometry" />
+        </mxCell>
+        <mxCell id="eLlm2" edge="1" parent="1" source="llm" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.039;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;strokeColor=#b9d2c8;strokeWidth=1.2;endArrow=blockThin;endFill=1;dashed=1;dashPattern=4 4;" target="b2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eLlm4" edge="1" parent="1" source="llm" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.639;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;strokeColor=#b9d2c8;strokeWidth=1.2;endArrow=blockThin;endFill=1;dashed=1;dashPattern=4 4;" target="b4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eLlm5" edge="1" parent="1" source="llm" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.939;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;strokeColor=#b9d2c8;strokeWidth=1.2;endArrow=blockThin;endFill=1;dashed=1;dashPattern=4 4;" target="b5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
