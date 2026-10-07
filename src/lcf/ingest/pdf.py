@@ -20,19 +20,38 @@ MIN_IMAGE_PIXELS = 80 * 80
 
 
 def parse(data: bytes, filename: str = "") -> Parsed:
+    """Read a PDF into paragraphs, each carrying the page it came from.
+
+    Encryption is not the same thing as a password. Most encrypted PDFs that
+    arrive from a customer portal or a scanner carry an *empty* user password
+    and an owner password that only restricts printing — they open with a
+    double-click, and pypdf decrypts them without being asked. Asking
+    `reader.is_encrypted` cannot tell those apart from a genuinely locked file:
+    it reports whether the trailer has an `/Encrypt` entry and stays true even
+    after a successful decryption. The question is whether the content came out,
+    so the answer is to read it and let pypdf raise if it could not.
+    """
     from pypdf import PdfReader
-    from pypdf.errors import PdfReadError
+    from pypdf.errors import DependencyError, FileNotDecryptedError, PdfReadError
 
     try:
         reader = PdfReader(_stream(data))
         pages = list(reader.pages)
+    except FileNotDecryptedError as exc:
+        # The empty password did not work, so this one really is locked.
+        raise ParseFailed("that PDF is password protected. Unlock it and try again.") from exc
+    except DependencyError as exc:
+        # AES needs `cryptography`, which is why pypdf is pinned with its
+        # `crypto` extra. An installation that resolved its own versions can
+        # still arrive here, and it must say which dependency is missing rather
+        # than blame the file — `DependencyError` does not subclass
+        # `PdfReadError`, so before this clause existed it escaped as a crash.
+        raise ParseFailed(
+            f"that PDF is encrypted and this installation cannot decrypt it ({exc}). "
+            "Reinstall the dependencies — `uv sync` is enough."
+        ) from exc
     except (PdfReadError, OSError, ValueError) as exc:
         raise ParseFailed(f"that PDF could not be opened: {exc}") from exc
-
-    if reader.is_encrypted:
-        # pypdf will have tried the empty password already; reaching here means
-        # it is really locked.
-        raise ParseFailed("that PDF is password protected. Unlock it and try again.")
 
     units: list[Unit] = []
     images: list[Image] = []

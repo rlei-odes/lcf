@@ -44,6 +44,31 @@ def test_a_scan_is_refused_rather_than_recorded_empty():
         pdf.parse(blank, "scan.pdf")
 
 
+def test_an_encrypted_pdf_that_needs_no_password_is_read():
+    """Encrypted is not the same as locked, and most arrivals are the former.
+
+    A PDF off a customer portal or a scanner routinely carries an empty user
+    password and an owner password restricting print — it opens with a
+    double-click. `is_encrypted` cannot tell it from a locked file: it reports
+    whether the trailer has `/Encrypt` and stays true after a successful
+    decryption, so asking it refused files that were sitting there readable.
+    """
+    data = fixtures.encrypted_pdf([["Reklamation NW-CL-88213", "Charge LOT-2026-0417."]])
+
+    parsed = pdf.parse(data, "portal-export.pdf")
+
+    assert "NW-CL-88213" in parsed.text
+    assert parsed.pages == 1
+
+
+def test_a_pdf_that_really_wants_a_password_is_refused():
+    """The other side of the same question, and the message has to differ."""
+    data = fixtures.encrypted_pdf([["Reklamation NW-CL-88213"]], user_password="geheim")
+
+    with pytest.raises(parse.ParseFailed, match="password protected"):
+        pdf.parse(data, "locked.pdf")
+
+
 def test_pdf_closes_up_a_hyphen_broken_identifier():
     """`NW-CL-\\n88213` is invisible to every pattern unless the break is closed."""
     data = fixtures.pdf(

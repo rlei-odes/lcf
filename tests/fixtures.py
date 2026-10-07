@@ -69,6 +69,28 @@ def pdf(pages: list[list[str]]) -> bytes:
     return bytes(out)
 
 
+def encrypted_pdf(pages: list[list[str]], user_password: str = "") -> bytes:
+    """`pdf()`, encrypted with AES-128 the way a customer's system encrypts it.
+
+    The default is the case that matters and the one that reads wrongly: an
+    *empty* user password. The file opens with a double-click and needs nothing
+    typed, and it still carries an `/Encrypt` entry — so `reader.is_encrypted` is
+    true for it and for a genuinely locked file alike. Passing a password here
+    produces the other case, which really should be refused.
+
+    `pypdf` writes this one rather than the hand-assembler above, because the
+    point is a real AES-encrypted stream and hand-building that would be
+    reimplementing the thing under test.
+    """
+    from pypdf import PdfReader, PdfWriter
+
+    writer = PdfWriter(clone_from=PdfReader(BytesIO(pdf(pages))))
+    writer.encrypt(user_password, algorithm="AES-128")
+    out = BytesIO()
+    writer.write(out)
+    return out.getvalue()
+
+
 def _escape(text: str) -> bytes:
     """PDF string escaping, and latin-1 because a base-14 font has no umlauts.
 

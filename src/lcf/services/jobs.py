@@ -18,6 +18,7 @@ from uuid import UUID
 
 from loguru import logger
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 
 from lcf.core.db import session
 from lcf.models.tables import Job
@@ -40,20 +41,46 @@ def handler(kind: str):
 
 
 class Progress:
-    """Reports how far along a job is, straight into its row."""
+    """Reports how far along a job is, straight into its row.
+
+    These writes commit on their own, separately from the work they describe —
+    a progress bar nobody can read until the job finishes is not a progress bar.
+    That makes them the one write in a job that must never be able to fail the
+    work: on SQLite the whole file takes a single writer lock, so a job that is
+    holding one cannot be told to wait for its own progress tick. Dropping the
+    tick is the right trade — the work survives and the bar moves late.
+
+    The count is kept rather than lost, so a bar that stalls under contention
+    catches up on the next tick that lands instead of finishing short. That makes
+    the step number a poor witness to whether anything went wrong, which is what
+    `dropped` is for: it is zero on a job whose every tick landed, and a test
+    asserting on it is really asserting that no transaction was held across a
+    model call.
+    """
 
     def __init__(self, job_id: UUID):
         self.job_id = job_id
+        self.dropped = 0
 
     async def start(self, total: int, message: str = "") -> None:
-        await _update(self.job_id, status="running", step=0, total=total, message=message)
+        self.dropped = 0
+        try:
+            await _update(self.job_id, status="running", step=0, total=total, message=message)
+        except OperationalError as exc:
+            self.dropped += 1
+            logger.warning("job {}: could not record the start ({})", self.job_id, exc)
 
     async def step(self, message: str = "") -> None:
-        async with session() as s:
-            job = await s.get(Job, self.job_id)
-            if job is not None:
-                job.step += 1
-                job.message = message or job.message
+        try:
+            async with session() as s:
+                job = await s.get(Job, self.job_id)
+                if job is not None:
+                    job.step += 1 + self.dropped
+                    job.message = message or job.message
+            self.dropped = 0
+        except OperationalError as exc:
+            self.dropped += 1
+            logger.warning("job {}: progress tick dropped ({})", self.job_id, exc)
 
 
 async def enqueue(kind: str, document_id: UUID | None = None, scope: str | None = None) -> Job:

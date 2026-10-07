@@ -18,8 +18,8 @@ from lcf.engine.view import DocumentView
 from lcf.llm import calls
 from lcf.llm.calls import Assignment, Mapping, Prefilled
 from lcf.llm.provider import Completion, LLMUnavailable
-from lcf.models.tables import DocType, DocTypeVersion, Document, EvidenceItem
-from lcf.services import doc_types, documents, intake
+from lcf.models.tables import DocType, DocTypeVersion, Document, EvidenceItem, Job
+from lcf.services import doc_types, documents, intake, jobs
 
 PASTE = (
     "Customer called on 8 September about cracked housings on order 4471. "
@@ -375,6 +375,58 @@ async def test_a_prefill_failure_does_not_lose_the_mapping(published, monkeypatc
 
     assert outcome.placed == 1
     assert outcome.errors and "connection refused" in outcome.errors[0]
+    assert view.evidence["d1_team"] == ["Anna Brandt is leading"]
+
+
+async def test_no_write_is_held_open_across_the_model_calls(published, monkeypatch):
+    """What made "Sort it into the sections" fail on SQLite.
+
+    A job reports progress in a transaction of its own, because a bar nobody can
+    read until the work finishes is no bar at all. SQLite locks the whole file
+    for one writer, so a tick that arrives while intake's own transaction is
+    holding that lock waits for a lock that cannot be released until the call the
+    tick is reporting on has returned — it waits out `busy_timeout` and the job
+    dies with `database is locked`. PostgreSQL locks per row and never notices,
+    which is why this is asserted rather than left to be noticed.
+
+    `dropped` rather than `step` is the witness: a dropped tick is added to the
+    next one that lands, so the final count is right either way.
+    """
+    async with session() as s:
+        job = Job(kind="intake", status="running")
+        s.add(job)
+        await s.flush()
+        job_id = job.id
+
+    progress = jobs.Progress(job_id)
+
+    async def fake_mapping(spec, material):
+        return Mapping([Assignment("d1_team", "Anna Brandt is leading", "the lead")], 0.9)
+
+    async def fake_prefill(section, material, whole=None):
+        # Exactly what `_prefill` does around every real call, and the write that
+        # used to deadlock: a second transaction, opened mid-flight.
+        await progress.step("mid-flight")
+        return []
+
+    monkeypatch.setattr(intake, "map_evidence_to_sections", fake_mapping)
+    monkeypatch.setattr(intake, "prefill_answers", fake_prefill)
+
+    # Two transactions, as the application really does it: the request that
+    # stored the paste has committed and gone before the job it queued starts.
+    async with session() as s:
+        document = await documents.create(s, published.id, "Intake test")
+        item = await intake.record(s, document.id, PASTE)
+        document_id, item_id = document.id, item.id
+
+    async with session() as s:
+        await intake.distribute(s, document_id, item_id, progress=progress)
+
+    assert progress.dropped == 0, "a progress write queued behind intake's own transaction"
+
+    # And the passages still land, written once the calls are done.
+    async with session() as s:
+        view = await documents.view(s, document_id)
     assert view.evidence["d1_team"] == ["Anna Brandt is leading"]
 
 

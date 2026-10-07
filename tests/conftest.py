@@ -31,7 +31,12 @@ def spec_product() -> DocTypeSpec:
 def sample_4d() -> dict:
     from ruamel.yaml import YAML
 
-    return YAML(typ="safe").load((EXAMPLES / "4d-sample-content.yaml").read_text())
+    # Explicit encoding, because `read_text` otherwise follows the locale and
+    # Windows reads this UTF-8 file as cp1252 — the em dashes in the sample
+    # content come back as mojibake and the render assertions fail there only.
+    # Everything under `src/` already says utf-8; this was the gap.
+    path = EXAMPLES / "4d-sample-content.yaml"
+    return YAML(typ="safe").load(path.read_text(encoding="utf-8"))
 
 
 @pytest.fixture

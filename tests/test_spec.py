@@ -126,4 +126,4 @@ def test_every_seeded_type_has_intake_notes():
         assert notes.is_file(), f"no intake notes for {name}"
         # Enough material to distribute; a stub would pass an existence check and
         # demonstrate nothing.
-        assert len(notes.read_text().split()) > 200
+        assert len(notes.read_text(encoding="utf-8").split()) > 200

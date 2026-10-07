@@ -96,7 +96,18 @@ async def intake_job(document_id: UUID, scope: str | None, progress) -> dict:
 async def distribute(
     session: AsyncSession, document_id: UUID, item_id: UUID, progress=None
 ) -> IntakeOutcome:
-    """Map one evidence item across the sections, then prefill what it answers."""
+    """Map one evidence item across the sections, then prefill what it answers.
+
+    Both halves write, and both are committed together by the caller — but the
+    rows are only *issued* at the end, after the last model call has returned.
+    Holding a write open across a call that takes a minute is free on PostgreSQL
+    and fatal on SQLite, which locks the whole file for one writer: the job's own
+    progress updates run in their own transaction, so they would queue behind a
+    lock that cannot be released until they are done. `extraction.run` and
+    `caption_job` already keep their writes out of the model's way for the same
+    reason. Nothing here needs the rows back, so deferring them costs nothing and
+    the transaction is unchanged on either backend.
+    """
     document, spec = await load(session, document_id)
     item = await session.get(EvidenceItem, item_id)
     if item is None or item.document_id != document_id:
@@ -112,17 +123,7 @@ async def distribute(
 
     by_section: dict[str, list[str]] = {}
     for assignment in mapping.assignments:
-        session.add(
-            EvidenceLink(
-                evidence_id=item.id,
-                section_key=assignment.section_key,
-                quote=assignment.quote,
-                why=assignment.why or None,
-                confidence=mapping.confidence,
-            )
-        )
         by_section.setdefault(assignment.section_key, []).append(assignment.quote)
-    await session.flush()
 
     outcome = IntakeOutcome(
         sections=[
@@ -136,6 +137,19 @@ async def distribute(
     outcome.sections.sort(key=lambda s: order.get(s.key, 0))
 
     await _prefill(session, document_id, spec, outcome, by_section, material, progress)
+
+    for assignment in mapping.assignments:
+        session.add(
+            EvidenceLink(
+                evidence_id=item.id,
+                section_key=assignment.section_key,
+                quote=assignment.quote,
+                why=assignment.why or None,
+                confidence=mapping.confidence,
+            )
+        )
+    await session.flush()
+
     logger.info(
         "intake {}: {} passage(s) placed, {} discarded",
         document_id,
