@@ -475,7 +475,15 @@ async def test_llm(base_url: str, model: str, api_key: str) -> tuple[bool, str]:
     if not model.strip():
         return False, "Reachable. It serves: " + (", ".join(served) or "nothing")
     if model in served:
-        return True, f"Reachable, serving {model}."
+        from lcf.llm.provider import honours_schema
+
+        ok, how = await honours_schema(base_url, model, api_key)
+        if ok:
+            return True, f"Reachable, serving {model}, and it {how}."
+        return False, (
+            f"Reachable and serving {model}, but it {how}. Drafting and the quality gate "
+            "need JSON-schema structured output."
+        )
     return False, f"Reachable, but it does not serve {model!r}. It offers: {', '.join(served)}"
 
 
@@ -564,7 +572,13 @@ async def state() -> State:
                 store_ok,
                 store_detail,
             ),
-            Step("assistant", "Assistant", "Any OpenAI-compatible endpoint.", llm_ok, llm_detail),
+            Step(
+                "assistant",
+                "Assistant",
+                "Any OpenAI-compatible endpoint with structured output.",
+                llm_ok,
+                llm_detail,
+            ),
             Step(
                 "house",
                 "House style",

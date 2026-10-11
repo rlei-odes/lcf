@@ -389,6 +389,18 @@ An aborted call is retried immediately with a compacted echo of what came back. 
 in practice, and catching the pathology early is what makes the difference between a section
 drafting in **16 seconds and in nearly three minutes** — measured, same section, same model.
 
+**Every answer is checked against its schema on arrival** (`llm/conform.py`), over the subset of
+JSON Schema the calls use: `type`, `required`, `enum`, `minItems`, `maxItems`,
+`additionalProperties: false`. An endpoint that does not support `json_schema` rarely refuses it;
+it answers with JSON of its own design, which read with `.get()` and defaults would become an empty
+draft. A mismatch is handled like unparseable output — one retry naming what was wrong, then a
+visible failure. Two leniencies, where strictness would only discard good work: extra properties
+are dropped, and an array past `maxItems` is cut to length.
+
+Whether an endpoint honours a schema at all is a health check, not a discovery made mid-draft.
+`provider.honours_schema` makes one short call whose schema allows a single word the model would
+never choose unprompted; Admin and the setup page report the result, cached for ten minutes.
+
 Independent blocks are drafted **concurrently** under `LCF_LLM_CONCURRENCY`, so a section costs
 its slowest block rather than the sum of them.
 

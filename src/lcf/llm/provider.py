@@ -5,8 +5,9 @@ One structured-output entry point, `complete_json`, used by every typed call.
 The `response_format` form below is the one verified against the deployment
 (ARCHITECTURE §5.2). `guided_json` — the form most vLLM documentation shows — is
 *silently ignored* by this build: it returns a 200 with prose. That is why the
-result is validated locally even though decoding is supposed to be constrained:
-an endpoint that drops a constraint does not tell you it dropped it.
+result is checked against its schema locally (`llm/conform.py`) even though
+decoding is supposed to be constrained: an endpoint that drops a constraint does
+not tell you it dropped it.
 """
 
 import json
@@ -21,6 +22,7 @@ from openai import AsyncOpenAI
 
 from lcf.core.config import settings
 from lcf.ingest.text import clean, clean_data
+from lcf.llm.conform import Mismatch, conform
 
 PROMPTS = Path(__file__).parent / "prompts"
 
@@ -258,8 +260,12 @@ async def complete_json(
             # and fails on the way into Postgres rather than here, which puts the
             # error a long way from its cause (`ingest/text.py`).
             data = clean_data(json.loads(raw)) if problem is None else None
+            if data is not None:
+                data = conform(data, schema, optional)
         except json.JSONDecodeError as exc:
             problem = f"not JSON: {exc}"
+        except Mismatch as exc:
+            problem = f"not the shape asked for: {exc}"
 
         if problem is not None:
             last_error = problem
@@ -272,7 +278,7 @@ async def complete_json(
                     {
                         "role": "user",
                         "content": (
-                            "That reply was unusable. Return one complete JSON object "
+                            f"That reply was unusable ({problem}). Return one complete JSON object "
                             "matching this schema, compact, with no blank lines and no "
                             f"text around it:\n{json.dumps(schema)}"
                         ),
@@ -526,6 +532,61 @@ async def _stream_one_object(
         await stream.close()
 
     return "".join(out), chunks
+
+
+# The probe asks a chatty question and allows exactly one answer, a word no
+# model would choose unprompted. An endpoint that honours the schema has to say
+# it; one that ignores the schema answers the question instead.
+_PROBE_SCHEMA = {
+    "type": "object",
+    "properties": {"answer": {"type": "string", "enum": ["structured"]}},
+    "required": ["answer"],
+    "additionalProperties": False,
+}
+_probed: dict[tuple[str, str], tuple[float, bool, str]] = {}
+_PROBE_TTL_S = 600
+
+
+async def honours_schema(base_url: str, model: str, api_key: str = "") -> tuple[bool, str]:
+    """Does this endpoint constrain its output to a JSON schema, or ignore it?
+
+    The one capability every typed call depends on, and the one an endpoint can
+    lack while answering everything else. One short call, remembered for ten
+    minutes so a page that shows it does not pay for it on every load.
+    """
+    import time
+
+    cached = _probed.get((base_url, model))
+    if cached and time.monotonic() - cached[0] < _PROBE_TTL_S:
+        return cached[1], cached[2]
+    try:
+        reply = await AsyncOpenAI(
+            base_url=base_url, api_key=api_key or "none", timeout=60
+        ).chat.completions.create(
+            model=model,
+            temperature=0,
+            max_tokens=64,
+            messages=[{"role": "user", "content": "Say hello to the team in one sentence."}],
+            response_format={
+                "type": "json_schema",
+                "json_schema": {"name": "probe", "schema": _PROBE_SCHEMA, "strict": True},
+            },
+        )
+        text = (reply.choices[0].message.content or "").strip()
+    except Exception as exc:  # noqa: BLE001
+        ok, detail = False, f"refused structured output: {type(exc).__name__}: {exc}"
+    else:
+        try:
+            ok = conform(json.loads(text), _PROBE_SCHEMA)["answer"] == "structured"
+        except (json.JSONDecodeError, Mismatch, TypeError):
+            ok = False
+        detail = (
+            "constrains its output to a schema"
+            if ok
+            else f"ignores structured output: it answered {' '.join(text.split())[:80]!r}"
+        )
+    _probed[(base_url, model)] = (time.monotonic(), ok, detail)
+    return ok, detail
 
 
 async def reachable() -> bool:

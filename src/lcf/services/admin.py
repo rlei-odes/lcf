@@ -160,6 +160,8 @@ async def probe_storage() -> Probe:
 
 
 async def probe_llm() -> Probe:
+    from lcf.llm.provider import honours_schema
+
     """Ask the endpoint what it serves, and whether the configured model is among
     it. A reachable endpoint serving a different model is the failure that looks
     like success until the first drafting job returns a 404."""
@@ -191,7 +193,19 @@ async def probe_llm() -> Probe:
         )
 
     if s.llm_model in served:
-        return Probe("Assistant", target, True, f"serving {s.llm_model}")
+        ok, how = await honours_schema(s.llm_base_url, s.llm_model, s.llm_api_key)
+        if ok:
+            return Probe("Assistant", target, True, f"serving {s.llm_model}, {how}")
+        return Probe(
+            "Assistant",
+            target,
+            False,
+            f"serving {s.llm_model}, but it {how}",
+            remedy="Drafting, the quality gate and intake need JSON-schema structured output "
+            "(response_format json_schema). Use a server that supports it — vLLM, a recent "
+            "Ollama, LM Studio, llama.cpp — or update this one. Discussing a block works "
+            "without it.",
+        )
     return Probe(
         "Assistant",
         target,
