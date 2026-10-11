@@ -18,6 +18,35 @@
     {%- endif -%}
   </p>
 
+  {% if outcome.parts and outcome.parts > 1 %}
+  <p class="hint">
+    Long enough to read in {{ outcome.parts }} parts, each sorted on its own and
+    then put together.
+  </p>
+  {% endif %}
+
+  {% if outcome.full_parts %}
+  <div class="notice" style="margin-top:14px">
+    <strong>Some passages may not have been filed.</strong>
+    <div class="hint">
+      In {{ outcome.full_parts }} of {{ count(outcome.parts or 1, 'part') }} the assistant
+      reached its limit of {{ outcome.ceiling }} passages, and stops there. A smaller part
+      size — on the setup page, under Assistant — reads the same text in more, smaller
+      pieces.
+    </div>
+  </div>
+  {% endif %}
+
+  {% if outcome.unread %}
+  <div class="notice" style="margin-top:14px">
+    <strong>{{ '{:,}'.format(outcome.unread) }} characters at the end were not read.</strong>
+    <div class="hint">
+      That is past the most one paste is sorted in. Paste the rest on its own, or
+      use the evidence desk, which is built for material this size.
+    </div>
+  </div>
+  {% endif %}
+
   {% if outcome.unplaced %}
   <p class="hint">
     {{ count(outcome.unplaced, 'passage') }} {{ 'belongs' if outcome.unplaced == 1 else 'belong' }}

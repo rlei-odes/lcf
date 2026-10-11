@@ -208,7 +208,7 @@ def mapping_schema(section_keys: list[str], titles: dict[str, str]) -> dict[str,
                 # asked without a schema — measured on gemma-4-26b, 0 placements
                 # against 15.
                 "minItems": 1,
-                "maxItems": min(3 * len(section_keys), 24) or 1,
+                "maxItems": min(5 * len(section_keys), 30) or 1,
             },
             "confidence": {"type": "number"},
         },

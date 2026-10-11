@@ -277,6 +277,36 @@
           {% include "partials/setup_step.html" %}
         {% endwith %}
       </div>
+
+      {# Saved on its own: it needs no endpoint, and changing it should not mean
+         testing the model again. #}
+      <h4 style="margin-top:var(--s5)">Long pastes</h4>
+      <p class="hint">
+        Pasted material is sorted into the sections in parts, so every call reads a
+        piece it can read thoroughly. Each cut falls where a paragraph, line or
+        sentence ends, within the tolerance either side of the part size. Smaller
+        parts find more passages and cost more calls.
+      </p>
+      <form hx-post="/setup/intake" hx-target="#out-intake" hx-swap="innerHTML"
+            hx-disabled-elt="find button">
+        <div class="row">
+          <div class="field">
+            <label for="chunk-chars">Part size, in characters</label>
+            <input type="number" id="chunk-chars" name="chunk_chars" min="1000" max="50000"
+                   step="500" value="{{ intake_chunk[0] }}">
+          </div>
+          <div class="field">
+            <label for="chunk-tol">Tolerance, ± percent</label>
+            <input type="number" id="chunk-tol" name="chunk_tolerance" min="0" max="50"
+                   value="{{ intake_chunk[1] }}">
+          </div>
+        </div>
+        <div class="actions">
+          <button type="submit">Save</button>
+          <span class="why">About a page and a half of text per part is the default.</span>
+        </div>
+      </form>
+      <div id="out-intake"></div>
     </div>
 
     {# --- 5. house style --- #}

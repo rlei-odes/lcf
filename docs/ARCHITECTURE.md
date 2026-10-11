@@ -452,15 +452,27 @@ Composition lives in `engine/` and in the services, in ordinary Python.
 
 ### 5.3 Context budget
 
-Output scope is fixed and narrow; input context is a tactical decision per call:
+Output scope is fixed and narrow; input is kept small by what each call is given, rather than by a
+token count at call time:
 
-1. Always: section spec, resolved style, confirmed answers, current content.
-2. If it fits: raw mapped evidence.
-3. If it doesn't: the `summarize` output for that evidence instead.
-4. Images: only for `uses_images` sections, within the per-call budget
+1. **Drafting and rewriting** get the section spec, resolved style, confirmed answers, the passages
+   filed under that section, and the sections it depends on — never the whole paste.
+2. **Intake** reads a paste in parts (`ingest/split.py`): about `LCF_INTAKE_CHUNK_CHARS` characters
+   each (6,000 by default), cut within ± `LCF_INTAKE_CHUNK_TOLERANCE` percent at the best boundary
+   the window offers — a blank line, then a line break, then a sentence end — and never just after a
+   heading or a line ending in a colon. Each part is sorted by its own call with its own passage
+   ceiling, and the results are merged with duplicates dropped. A section's answers are proposed
+   from its passages and the parts they came from, at most three. Both settings are on the setup
+   page.
+3. **Nothing is cut off silently.** A part that reached its passage ceiling, and text past
+   `LCF_INTAKE_MAX_PARTS` parts, are reported on the intake card.
+4. **Discussing a block** sends the last 16 messages; the evidence desk works from chunks by
+   design.
+5. Images: only for `uses_images` sections, within the per-call budget
    (`LCF_LLM_MAX_IMAGES_PER_CALL` — config, because it is a model property that will change).
 
-The budget check is a token count against a configured window, not a guess.
+`LCF_LLM_CONTEXT_WINDOW` is reported on the admin page and not otherwise enforced: with the bounds
+above, the largest request is a fraction of a 32k window.
 
 ### 5.4 Prompt assembly
 
@@ -531,6 +543,7 @@ differently.
 | Concern | Mechanism |
 |---|---|
 | A settled passage | A `block_pin` row holding the text. Rendered into the draft as `<mark>` **by the server** |
+| A first draft | Decided in a card above its block, like every other kind of block — not in the lane |
 | Asking for a change | A remark, stored as `proposal.remark` before any call, then a `revise_block` job |
 | A remark about one passage | The selected text, stored as `proposal.anchor.focus`; the call changes only that passage |
 | A follow-up remark | The last few remarks and what became of each are part of the call |

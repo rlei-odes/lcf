@@ -572,3 +572,51 @@ def test_sections_questions_and_blocks_are_numbered_in_spec_order(spec_4d):
     assert ref(spec_4d, second.key, question=second.questions[0].key) == "S2-Q1"
     assert ref(spec_4d, second.key, block=second.blocks[-1].key) == f"S2-C{len(second.blocks)}"
     assert ref(spec_4d, "no_such_section") == ""
+
+
+async def test_a_long_paste_is_sorted_in_parts_and_says_what_it_could_not_do(
+    published, monkeypatch
+):
+    from types import SimpleNamespace
+
+    paste = "\n\n".join(
+        [
+            "Anna Brandt is leading this one for quality. " * 3,
+            "Customer called about cracked housings on order 4471. " * 3,
+            "We stopped shipping that day and sorted the stock. " * 3,
+        ]
+    )
+    monkeypatch.setattr(
+        intake,
+        "settings",
+        lambda: SimpleNamespace(
+            intake_chunk_chars=150, intake_chunk_tolerance=10, intake_max_parts=2, llm_concurrency=2
+        ),
+    )
+    seen = []
+
+    async def fake_mapping(spec, material):
+        seen.append(material)
+        found = [
+            Assignment("d2_problem", "cracked housings on order 4471", "defect"),
+            Assignment("d1_team", "Anna Brandt is leading this one for quality", "lead"),
+        ]
+        mine = [a for a in found if a.quote in material]
+        # Both parts report the defect: a passage read from both sides of a cut.
+        mine.append(found[0])
+        return Mapping(mine, 0.8, full=len(seen) == 1, ceiling=2)
+
+    async def fake_prefill(section, material, whole=None):
+        return []
+
+    monkeypatch.setattr(intake, "map_evidence_to_sections", fake_mapping)
+    monkeypatch.setattr(intake, "prefill_answers", fake_prefill)
+    async with session() as s:
+        document = await documents.create(s, published.id, "Intake test")
+        item = await intake.record(s, document.id, paste)
+        outcome = await intake.distribute(s, document.id, item.id)
+
+    assert len(seen) == 2 and all(len(m) < 200 for m in seen), "read in parts"
+    assert outcome.placed == 2, "the passage both parts found is filed once"
+    assert (outcome.parts, outcome.full_parts, outcome.ceiling) == (2, 1, 2)
+    assert outcome.unread > 100, "the part past the limit is reported, not dropped silently"

@@ -32,7 +32,7 @@
       <button type="button" class="block-tab" data-focus-to="{{ b.block.key }}">
         <span class="ref">{{ ref(spec, section.key, block=b.block.key)|replace(ref(spec, section.key) ~ '-', '') }}</span>
         {{ b.block.label }}
-        {%- if b.proposals %}<span class="badge" title="A version is waiting for you">1</span>{% endif %}
+        {%- if b.rewrites %}<span class="badge" title="A version is waiting for you">1</span>{% endif %}
       </button>
       {% endfor %}
     </div>
@@ -47,6 +47,11 @@
   {% set key = b.block.key %}
   {% set busy_rewrite = revise_job and revise_in == key %}
   <section class="conv" data-conv data-block="{{ key }}" {{ 'hidden' if key != lane_focus }}>
+    <div class="conv-head">
+      <span class="ref">{{ ref(spec, section.key, block=key) }}</span>
+      <span class="conv-title">{{ b.block.label }}</span>
+      <span class="muted">{{ section.title }}</span>
+    </div>
 
     {# ---------------- Rewrite ---------------- #}
     <div class="pane" data-pane="rewrite">

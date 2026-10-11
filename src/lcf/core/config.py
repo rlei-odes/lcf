@@ -77,6 +77,15 @@ class Settings(BaseSettings):
     llm_timeout_s: int = 180
     llm_concurrency: int = 4
 
+    # A paste is sorted in parts of about this many characters, each cut where
+    # a paragraph, line or sentence ends within ± the tolerance (percent). One
+    # call per part keeps every call in the range where sorting is thorough, and
+    # gives each its own share of the passage ceiling. Beyond `intake_max_parts`
+    # the rest is not read, and the author is told.
+    intake_chunk_chars: int = 6000
+    intake_chunk_tolerance: int = 15
+    intake_max_parts: int = 20
+
     # Object storage. An empty endpoint is not a missing configuration: it means
     # the local disk holds the bytes, which is what most single installations
     # want and what needs no setup at all.

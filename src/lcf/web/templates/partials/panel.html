@@ -290,13 +290,10 @@
       </p>
 
       {% for b in blocks %}
-      {# A prose block's proposals live in the assistant lane, where the next
-         remark is typed. Every other kind keeps them above it, which is where
-         its only decision is. #}
+      {# A first draft is decided above its block, for every kind. A version asked
+         for with a remark is part of the conversation in the assistant lane. #}
       <div class="block" data-block="{{ b.block.key }}">
-        {% if b.block.kind != 'prose' %}
-          {% for p in b.proposals %}{% include "partials/proposal_card.html" %}{% endfor %}
-        {% endif %}
+        {% for p in b.drafts %}{% include "partials/proposal_card.html" %}{% endfor %}
 
         <form hx-post="/documents/{{ document.id }}/sections/{{ section.key }}/blocks/{{ b.block.key }}"
               hx-target="#workspace" hx-swap="outerHTML" hx-disabled-elt="find button"
@@ -306,9 +303,9 @@
             <label>{{ b.block.label }}</label>
             <span class="kind">{{ b.block.kind }}</span>
             {% if b.block.kind == 'prose' %}
-            <button type="button" class="tool ask{{ ' waiting' if b.proposals }}" data-focus-to="{{ b.block.key }}"
+            <button type="button" class="tool ask{{ ' waiting' if b.rewrites }}" data-focus-to="{{ b.block.key }}"
                     title="Work on this block with the assistant">
-              {{- '✦ A new version is waiting' if b.proposals else '✦ Assistant' -}}
+              {{- '✦ A new version is waiting' if b.rewrites else '✦ Assistant' -}}
             </button>
             {% endif %}
           </div>

@@ -228,9 +228,18 @@ class BlockView:
 
     @property
     def timeline(self) -> list[Any]:
-        """Every turn of the rewrite conversation, and any first draft, in order."""
-        firsts = [p for p in self.proposals if not p.remark]
-        return sorted([*self.turns, *firsts], key=lambda p: p.created_at)
+        """Every turn of the rewrite conversation, in order."""
+        return sorted(self.turns, key=lambda p: p.created_at)
+
+    @property
+    def drafts(self) -> list[Any]:
+        """Pending first drafts: answered in the block itself, not the lane."""
+        return [p for p in self.proposals if not p.remark]
+
+    @property
+    def rewrites(self) -> list[Any]:
+        """Pending versions asked for with a remark, answered in the lane."""
+        return [p for p in self.proposals if p.remark]
 
     @property
     def discussing(self) -> bool:
@@ -377,7 +386,7 @@ def section_panel_context(
                 b.block.key
                 for b in blocks
                 if b.block.kind == "prose"
-                and (b.proposals or b.discussing or any(t.status == "requested" for t in b.turns))
+                and (b.rewrites or b.discussing or any(t.status == "requested" for t in b.turns))
             ),
             next((b.block.key for b in blocks if b.block.kind == "prose"), None),
         ),

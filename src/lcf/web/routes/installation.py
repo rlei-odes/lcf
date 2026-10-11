@@ -49,6 +49,7 @@ async def setup_page(request: Request):
         request,
         "setup.html",
         state=state,
+        intake_chunk=(s.intake_chunk_chars, s.intake_chunk_tolerance),
         db=db,
         backend=backend,
         backends=setup.BACKENDS,
@@ -211,6 +212,39 @@ async def setup_assistant(request: Request):
         step=setup.Step("assistant", "Assistant", "", ok, detail),
         saved=ok,
         fresh=await setup.state(),
+    )
+
+
+@router.post("/setup/intake", response_class=HTMLResponse)
+async def setup_intake(request: Request):
+    """How a long paste is cut up for sorting. Nothing to test, only to check."""
+    form = await request.form()
+    try:
+        chars = int(str(form.get("chunk_chars") or "").strip())
+        tolerance = int(str(form.get("chunk_tolerance") or "").strip())
+    except ValueError:
+        chars = tolerance = -1
+    ok = 1000 <= chars <= 50000 and 0 <= tolerance <= 50
+    detail = (
+        f"Pastes are sorted in parts of about {chars:,} characters, cut within ±{tolerance}% "
+        "where a paragraph, line or sentence ends."
+        if ok
+        else "The part size has to be between 1,000 and 50,000 characters, and the "
+        "tolerance between 0 and 50 percent."
+    )
+    if ok:
+        try:
+            await setup.guard(writes=("LCF_INTAKE_CHUNK_CHARS", "LCF_INTAKE_CHUNK_TOLERANCE"))
+            setup.write(
+                {"LCF_INTAKE_CHUNK_CHARS": str(chars), "LCF_INTAKE_CHUNK_TOLERANCE": str(tolerance)}
+            )
+        except setup.Refused as exc:
+            ok, detail = False, str(exc)
+    return page(
+        request,
+        "partials/setup_step.html",
+        step=setup.Step("intake", "Long pastes", "", ok, detail),
+        saved=ok,
     )
 
 

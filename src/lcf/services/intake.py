@@ -26,8 +26,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from lcf.core.config import settings
 from lcf.core.db import session as db_session
-from lcf.core.text import count
-from lcf.llm.calls import map_evidence_to_sections, prefill_answers
+from lcf.ingest.split import split_text
+from lcf.llm.calls import Assignment, map_evidence_to_sections, prefill_answers
 from lcf.llm.provider import LLMMalformed, LLMUnavailable
 from lcf.llm.quoting import quoted_from
 from lcf.models.tables import Answer, EvidenceItem, EvidenceLink, Section
@@ -35,9 +35,9 @@ from lcf.services import jobs
 from lcf.services.doc_types import NotFound
 from lcf.services.documents import ANSWER_PROPOSED, load, set_answers
 
-# A paste longer than this is truncated for the mapping call. The whole item is
-# still stored — the limit is what one call reads, not what the author supplied.
-MAX_MATERIAL_CHARS = 24000
+# How many parts' worth of text a section's answers are proposed from: the parts
+# its passages came from, up to this many.
+PREFILL_PARTS = 3
 
 
 @dataclass
@@ -53,6 +53,12 @@ class IntakeOutcome:
     sections: list[SectionIntake]
     discarded: int = 0
     unplaced: int = 0
+    # How the paste was read: in how many parts, in how many of them the passage
+    # ceiling was reached, and how much was left unread past the last part.
+    parts: int = 1
+    full_parts: int = 0
+    ceiling: int = 0
+    unread: int = 0
     errors: list[str] = field(default_factory=list)
 
     @property
@@ -74,6 +80,10 @@ class IntakeOutcome:
             "placed": self.placed,
             "discarded": self.discarded,
             "unplaced": self.unplaced,
+            "parts": self.parts,
+            "full_parts": self.full_parts,
+            "ceiling": self.ceiling,
+            "unread": self.unread,
             "errors": self.errors,
         }
 
@@ -117,40 +127,95 @@ async def distribute(
     if item is None or item.document_id != document_id:
         raise NotFound(f"no evidence item {item_id} on this document")
 
-    material = (item.text or "")[:MAX_MATERIAL_CHARS]
+    s = settings()
+    parts = split_text(item.text or "", s.intake_chunk_chars, s.intake_chunk_tolerance)
+    unread = sum(len(p) for p in parts[s.intake_max_parts :])
+    parts = parts[: s.intake_max_parts]
     if progress is not None:
-        await progress.start(1 + len(spec.sections), "Reading what you pasted…")
+        await progress.start(len(parts) + len(spec.sections), "Reading what you pasted…")
 
-    mapping = await map_evidence_to_sections(spec, material)
-    if progress is not None:
-        await progress.step(f"Placed {count(len(mapping.assignments), 'passage')}")
+    # One call per part, run together: each sees a piece it can read thoroughly,
+    # and each has its own share of the passage ceiling.
+    limit = asyncio.Semaphore(s.llm_concurrency)
+
+    async def read(i: int, part: str):
+        async with limit:
+            try:
+                return await map_evidence_to_sections(spec, part)
+            finally:
+                if progress is not None:
+                    label = f"part {i + 1} of {len(parts)}" if len(parts) > 1 else "your text"
+                    await progress.step(f"Sorted {label}")
+
+    mapped = await asyncio.gather(
+        *(read(i, p) for i, p in enumerate(parts)), return_exceptions=True
+    )
+    if all(isinstance(m, BaseException) for m in mapped):
+        raise mapped[0]
+
+    errors: list[str] = []
+    assignments: list[tuple[int, Assignment]] = []
+    seen: set[tuple[str, str]] = set()
+    discarded = unplaced = full = ceiling = 0
+    confidence: list[float] = []
+    for i, mapping in enumerate(mapped):
+        if isinstance(mapping, LLMUnavailable | LLMMalformed):
+            errors.append(f"Part {i + 1} of {len(parts)} could not be sorted: {mapping}")
+            continue
+        if isinstance(mapping, BaseException):
+            raise mapping
+        discarded += mapping.discarded
+        unplaced += mapping.unplaced
+        full += mapping.full
+        ceiling = mapping.ceiling
+        if mapping.assignments:
+            confidence.append(mapping.confidence)
+        for assignment in mapping.assignments:
+            # A passage near a cut can be read from both sides of it.
+            key = (assignment.section_key, " ".join(assignment.quote.split()).casefold())
+            if key not in seen:
+                seen.add(key)
+                assignments.append((i, assignment))
+    mean_confidence = sum(confidence) / len(confidence) if confidence else 0.0
 
     by_section: dict[str, list[str]] = {}
-    for assignment in mapping.assignments:
+    from_parts: dict[str, list[int]] = {}
+    for i, assignment in assignments:
         by_section.setdefault(assignment.section_key, []).append(assignment.quote)
+        if i not in from_parts.setdefault(assignment.section_key, []):
+            from_parts[assignment.section_key].append(i)
+    context = {
+        key: "\n\n".join(parts[i] for i in sorted(found)[:PREFILL_PARTS])
+        for key, found in from_parts.items()
+    }
 
     outcome = IntakeOutcome(
         sections=[
             SectionIntake(key, spec.section(key).title if spec.section(key) else key, quotes)
             for key, quotes in by_section.items()
         ],
-        discarded=mapping.discarded,
-        unplaced=mapping.unplaced,
+        discarded=discarded,
+        unplaced=unplaced,
+        parts=len(parts),
+        full_parts=full,
+        ceiling=ceiling,
+        unread=unread,
+        errors=errors,
     )
     # Ordered as the spec declares, not as the model happened to answer.
     order = {key: i for i, key in enumerate(spec.section_keys)}
     outcome.sections.sort(key=lambda s: order.get(s.key, 0))
 
-    await _prefill(session, document_id, spec, outcome, by_section, material, progress)
+    await _prefill(session, document_id, spec, outcome, by_section, context, progress)
 
-    for assignment in mapping.assignments:
+    for _, assignment in assignments:
         session.add(
             EvidenceLink(
                 evidence_id=item.id,
                 section_key=assignment.section_key,
                 quote=assignment.quote,
                 why=assignment.why or None,
-                confidence=mapping.confidence,
+                confidence=mean_confidence,
             )
         )
     await session.flush()
@@ -170,15 +235,17 @@ async def _prefill(
     spec,
     outcome: IntakeOutcome,
     by_section: dict[str, list[str]],
-    material: str,
+    context: dict[str, str],
     progress,
 ) -> None:
     """Propose answers, one call per section that received material.
 
-    Each call gets the section's own passages *and* the whole paste, because the
-    words that answer a question are not always the words filed under its section
-    (see `prefill_answers`). Sections that received nothing are still skipped: a
-    section the material never touched is one the author should simply be asked
+    Each call gets the section's own passages *and* the parts of the paste they
+    came from, because the words that answer a question are not always the words
+    filed under its section (see `prefill_answers`). The parts, not the whole
+    paste, so a long paste does not make every one of these calls long.
+    Sections that received nothing are still skipped: a section the material
+    never touched is one the author should simply be asked
     about, and a call over it could only guess.
     """
     targets = [s for s in outcome.sections if spec.section(s.key) and spec.section(s.key).questions]
@@ -192,7 +259,7 @@ async def _prefill(
         async with limit:
             try:
                 passages = "\n\n".join(by_section[entry.key])
-                return await prefill_answers(spec.section(entry.key), passages, material)
+                return await prefill_answers(spec.section(entry.key), passages, context[entry.key])
             finally:
                 if progress is not None:
                     await progress.step(f"Read {entry.title}")

@@ -364,6 +364,9 @@ class Mapping:
     # Passages the model placed nowhere, on purpose: material that belongs to no
     # section of this document.
     unplaced: int = 0
+    # The answer reached the schema's ceiling, so passages past it went unfiled.
+    full: bool = False
+    ceiling: int = 0
 
 
 async def map_evidence_to_sections(spec: DocTypeSpec, material: str) -> Mapping:
@@ -383,10 +386,11 @@ async def map_evidence_to_sections(spec: DocTypeSpec, material: str) -> Mapping:
     )
     user = f"## The author's material\n\n{material}"
 
+    schema = mapping_schema(keys, titles)
     completion = await complete_json(
         system,
         user,
-        mapping_schema(keys, titles),
+        schema,
         schema_name="evidence_mapping",
         purpose="map_evidence",
     )
@@ -409,7 +413,15 @@ async def map_evidence_to_sections(spec: DocTypeSpec, material: str) -> Mapping:
             continue
         assignments.append(Assignment(section_key, quote, str(raw.get("why") or "").strip()))
 
-    return Mapping(assignments, float(data.get("confidence") or 0.0), discarded, unplaced)
+    ceiling = schema["properties"]["assignments"]["maxItems"]
+    return Mapping(
+        assignments,
+        float(data.get("confidence") or 0.0),
+        discarded,
+        unplaced,
+        full=len(data.get("assignments", [])) >= ceiling,
+        ceiling=ceiling,
+    )
 
 
 @dataclass
