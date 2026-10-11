@@ -5,7 +5,9 @@ solving reports, product specifications, deviation notices**, free to be defined
 Define the sections and the quality criteria once, paste your raw notes, and accept or decline what
 the assistant proposes. Nothing leaves your network.
 
-Runs against any OpenAI-compatible endpoint. Verified and developed against **vLLM**.
+Runs against any OpenAI-compatible endpoint that supports **JSON-schema structured output** —
+developed and verified on **vLLM**; Ollama, LM Studio and llama.cpp support the same API but have
+not been tested here. See [Pointing it at a model](#pointing-it-at-a-model).
 
 ![A product specification in Lancy Content Flow: all four sections complete, the quality gate reporting 20 checks passed, and Word, Markdown and JSON export unlocked](docs/lcf_screenshot.png)
 
@@ -14,25 +16,80 @@ and export only unlocks once they pass.*
 
 ![A 4d report section, discussed with the assistant](docs/lcf_screenshot_assistant.png)
 
-*The section Problem description is done, and being discussed with the assistant. Two modes are available for this. Either select passages to rewrite, leaving the rest pinned, or just discuss in general without restrictions.*
+*A section being worked on with the assistant, in the lane on the right. **Rewrite** answers a remark
+with a new version of the block, changes marked, to accept or decline — holding word for word any
+passage you have settled. **Discuss** is an open conversation about the block that never touches
+the text.*
+
+> **No login yet.** Anyone who can reach the server can use every part of it, setup included. Run
+> it on a trusted network until accounts and roles land (see [Roadmap](#roadmap)).
+
+## Quick start
+
+```bash
+uv sync --extra dev     # exact versions from uv.lock
+.venv/bin/lcf serve     # open http://localhost:8090 — a setup page walks you through the rest
+```
+
+You need Python 3.13, a database (PostgreSQL, or SQLite for a single file) and a model endpoint.
+Details are under [Setup](#setup).
 
 ---
 
-A **rule builder** defines document types: sections, the questions a creator must answer,
-requirements, quality criteria, and a branded docx template. A **document creator** then works
-through a guided flow that drafts what it can from the material supplied and asks about the rest.
+## What is in it
 
-An **evidence desk** handles what comes before that. A complaint does not arrive as a document; it
-arrives as a pile — the customer's form, a measurement report, photographs, a mail thread four
-forwards deep, every customer's template different. Drop the lot in, write down once what has to come
-out of it (*which batches? what was measured? what is their complaint number?*), and the desk finds
-candidates and shows the passage behind each one for you to accept or dismiss. Patterns cost no model
-calls at all, and the questions save as a set, so the next complaint from the same customer starts
-pre-wired.
+Four areas, one per job: writing documents, defining what a document must be, digging the facts
+out of what a case arrives as, and looking after the installation.
 
-Made for quality management and technical writing, where a document has to obey a standard rather
-than merely read well: every section carries its own pass/fail checks, and the document cannot be
-exported until they pass or someone records, permanently, why they overrode them.
+### Doc flow — writing a document
+
+- **Guided sections.** A document is worked through section by section, each with the questions
+  it needs answered. Sections that build on others wait for them, and a change to a finished
+  section asks which later ones it affects.
+- **Paste your notes.** Raw material — a mail, meeting notes, measurements — is sorted into the
+  sections it belongs to, and the answers it contains are proposed for you to confirm. Every
+  placement is a quotation checked against what you pasted.
+- **Drafts you accept or decline.** The assistant drafts each block from your answers and
+  material, and asks about what it was not told instead of inventing it.
+- **The assistant lane.** Beside the text, for prose blocks: *Rewrite* takes a remark ("shorter",
+  "say when containment started"), optionally about one selected passage, and answers with a
+  new version shown as a word-level diff. Passages you settle are reproduced word for word in
+  every rewrite, and that is checked, not hoped for. *Discuss* is a free conversation about the
+  block — ideas, gaps, alternative wordings — that can never write into it.
+- **A quality gate.** Every section carries pass/fail checks: deterministic ones on every save,
+  judged ones are answered by the assistant with the passage that decides them. Export stays
+  locked until they pass, or until someone records — permanently — why they overrode them.
+- **Export** to a branded Word file, Markdown or JSON, every export recorded.
+
+### Doctype factory — defining a document type
+
+- **A structured builder**: sections, questions, blocks and checks as forms, for someone who has
+  never read YAML — and the same type as **YAML** for someone who would rather, with import and
+  download.
+- **Checks written once**, used twice: each is given to the assistant as a drafting target and
+  used to grade the result, so the instruction and the grade cannot disagree.
+- **Versions are immutable.** Editing publishes a new version; documents keep the one they were
+  started on.
+- **Word templates**: a starter generated from the type, branded in Word, bound to a version.
+
+### Evidence desk — from a pile of files to facts
+
+A complaint does not arrive as a document; it arrives as a pile — the customer's form, a
+measurement report, photographs, a mail thread four forwards deep, every customer's template
+different. Drop the lot in, write down once what has to come out of it (*which batches? what was
+measured? what is their complaint number?*), and the desk finds candidates and shows the passage
+behind each one for you to accept or dismiss. Patterns cost no model calls at all, and the
+questions save as a set, so the next complaint from the same customer starts pre-wired.
+
+### Admin and setup
+
+- **First-run setup** that tests each dependency before saving it and runs the migrations.
+- **Health** of the database, file storage and model endpoint — including whether the endpoint
+  actually honours structured output, which is the failure that otherwise looks like success.
+- **Activity**: every assistant call with its cost, and what it was asked and answered, so *why
+  did it write that* has an answer.
+
+## How it is built
 
 Two invariants shape everything:
 
@@ -54,7 +111,7 @@ error instead of reaching a systemic cause, a claim with no evidence behind it. 
 the rules a general-purpose chat assistant cannot hold, and exactly what a quality criterion in a
 document type states once and then enforces on every report.
 
-Types the model is built for:
+Document types it is built for:
 
 - **8D and 4D problem solving reports** — D1 team through D8, dependency-gated so containment
   cannot be written before the problem is described
@@ -68,65 +125,17 @@ Types the model is built for:
 None of that is hard-coded. A document type is a YAML file or a few minutes in the rule builder;
 the 8D is just the largest one shipped.
 
-## Status
+## Roadmap
 
-**Working end to end.** A document type is defined, a document is created from it, notes are pasted
-and sorted into sections, the assistant drafts, a person accepts, the quality gate runs, and a
-branded .docx comes out the other side. Admin section for setup and usage insights. Currently no user management and role concept. 
+The original build plan is done apart from its last item. Next, in order:
 
-Everything on the build order in [ARCHITECTURE §14](docs/ARCHITECTURE.md) is done except the last
-two, and both are additive — nothing already built is waiting on them:
+1. **Images in documents** — accepted photographs from the evidence desk reaching a document's
+   image blocks, and from there the Word export.
+2. **Accounts and roles** — login, and the split between the people who define document types
+   and the people who write documents.
 
-| Done | |
-|---|---|
-| ✓ | Spec model, linter, YAML round-trip |
-| ✓ | Schema and Alembic migrations, PostgreSQL or SQLite |
-| ✓ | Deterministic check engine (6 kinds) |
-| ✓ | Section state machine, dependency gating, staleness |
-| ✓ | Service layer: publish, create, answer, edit, assess, blame |
-| ✓ | Storage on the local disk by default, S3-compatible when you want it |
-| ✓ | Web UI (FastAPI + Jinja + HTMX), paste-from-spreadsheet tables |
-| ✓ | LLM drafting: schema-constrained proposals, gaps, accept/decline, decision log |
-| ✓ | Background jobs with live progress — drafting no longer blocks the request |
-| ✓ | The full quality gate: judged checks, quote-backed, run as a job |
-| ✓ | Export: JSON, Markdown and docx, gated and recorded |
-| ✓ | Evidence intake: paste a blob of notes, distributed across the sections, answers proposed from it |
-| ✓ | **The evidence desk**: drop in the pile of files a complaint actually arrives as, say what has to come out of it, and accept the candidates it finds |
-| ✓ | Spec editor for the rule builder: check, publish as a new version, import/export YAML |
-| ✓ | A structured builder for the same specs — sections, questions, blocks and checks as forms, for someone who has never read YAML |
-| ✓ | Word templates: a starter generated from the spec, branded in Word, bound to a version and carried forward |
-| ✓ | Admin view: health of the database, store and LLM endpoint, background jobs, configuration |
-| ✓ | Guided first-run setup: tests each dependency before saving, runs the migrations |
-| | Accepted images reaching an `image_ref` block in a document |
-
-What is left, in order, is in [BACKLOG.md](docs/BACKLOG.md).
-
-
-```
-$ lcf walkthrough
-
-initial state
-  · header             empty        1 question unanswered
-  ⊘ d1_team            blocked      waiting on header
-  ⊘ d2_problem         blocked      waiting on header
-  ⊘ d3_containment     blocked      waiting on d2_problem
-  ⊘ d4_root_cause      blocked      waiting on d2_problem
-
-filling sections in dependency order
-  ✓ header             complete
-  ✓ d1_team            complete
-  ✓ d2_problem         complete
-  ✓ d3_containment     complete
-  ✓ d4_root_cause      complete
-
-quality gate
-  PASS     ✓  14 checks
-  PENDING  ·  11 judged checks not run yet
-
-editing a completed section (d2_problem)
-  revision 2 appended
-  built on this: d3_containment, d4_root_cause. Still valid?
-```
+The longer list is in [BACKLOG.md](docs/BACKLOG.md); how the pieces fit is in
+[ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Setup
 
@@ -150,6 +159,10 @@ anything, and for PostgreSQL hands you the `psql` or `docker run` command to cre
 from the values you typed, so the command and the configuration cannot disagree. SQLite needs none
 of that; it creates the file. Then it runs the migrations, checks storage, and tests the model
 endpoint.
+
+![The setup page guides through the necessary steps.](docs/lcf_screenshot_setup.png)
+
+*The setup page. Guides the administrator through the setup flow*
 
 PostgreSQL is the deployment this is built for and keeps the better of anything the two dialects do
 differently; SQLite takes the lesser. The whole of that difference today is the resolution of one
@@ -191,29 +204,31 @@ a fresh type list is clutter; publish it by hand with
 
 ### Pointing it at a model
 
-Anything that speaks the OpenAI chat-completions API will do. Set two values in `.env`:
+The endpoint has to speak the OpenAI chat-completions API **and support structured output**:
+`response_format` with a `json_schema`. Every drafting, judging and intake call is constrained to a
+schema, and the answer is checked against it again when it arrives. Set two values in `.env`:
 
 ```bash
-# Ollama
-LCF_LLM_BASE_URL=http://localhost:11434/v1
-LCF_LLM_MODEL=gemma3:27b
-
-# vLLM
+# vLLM — what this is developed and verified on
 LCF_LLM_BASE_URL=http://your-host:8000/v1
 LCF_LLM_MODEL=the-model-id-vllm-serves
 
-# LM Studio
+# Ollama (a recent version) — supports the same API, not tested here
+LCF_LLM_BASE_URL=http://localhost:11434/v1
+LCF_LLM_MODEL=the-model-tag-you-pulled
+
+# LM Studio — supports the same API, not tested here
 LCF_LLM_BASE_URL=http://localhost:1234/v1
 LCF_LLM_MODEL=the-model-id-lm-studio-serves
 ```
 
-The **Admin** page reaches all three dependencies and says which one is not answering, including
-when the endpoint is up but serving a different model than the one configured.
+You do not have to take the table on trust: **Admin** and the setup page make one tiny
+schema-constrained call and report whether the endpoint honoured it. An endpoint that ignores
+`response_format` usually answers anyway, in JSON of its own design; that is reported there, and
+during work such an answer is retried once and then fails visibly instead of becoming an empty
+draft. Discussing a block is plain chat and works on any endpoint.
 
-Structured output is required: every model call is schema-constrained and the result is validated
-locally, so a model with weak JSON adherence will produce declined proposals rather than bad
-content. A 20B-class instruct model is comfortable; smaller ones work for drafting and struggle as
-judges.
+A 20B-class instruct model is comfortable; smaller ones work for drafting and struggle as judges.
 
 #### If you serve with vLLM, turn off free whitespace
 
@@ -292,6 +307,35 @@ lcf walkthrough                              # drive a 4D end to end, no LLM
 lcf serve                                    # the web application
 ```
 
+`lcf walkthrough` drives a 4D report through its whole life with no model and no web server —
+publish, fill, gate, edit, blame — which makes it the quickest way to see the engine work:
+
+```
+$ lcf walkthrough
+
+initial state
+  · header             empty        1 question unanswered
+  ⊘ d1_team            blocked      waiting on header
+  ⊘ d2_problem         blocked      waiting on header
+  ⊘ d3_containment     blocked      waiting on d2_problem
+  ⊘ d4_root_cause      blocked      waiting on d2_problem
+
+filling sections in dependency order
+  ✓ header             complete
+  ✓ d1_team            complete
+  ✓ d2_problem         complete
+  ✓ d3_containment     complete
+  ✓ d4_root_cause      complete
+
+quality gate
+  PASS     ✓  14 checks
+  PENDING  ·  11 judged checks not run yet
+
+editing a completed section (d2_problem)
+  revision 2 appended
+  built on this: d3_containment, d4_root_cause. Still valid?
+```
+
 ## Example document types
 
 | Spec | Role |
@@ -303,10 +347,6 @@ lcf serve                                    # the web application
 Sample material to go with them: [`4d-sample-content.yaml`](docs/examples/4d-sample-content.yaml)
 is finished content, used by `lcf walkthrough` and the tests; the two
 `*-intake-notes.md` files above are raw notes, for the intake feature.
-
-## Licence
-
-MIT — see [LICENSE](LICENSE).
 
 ## Tests
 
@@ -324,3 +364,7 @@ Service tests use the real database from `.env` and skip if it is unreachable. P
 at a scratch SQLite file runs them with nothing to set up, and is also how the SQLite backend is
 tested: the suite is the same either way. A boundary test asserts that `spec/`, `engine/` and
 `ingest/` never import a database, because that purity is what keeps the rest testable.
+
+## Licence
+
+MIT — see [LICENSE](LICENSE).
