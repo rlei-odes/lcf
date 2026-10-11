@@ -168,7 +168,6 @@ def reload() -> Settings:
     from lcf.storage import store
 
     settings.cache_clear()
-    db.engine.cache_clear()
-    db.session_factory.cache_clear()
+    db.forget()
     store.cache_clear()
     return settings()

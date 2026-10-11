@@ -113,6 +113,15 @@ async def _database_available() -> bool:
         return False
 
 
+@pytest.fixture(autouse=True)
+async def _close_connections():
+    """The test's own loop has a pool of its own (`core/db.py`), closed with it."""
+    yield
+    from lcf.core import db as database
+
+    await database.dispose()
+
+
 @pytest.fixture
 async def db():
     """Skip rather than fail when the database from .env is unreachable."""

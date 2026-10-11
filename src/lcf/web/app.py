@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
+from lcf.core import db
 from lcf.core.config import settings
 from lcf.services import doc_types, documents, drafts, events, evidence, jobs, setup
 from lcf.web.pages import HERE, templates
@@ -37,6 +38,7 @@ async def lifespan(_: FastAPI):
         except Exception as exc:  # noqa: BLE001 — never stop the app starting
             logger.warning("could not close off interrupted work: {}", exc)
     yield
+    await db.dispose()
 
 
 app = FastAPI(title="Lancy Content Flow", lifespan=lifespan)
