@@ -10,11 +10,15 @@ module holds only what belongs to the installation as a whole: the static mount,
 the unconfigured redirect, and the handlers for failures any route can raise.
 """
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from loguru import logger
 
-from lcf.services import doc_types, documents, drafts, events, evidence, setup
+from lcf.core.config import settings
+from lcf.services import doc_types, documents, drafts, events, evidence, jobs, setup
 from lcf.web.pages import HERE, templates
 from lcf.web.routes import ROUTERS
 
@@ -22,7 +26,20 @@ from lcf.web.routes import ROUTERS
 # that knows both halves exist — the provider must not import a database.
 events.install()
 
-app = FastAPI(title="Lancy Content Flow")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    # With the worker in this process, a restart is the end of every job it was
+    # running. An unconfigured install has no database to recover.
+    if settings().worker_in_process and not setup.needed():
+        try:
+            await jobs.recover()
+        except Exception as exc:  # noqa: BLE001 — never stop the app starting
+            logger.warning("could not close off interrupted work: {}", exc)
+    yield
+
+
+app = FastAPI(title="Lancy Content Flow", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
 
 for router in ROUTERS:

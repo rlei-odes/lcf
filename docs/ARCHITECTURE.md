@@ -560,6 +560,16 @@ elements that look the same, so a row added above it does not throw the count. S
 never measured, since they do not move. Lane actions answer with the lane alone, so asking,
 pinning and discussing never redraw the text being read.
 
+A redraw must not lose typing either. Every form marked `data-dirty` that is not the one being sent
+is read out before a swap and put back after it, matched by what it posts to and its identifying
+hidden fields. If the server's copy changed meanwhile — a proposal accepted into the block being
+edited — neither version is dropped silently: the new one shows, with a choice to put the author's
+back. A form that no longer exists after the swap leaves its text in a notice to copy, and leaving
+the page with unsaved work asks first. "Saved" is said once, by the form just saved, and fades.
+
+Confirmations use the application's own dialog (`static/confirm.js`) for every `hx-confirm` and
+for plain forms carrying `data-confirm`, with the confirming button named after the action.
+
 ### A pin is text, not a position
 
 Offsets would be the obvious representation and they are the wrong one: a pin's purpose is to
@@ -605,6 +615,10 @@ LLM work is slow enough to need progress and cancellation, not slow enough to ne
   rewrite — that is when `SELECT … FOR UPDATE SKIP LOCKED` and `LISTEN/NOTIFY` become worth adding.
 - Each job opens **its own session**. It outlives the request that queued it and must not borrow
   that request's transaction.
+- **A restart closes off what it interrupted.** In-process work dies with the process, and what it
+  left half-done would wait forever: a remark blocking the next one, a reply stuck "writing", a
+  source stuck "queued". At startup `jobs.recover()` marks those failed (a reply keeps what it had
+  written, marked as cut off), so each can be asked again. It runs only with the worker in-process.
 - Progress reaches the browser by **polling**, once a second, in server-rendered HTML. The card
   asks for itself again until the job finishes, then returns an element that loads the finished
   region into place.

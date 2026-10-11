@@ -17,11 +17,11 @@ from typing import Any
 from uuid import UUID
 
 from loguru import logger
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import OperationalError
 
 from lcf.core.db import session
-from lcf.models.tables import Job
+from lcf.models.tables import BlockMessage, EvidenceSource, Job, Proposal
 
 # Handlers registered by kind. A job's payload is its document and scope, so the
 # signature stays the same for every kind of work.
@@ -263,3 +263,52 @@ async def _update(job_id: UUID, **fields: Any) -> None:
             return
         for key, value in fields.items():
             setattr(job, key, value)
+
+
+INTERRUPTED = "Interrupted: the server restarted while this was running. Ask again."
+
+
+async def recover() -> dict[str, int]:
+    """Close off work a previous process was doing when it stopped.
+
+    Jobs run inside the server, so a restart kills them without a word, and what
+    they left half-done would otherwise wait forever: a progress card that never
+    finishes, a remark that blocks the next one, a file that never parses. Only
+    safe at startup, when nothing in this process can be running yet.
+    """
+    now = datetime.now(UTC)
+    async with session() as s:
+        jobs = await s.execute(
+            update(Job)
+            .where(Job.status.in_(("queued", "running")))
+            .values(status="failed", error=INTERRUPTED, finished_at=now)
+        )
+        turns = await s.execute(
+            update(Proposal)
+            .where(Proposal.status == "requested")
+            .values(status="failed", proposed_value={"v": None, "error": INTERRUPTED})
+        )
+        sources = await s.execute(
+            update(EvidenceSource)
+            .where(EvidenceSource.status == "queued")
+            .values(status="failed", error=INTERRUPTED)
+        )
+        # A reply cut off mid-stream keeps what it had written, marked as cut off.
+        replies = 0
+        for row in await s.scalars(select(BlockMessage).where(BlockMessage.status == "writing")):
+            replies += 1
+            if row.content.strip():
+                row.content += "\n\n*(cut off: the server restarted)*"
+                row.status = "done"
+            else:
+                row.content = INTERRUPTED
+                row.status = "failed"
+    counts = {
+        "jobs": jobs.rowcount,
+        "turns": turns.rowcount,
+        "sources": sources.rowcount,
+        "replies": replies,
+    }
+    if any(counts.values()):
+        logger.warning("closed off interrupted work: {}", counts)
+    return counts

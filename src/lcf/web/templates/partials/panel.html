@@ -299,11 +299,13 @@
           </div>
           {% endfor %}
 
+          {% if b.block.kind != 'image_ref' %}
           <div class="actions">
             <button type="submit" data-save>Save {{ b.block.label|lower }}</button>
             <span class="saved-note">Saved</span>
             <span class="htmx-indicator working">Saving…</span>
           </div>
+          {% endif %}
         </form>
 
       </div>

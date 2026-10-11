@@ -860,8 +860,29 @@ pre.prompt {
 
 /* A form that matches what the server rendered has nothing to save, and says so
    rather than offering a button that would do nothing. See static/dirty.js. */
-.saved-note { font-size: 12px; color: var(--muted); }
+.saved-note { display: none; font-size: 12px; color: var(--ok); }
+.saved-note::before { content: "✓ "; }
+form.just-saved .saved-note { display: inline; animation: saved-fade 2.6s ease-in forwards; }
+@keyframes saved-fade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
 form.is-dirty .saved-note { display: none; }
+
+/* Typing that a redraw could not simply put back: said where it happened, with
+   the choice left to the author. */
+.unsaved-kept {
+  margin: var(--s2) 0; padding: var(--s2) var(--s3);
+  background: var(--warning-soft); color: var(--ink);
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
+  border-radius: var(--radius-sm); font-size: 13px;
+}
+.unsaved-kept pre {
+  margin: var(--s2) 0; max-height: 160px; overflow: auto;
+  white-space: pre-wrap; font: inherit; font-size: 12.5px; color: var(--ink-2);
+}
+.unsaved-actions { display: flex; gap: var(--s2); margin-top: var(--s2); }
+.unsaved-kept.floating {
+  position: fixed; right: var(--s4); bottom: var(--s4); z-index: 70;
+  width: min(420px, calc(100vw - 32px)); box-shadow: var(--lift-3);
+}
 /* Proposed answers are stored, but "Saved" would read as settled, and they are
    not: nobody has confirmed them yet. */
 form[data-unconfirmed] .saved-note { display: none; }
@@ -1666,6 +1687,17 @@ details.peek pre.candidate {
   :root:not([data-theme="light"]) .modal { background: rgba(0, 0, 0, .55); }
 }
 
+/* A question before something that cannot be taken back. Narrow and centred
+   rather than the reading width of an exchange, with the safe answer focused. */
+.confirm-modal { align-items: center; animation: confirm-in .12s ease-out; }
+.confirm-modal .modal-body { width: min(420px, 100%); padding: var(--s5); }
+.confirm-modal p { margin: 0; font-size: 15px; color: var(--ink); }
+.confirm-modal .actions { flex-direction: row-reverse; justify-content: flex-start; }
+button.danger { background: var(--blocker); border-color: var(--blocker); color: #fff; }
+button.danger:hover { background: color-mix(in srgb, var(--blocker) 85%, #000); border-color: transparent; }
+@keyframes confirm-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .confirm-modal { animation: none; } }
+
 /* --- Centred lanes -----------------------------------------------------------
    Where the screen has room, the lane being worked in sits in the middle of it,
    with a column of equal width either side: the rail hugs it from the left, and
@@ -1700,4 +1732,8 @@ details.peek pre.candidate {
   }
   .layout.three > nav.sections { justify-self: end; width: var(--rail); }
   .layout.three > .assistant { justify-self: start; width: 100%; max-width: 500px; }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) button.danger { color: #1f0f0b; }
 }

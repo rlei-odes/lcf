@@ -21,7 +21,7 @@
     <a href="/doc-types/drafts/{{ draft.id }}/yaml">
       <button class="primary" type="button">Fix it as YAML</button></a>
     <form method="post" action="/doc-types/drafts/{{ draft.id }}/discard"
-          onsubmit="return confirm('Discard this draft? Everything unpublished in it is lost.')">
+          data-confirm="Discard this draft? Everything unpublished in it is lost.">
       <button type="submit" class="quiet">Discard the draft</button>
     </form>
   </div>

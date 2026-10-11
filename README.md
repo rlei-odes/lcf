@@ -1,12 +1,11 @@
 # Lancy Content Flow - create structured documents, assisted by a local LLM
 
 An open-source, self-hosted solution for filling in structured documents assisted by a local LLM: **8D and 4D problem
-solving reports, product specifications, deviation notices**.
+solving reports, product specifications, deviation notices**, free to be defined by you.
 Define the sections and the quality criteria once, paste your raw notes, and accept or decline what
 the assistant proposes. Nothing leaves your network.
 
-Runs against any OpenAI-compatible endpoint: **Ollama**, **vLLM**, **LM Studio**, llama.cpp's
-server, or a hosted API if you would rather.
+Runs against any OpenAI-compatible endpoint. Verified and developed against **vLLM**.
 
 ![A product specification in Lancy Content Flow: all four sections complete, the quality gate reporting 20 checks passed, and Word, Markdown and JSON export unlocked](docs/lcf_screenshot.png)
 
@@ -14,6 +13,8 @@ server, or a hosted API if you would rather.
 and export only unlocks once they pass.*
 
 ![A 4d report section, discussed with the assistant](docs/lcf_screenshot_assistant.png)
+
+*The section Problem description is done, and being discussed with the assistant. Two modes are available for this. Either select passages to rewrite, leaving the rest pinned, or just discuss in general without restrictions.*
 
 ---
 
@@ -97,7 +98,6 @@ two, and both are additive — nothing already built is waiting on them:
 | ✓ | Admin view: health of the database, store and LLM endpoint, background jobs, configuration |
 | ✓ | Guided first-run setup: tests each dependency before saving, runs the migrations |
 | | Accepted images reaching an `image_ref` block in a document |
-| | Span-level suggestions and the TipTap editor island |
 
 What is left, in order, is in [BACKLOG.md](docs/BACKLOG.md).
 

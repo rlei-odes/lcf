@@ -138,3 +138,36 @@ async def test_job_rows_survive_for_inspection(db, stub_handler):
     async with session() as s:
         stored = await s.get(Job, job.id)
     assert stored is not None and stored.result == {"n": 1}
+
+
+async def test_a_restart_closes_off_what_the_last_process_left_running(published):
+    from lcf.models.tables import BlockMessage, Proposal
+    from lcf.services import discussion, proposals
+
+    async with session() as s:
+        document = await documents.create(s, published.id, "Restart test")
+        await documents.set_block(s, document.id, "d2_problem", "description", "Some text.")
+        turn = await proposals.request_revision(
+            s, document.id, "d2_problem", "description", "Shorter."
+        )
+        cut = await discussion.post(s, document.id, "d2_problem", "description", "Ideas?")
+        cut.content = "Half an answer"
+        job = Job(
+            document_id=document.id, kind="revise_block", scope=str(turn.id), status="running"
+        )
+        s.add(job)
+        await s.flush()
+        ids = (turn.id, cut.id, job.id, document.id)
+
+    await jobs.recover()
+
+    async with session() as s:
+        turn = await s.get(Proposal, ids[0])
+        reply = await s.get(BlockMessage, ids[1])
+        job = await s.get(Job, ids[2])
+        assert job.status == "failed" and "restarted" in job.error
+        assert turn.status == "failed" and "restarted" in turn.proposed_value["error"]
+        assert reply.status == "done" and reply.content.startswith("Half an answer")
+        # Neither is in the way of asking again.
+        await proposals.request_revision(s, ids[3], "d2_problem", "description", "Again.")
+        await discussion.post(s, ids[3], "d2_problem", "description", "Again?")
