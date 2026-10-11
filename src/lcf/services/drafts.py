@@ -205,13 +205,8 @@ def add_section(spec: Spec, title: str) -> str:
     changes one that is already there rather than discovering they had to add one.
     """
     key = slug(title, [s.get("key", "") for s in sections(spec)], "section")
-    sections(spec).append(
-        {
-            "key": key,
-            "title": title.strip() or key,
-            "blocks": [{"key": "text", "kind": "prose", "label": title.strip() or "Text"}],
-        }
-    )
+    sections(spec).append({"key": key, "title": title.strip() or key})
+    add_block(spec, key, title.strip() or "Text", "prose")
     return key
 
 
@@ -345,7 +340,36 @@ def add_block(spec: Spec, section_key: str, label: str, kind: str) -> str:
     # than reporting a problem the person has not had a chance to cause yet.
     new.update({k: [dict(v) for v in vs] for k, vs in _SHAPE.get(kind, {}).items()})
     items.append(new)
+    set_required(spec, section_key, key, True)
     return key
+
+
+def set_required(spec: Spec, section_key: str, block_key: str, on: bool) -> None:
+    """Whether a block has to be filled in is whether a "present" check is on it.
+
+    That check is what the engine enforces; the block's own `required` flag is
+    read by nothing. So the flag is a view of the check, never a second rule.
+    """
+    _, sec = section(spec, section_key)
+    reqs = sec.setdefault("requirements", [])
+    present = [r for r in reqs if r.get("kind") == "present" and r.get("block") == block_key]
+    if on and not present:
+        add_requirement(spec, section_key, "present", block_key)
+    elif not on:
+        sec["requirements"] = [r for r in reqs if r not in present]
+    sync_required(spec)
+
+
+def sync_required(spec: Spec) -> None:
+    # Runs after every edit, including the ones that leave a draft unparseable.
+    if not is_navigable(spec):
+        return
+    for sec in sections(spec):
+        present = {
+            r.get("block") for r in sec.get("requirements") or [] if r.get("kind") == "present"
+        }
+        for blk in sec.get("blocks") or []:
+            blk["required"] = blk.get("key") in present
 
 
 def update_block(spec: Spec, section_key: str, key: str, **fields) -> Spec:
@@ -498,7 +522,8 @@ def add_requirement(spec: Spec, section_key: str, kind: str, block_key: str, **p
     items = sec.setdefault("requirements", [])
     taken = [r.get("id", "") for s in sections(spec) for r in s.get("requirements", [])]
     taken += [c.get("id", "") for c in criteria(spec)]
-    check_id = slug(f"{section_key} {block_key} {kind}", taken, "check")
+    named = section_key if block_key == section_key else f"{section_key} {block_key}"
+    check_id = slug(f"{named} {kind}", taken, "check")
     items.append(
         _requirement_params(
             {"id": check_id, "kind": kind, "block": block_key, "severity": "blocker"}, kind, params
@@ -597,6 +622,26 @@ def add_criterion(spec: Spec, title: str, kind: str) -> str:
             "scope": "document",
             "severity": "blocker",
         }
+    )
+    return check_id
+
+
+def add_suggested_criterion(
+    spec: Spec, section_key: str, title: str, kind: str, must_mention: list[str], rubric: str
+) -> str:
+    """A criterion from the assistant, scoped to the section it was asked about.
+
+    A warning rather than a blocker: nobody has decided yet that this one should
+    stop an export, and saying so is one click once they have.
+    """
+    check_id = add_criterion(spec, title, kind)
+    update_criterion(
+        spec,
+        check_id,
+        scope=[section_key],
+        severity="warning",
+        must_mention=must_mention,
+        rubric=rubric,
     )
     return check_id
 
@@ -827,6 +872,7 @@ async def edit(
 
     spec = _deep_copy(row.spec)
     mutate(spec)
+    sync_required(spec)
     # Reassigned rather than mutated: SQLAlchemy does not watch inside a JSONB
     # dict, and an in-place edit would be saved only by accident.
     row.spec = spec

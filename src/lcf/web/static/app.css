@@ -795,6 +795,18 @@ details.check-item.warning > summary .mark { color: var(--warning); }
 details.add-check > summary::before { content: none; }
 details.add-check > summary .item-name { color: var(--accent); }
 
+/* Quality criteria: the assistant's suggestions, and what the sections already check. */
+.suggest { margin-top: var(--s4); padding-top: var(--s3); border-top: 1px dashed var(--line); }
+.suggest-buttons { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; }
+.suggest-buttons form { display: inline; }
+.check-summary { margin-top: var(--s3); }
+.check-summary-section { font-weight: 600; color: var(--ink); text-decoration: none; }
+.check-summary-section:hover { text-decoration: underline; }
+.check-summary ul { margin: var(--s1) 0 0; padding-left: var(--s4); }
+.check-summary li { margin: 2px 0; font-size: 13.5px; }
+.check-summary li .item-name { font-weight: 550; margin-right: var(--s2); }
+.check-summary li a { color: var(--ink-2); }
+
 /* Two fields side by side, where they are read as a pair. */
 .row { display: flex; gap: var(--s4); }
 .row > .field { flex: 1; min-width: 0; }

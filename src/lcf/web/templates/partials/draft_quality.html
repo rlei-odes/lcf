@@ -14,7 +14,7 @@
   <details class="item check-item {{ c.get('severity', 'blocker') }}"
            {% if opened == 'criterion:' ~ c.id %}open{% endif %}>
     <summary>
-      <span class="mark">{{ '!' if c.get('severity', 'blocker') == 'blocker' else '·' }}</span>
+      <span class="mark" title="{{ 'Blocker: cannot be exported without writing down why' if c.get('severity', 'blocker') == 'blocker' else 'Warning: flagged to the author, but not blocking' }}">{{ '!' if c.get('severity', 'blocker') == 'blocker' else '·' }}</span>
       <span class="item-name">{{ c.title or c.id }}</span>
       <span class="item-meta">
         {% if c.get('scope') == 'document' %}over the whole document
@@ -36,7 +36,7 @@
 
         <div class="field">
           <label>What is being judged</label>
-          <select name="kind">
+          <select name="kind" data-criterion-kind>
             {% for value, label, blurb in builder.CRITERION_KINDS %}
             <option value="{{ value }}" {% if c.get('kind') == value %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
@@ -45,15 +45,15 @@
           {{ m.problems(review, cat + ['kind']) }}
         </div>
 
-        {% if c.get('kind') == 'mentions' %}
-        <div class="field">
+        {# Both are rendered and the kind shows one, so changing the kind shows
+           its field straight away; the route keeps only the one that applies. #}
+        <div class="field" data-for-kind="mentions" {% if c.get('kind') != 'mentions' %}hidden{% endif %}>
           <label>Things the document has to mention</label>
           <p class="hint">One per line.</p>
           <textarea name="must_mention">{{ (c.get('must_mention') or []) | join('\n') }}</textarea>
           {{ m.problems(review, cat + ['must_mention']) }}
         </div>
-        {% else %}
-        <div class="field">
+        <div class="field" data-for-kind="rubric consistency" {% if c.get('kind') == 'mentions' %}hidden{% endif %}>
           <label>What a good document does here</label>
           <p class="hint">
             In your words. The assistant is given this and asked to judge against
@@ -62,9 +62,8 @@
           <textarea name="rubric">{{ c.get('rubric') or '' }}</textarea>
           {{ m.problems(review, cat + ['rubric']) }}
         </div>
-        {% endif %}
 
-        <fieldset class="choices">
+        <fieldset class="choices" data-criterion-scope>
           <legend>Read over</legend>
           <label class="option">
             <input type="radio" name="whole_document" value="yes"
@@ -106,6 +105,56 @@
   <p class="hint">None. A document type is perfectly valid without any.</p>
   {% endfor %}
 
+  {% set asking = (spec.sections or []) | selectattr('questions') | list %}
+  {% if asking %}
+  <div class="suggest">
+    {% if suggestion %}
+    {% set from = asking | selectattr('key', 'equalto', suggestion.section) | first %}
+    <div class="notice proposal">
+      <h3>Suggested for {{ from.title if from else suggestion.section }}: {{ suggestion.title }}</h3>
+      {% if suggestion.kind == 'mentions' %}
+      <p>It has to mention:</p>
+      <ul>{% for point in suggestion.must_mention %}<li>{{ point }}</li>{% endfor %}</ul>
+      {% else %}
+      <p>{{ suggestion.rubric }}</p>
+      {% endif %}
+      <p class="hint">Accepting adds it as a warning, opened, so you can change anything first.</p>
+      <div class="actions">
+        <form hx-post="{{ url }}/criterion/suggest" hx-target="#draft-body" hx-swap="outerHTML">
+          {{ m.state(token, 'quality', '') }}
+          <input type="hidden" name="op" value="accept">
+          <input type="hidden" name="section" value="{{ suggestion.section }}">
+          <input type="hidden" name="title" value="{{ suggestion.title }}">
+          <input type="hidden" name="kind" value="{{ suggestion.kind }}">
+          {% for point in suggestion.must_mention %}
+          <input type="hidden" name="must_mention" value="{{ point }}">
+          {% endfor %}
+          <input type="hidden" name="rubric" value="{{ suggestion.rubric }}">
+          <button class="primary" type="submit">Accept</button>
+        </form>
+        <button type="button" hx-get="{{ url }}?focus=quality" hx-target="#draft-body"
+                hx-swap="outerHTML">Discard</button>
+      </div>
+    </div>
+    {% endif %}
+    <p class="hint">
+      Or have the assistant suggest one for a section, from the questions that
+      section asks. You see it before anything is added.
+    </p>
+    <div class="suggest-buttons">
+      {% for s in asking %}
+      <form hx-post="{{ url }}/criterion/suggest" hx-target="#draft-body" hx-swap="outerHTML"
+            hx-indicator="#suggest-working" hx-disabled-elt=".suggest-buttons button">
+        {{ m.state(token, 'quality', '') }}
+        <input type="hidden" name="section" value="{{ s.key }}">
+        <button type="submit">Suggest for {{ s.title or s.key }}</button>
+      </form>
+      {% endfor %}
+      <span class="htmx-indicator working" id="suggest-working">Asking the assistant, this can take a while…</span>
+    </div>
+  </div>
+  {% endif %}
+
   <form class="add-row" hx-post="{{ url }}/criterion" hx-target="#draft-body" hx-swap="outerHTML">
     {{ m.state(token, 'quality', '') }}
     <input type="hidden" name="op" value="add">
@@ -119,3 +168,30 @@
     <button type="submit">Add</button>
   </form>
 </div>
+
+{% set checked = (spec.sections or []) | selectattr('requirements') | list %}
+{% if checked %}
+<div class="card">
+  <h3>Already checked in the sections</h3>
+  <p class="lead">
+    The checks each section carries on its own content. A criterion here does not
+    need to repeat any of them.
+  </p>
+  {% for s in checked %}
+  <div class="check-summary">
+    <a href="{{ url }}?focus={{ s.key }}" class="check-summary-section">{{ s.title or s.key }}</a>
+    <ul>
+      {% for r in s.requirements %}
+      {% set said = drafts.sentence(r) %}
+      {% set on = (s.blocks or []) | selectattr('key', 'equalto', r.block) | first %}
+      <li class="{{ r.get('severity', 'blocker') }}">
+        <span class="item-name">{{ on.label if on else r.block }}</span>
+        <a href="{{ url }}?focus={{ s.key }}&opened=check:{{ r.id }}">{{ said or r.id }}</a>
+        {% if r.get('severity') == 'warning' %}<span class="hint">warning</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}

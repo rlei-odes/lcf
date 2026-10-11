@@ -82,6 +82,10 @@ def spec_with_two_sections() -> dict:
     return spec
 
 
+def cross_ref(spec: dict) -> dict:
+    return next(r for r in spec["sections"][1]["requirements"] if r["kind"] == "cross_ref")
+
+
 # --- keys are identity --------------------------------------------------------
 
 
@@ -105,10 +109,7 @@ def test_renaming_a_section_rewrites_everything_that_named_it():
 
     assert spec["sections"][0]["key"] == "scope_of_the_audit"
     assert spec["sections"][1]["depends_on"] == ["scope_of_the_audit"]
-    assert (
-        spec["sections"][1]["requirements"][0]["references"]
-        == "scope_of_the_audit.sites_visited.site_id"
-    )
+    assert cross_ref(spec)["references"] == "scope_of_the_audit.sites_visited.site_id"
     assert spec["quality_criteria"][0]["scope"] == ["scope_of_the_audit", "findings"]
     assert doc_types.review_data(spec).problems == [], "and the result still lints"
 
@@ -118,7 +119,7 @@ def test_renaming_a_block_rewrites_the_checks_that_point_at_it():
 
     drafts.rename_block(spec, "audit_scope", "sites_visited", "Locations")
 
-    assert spec["sections"][1]["requirements"][0]["references"] == "audit_scope.locations.site_id"
+    assert cross_ref(spec)["references"] == "audit_scope.locations.site_id"
     assert doc_types.review_data(spec).problems == []
 
 
@@ -128,7 +129,7 @@ def test_renaming_a_column_rewrites_both_ends_of_a_cross_reference():
     drafts.rename_column(spec, "audit_scope", "sites_visited", "site_id", "Plant", "columns")
     drafts.rename_column(spec, "findings", "nonconformities", "site_id", "Plant", "columns")
 
-    req = spec["sections"][1]["requirements"][0]
+    req = cross_ref(spec)
     assert req["references"] == "audit_scope.sites_visited.plant"
     assert req["field"] == "plant"
     assert doc_types.review_data(spec).problems == []
@@ -141,7 +142,8 @@ def test_deleting_a_block_takes_its_checks_with_it():
 
     drafts.delete_block(spec, "findings", "nonconformities")
 
-    assert spec["sections"][1].get("requirements") is None
+    left = spec["sections"][1].get("requirements") or []
+    assert all(r["block"] != "nonconformities" for r in left)
 
 
 def test_deleting_a_section_stops_others_waiting_on_it():
@@ -429,7 +431,6 @@ async def test_publishing_a_draft_makes_a_version_and_the_draft_is_gone(draft_id
     def build(spec):
         drafts.add_section(spec, "Summary")
         drafts.add_block(spec, "summary", "Text", "prose")
-        drafts.add_requirement(spec, "summary", "present", "text")
 
     async with session() as s:
         loaded = await drafts.edit(s, draft_id, None, build)
@@ -533,7 +534,9 @@ def test_one_block_named_after_its_section_does_not_stutter_in_the_export():
     spec = {**drafts.NEW_SPEC, "id": "t", "title": "T", "sections": [], "quality_criteria": []}
     drafts.add_section(spec, "Problem statement")
     parsed = doc_types.review_data(spec).spec
-    view = DocumentView(parsed, {"problem_statement": {"text": "Four hours a week."}}, {})
+    view = DocumentView(
+        parsed, {"problem_statement": {"problem_statement": "Four hours a week."}}, {}
+    )
 
     out = markdown.render(view, title="A walk through")
 
@@ -551,7 +554,9 @@ def test_a_section_that_can_hold_content_exports_its_heading():
     spec = {**drafts.NEW_SPEC, "id": "t", "title": "T", "sections": [], "quality_criteria": []}
     drafts.add_section(spec, "Business requirements")
     parsed = doc_types.review_data(spec).spec
-    view = DocumentView(parsed, {"business_requirements": {"text": "It must be auditable."}}, {})
+    view = DocumentView(
+        parsed, {"business_requirements": {"business_requirements": "It must be auditable."}}, {}
+    )
 
     assert "## Business requirements" in markdown.render(view, title="T")
 
@@ -648,7 +653,7 @@ def test_every_problem_can_be_pointed_at_in_the_editor():
 
     spec = {**drafts.NEW_SPEC, "id": "t", "title": "T", "sections": [], "quality_criteria": []}
     drafts.add_section(spec, "Business requirements")
-    drafts.delete_block(spec, "business_requirements", "text")
+    drafts.delete_block(spec, "business_requirements", "business_requirements")
     drafts.add_section(spec, "Findings")
     drafts.add_requirement(spec, "findings", "present", "gone")
 
@@ -677,7 +682,6 @@ async def furnished(draft_id):
         drafts.add_section(spec, "Business requirements")
         drafts.add_section(spec, "Other chapter")
         drafts.add_question(spec, "business_requirements", "Why?")
-        drafts.add_requirement(spec, "business_requirements", "present", "text")
         drafts.add_criterion(spec, "Reads well", "rubric")
         drafts.update_criterion(spec, "reads_well", rubric="It reads well.")
 
@@ -695,11 +699,15 @@ async def current(draft_id) -> dict:
     "route,fields,expect",
     [
         ("section", {"key": "business_requirements"}, "biz"),
-        ("block", {"section": "business_requirements", "key": "text"}, "statement"),
+        (
+            "block",
+            {"section": "business_requirements", "key": "business_requirements"},
+            "statement",
+        ),
         ("question", {"section": "business_requirements", "key": "why"}, "reason"),
         (
             "check",
-            {"section": "business_requirements", "id": "business_requirements_text_present"},
+            {"section": "business_requirements", "id": "business_requirements_present"},
             "must_say_something",
         ),
         ("criterion", {"id": "reads_well"}, "reads_nicely"),
@@ -767,6 +775,64 @@ async def test_saving_a_type_with_no_sections_asks_for_the_first_one(draft_id, c
 
     opened = client.get(f"/doc-types/drafts/{draft_id}?focus=type")
     assert "Now add the sections" not in opened.text, "only right after saving"
+
+
+def test_a_new_section_s_content_is_named_after_it_and_has_to_be_filled_in():
+    spec = {**drafts.NEW_SPEC, "id": "t", "title": "T", "sections": [], "quality_criteria": []}
+    drafts.add_section(spec, "Executive Summary")
+
+    sec = spec["sections"][0]
+    assert sec["blocks"][0]["key"] == "executive_summary"
+    assert sec["requirements"] == [
+        {
+            "id": "executive_summary_present",
+            "kind": "present",
+            "block": "executive_summary",
+            "severity": "blocker",
+        }
+    ]
+
+
+async def test_has_to_be_filled_in_is_the_check_not_a_second_rule(draft_id, client):
+    """The block's `required` flag is read by nothing; the "present" check is what
+    stops a section being finished. So the checkbox adds and removes that check,
+    and the flag follows whichever way the check came or went."""
+
+    def save(required: bool):
+        data = {"section": "summary", "key": "summary", "label": "Summary", "kind": "prose"}
+        if required:
+            data["required"] = "on"
+        client.post(
+            f"/doc-types/drafts/{draft_id}/block", data=data, headers={"HX-Request": "true"}
+        )
+
+    async with session() as s:
+        await drafts.edit(s, draft_id, None, lambda spec: drafts.add_section(spec, "Summary"))
+
+    save(False)
+    sec = (await current(draft_id))["sections"][0]
+    assert not sec.get("requirements")
+    assert sec["blocks"][0]["required"] is False
+
+    save(True)
+    sec = (await current(draft_id))["sections"][0]
+    assert [r["kind"] for r in sec["requirements"]] == ["present"]
+
+    client.post(
+        f"/doc-types/drafts/{draft_id}/check",
+        data={"op": "delete", "section": "summary", "id": sec["requirements"][0]["id"]},
+        headers={"HX-Request": "true"},
+    )
+    assert (await current(draft_id))["sections"][0]["blocks"][0]["required"] is False
+
+
+async def test_a_new_section_opens_with_its_content_expanded(draft_id, client):
+    response = client.post(
+        f"/doc-types/drafts/{draft_id}/section",
+        data={"op": "add", "title": "Findings"},
+        headers={"HX-Request": "true"},
+    )
+    assert '<details class="item" open>' in response.text
 
 
 def test_the_favicon_is_served_at_the_root(client):
@@ -842,6 +908,107 @@ async def test_a_column_can_be_renamed_from_the_page_too(draft_id, client):
         spec = (await drafts.load(s, draft_id)).spec
     block = next(b for b in spec["sections"][0]["blocks"] if b["key"] == "nonconformities")
     assert [c["key"] for c in block["columns"]] == ["item", "clause_number"]
-    assert spec["sections"][0]["requirements"][0]["field"] == "clause_number", (
-        "and the check that named it followed"
+    fmt = next(r for r in spec["sections"][0]["requirements"] if r["kind"] == "format")
+    assert fmt["field"] == "clause_number", "and the check that named it followed"
+
+
+# --- quality criteria -----------------------------------------------------------
+
+
+@pytest.fixture
+async def asking(draft_id):
+    def build(spec):
+        drafts.add_section(spec, "Containment")
+        drafts.add_question(spec, "containment", "What happened to stock at the customer?")
+
+    async with session() as s:
+        await drafts.edit(s, draft_id, None, build)
+    return draft_id
+
+
+def _criterion_reply(monkeypatch, data=None, fail=None):
+    from lcf.llm import calls
+    from lcf.llm.provider import Completion
+
+    asked: list[str] = []
+
+    async def fake(system, user, schema, schema_name="response", purpose="", optional=()):
+        asked.append(user)
+        if fail is not None:
+            raise fail
+        return Completion(data=data, raw="", prompt="", model="stub", duration_ms=1, attempts=1)
+
+    monkeypatch.setattr(calls, "complete_json", fake)
+    return asked
+
+
+async def test_a_criterion_is_suggested_from_a_section_s_questions(asking, client, monkeypatch):
+    asked = _criterion_reply(
+        monkeypatch,
+        {
+            "title": "Stock is accounted for",
+            "kind": "mentions",
+            "must_mention": ["stock at the customer", "stock in transit"],
+            "rubric": "",
+        },
     )
+
+    page = client.get(f"/doc-types/drafts/{asking}?focus=quality")
+    assert "Suggest for Containment" in page.text
+
+    response = client.post(
+        f"/doc-types/drafts/{asking}/criterion/suggest",
+        data={"section": "containment"},
+        headers={"HX-Request": "true"},
+    )
+
+    assert "What happened to stock at the customer?" in asked[0], "the questions are the context"
+    assert "Suggested for Containment: Stock is accounted for" in response.text
+    assert not (await current(asking)).get("quality_criteria"), "offered, not added"
+
+    response = client.post(
+        f"/doc-types/drafts/{asking}/criterion/suggest",
+        data={
+            "op": "accept",
+            "section": "containment",
+            "title": "Stock is accounted for",
+            "kind": "mentions",
+            "must_mention": ["stock at the customer", "stock in transit"],
+        },
+        headers={"HX-Request": "true"},
+    )
+    assert "not applied" not in response.text
+    [crit] = (await current(asking))["quality_criteria"]
+    assert crit["scope"] == ["containment"]
+    assert crit["severity"] == "warning", "nobody has decided it should block yet"
+    assert crit["must_mention"] == ["stock at the customer", "stock in transit"]
+    assert "rubric" not in crit
+
+
+async def test_an_unavailable_assistant_suggests_nothing_and_says_so(asking, client, monkeypatch):
+    from lcf.llm.provider import LLMUnavailable
+
+    _criterion_reply(monkeypatch, fail=LLMUnavailable("connection refused"))
+
+    response = client.post(
+        f"/doc-types/drafts/{asking}/criterion/suggest",
+        data={"section": "containment"},
+        headers={"HX-Request": "true"},
+    )
+
+    assert "could not suggest one" in response.text
+    assert not (await current(asking)).get("quality_criteria")
+
+
+async def test_the_quality_page_lists_what_the_sections_already_check(asking, client):
+    async with session() as s:
+        await drafts.edit(
+            s, asking, None, lambda spec: drafts.add_criterion(spec, "Reads well", "rubric")
+        )
+
+    page = client.get(f"/doc-types/drafts/{asking}?focus=quality")
+
+    assert "Already checked in the sections" in page.text
+    assert "Must not be empty." in page.text
+    assert 'data-for-kind="mentions"' in page.text, "both fields are there to switch between"
+    assert 'data-for-kind="rubric consistency"' in page.text

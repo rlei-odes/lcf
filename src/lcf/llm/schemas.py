@@ -377,6 +377,28 @@ KEYWORDS_SCHEMA: dict[str, Any] = {
 }
 
 
+CRITERION_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string", "description": "A short name for the criterion"},
+        "kind": {"type": "string", "enum": ["mentions", "rubric"]},
+        "must_mention": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "For 'mentions': the points, one short phrase each. Empty otherwise.",
+            "maxItems": 8,
+        },
+        "rubric": {
+            "type": "string",
+            "description": "For 'rubric': what a good section does, in two or three sentences."
+            " Empty otherwise.",
+        },
+    },
+    "required": ["title", "kind", "must_mention", "rubric"],
+    "additionalProperties": False,
+}
+
+
 def captions_schema(count: int) -> dict[str, Any]:
     """One caption per image, in the order the images were sent.
 

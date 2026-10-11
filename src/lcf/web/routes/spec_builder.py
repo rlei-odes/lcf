@@ -30,6 +30,7 @@ def draft_view(
     opened: str = "",
     conflict: str | None = None,
     saved: bool = False,
+    suggestion: dict | None = None,
 ) -> HTMLResponse:
     """Render the builder — the whole page, or just the part that swaps."""
     if not drafts.is_navigable(loaded.spec):
@@ -47,6 +48,7 @@ def draft_view(
         "opened": opened,
         "conflict": conflict,
         "saved": saved,
+        "suggestion": suggestion,
     }
     partial = request.headers.get("hx-request") == "true"
     return page(request, "partials/draft_body.html" if partial else "draft.html", **context)
@@ -145,7 +147,10 @@ async def draft_section_op(request: Request, draft_id: UUID):
 
         def mutate(spec):
             moved["focus"] = drafts.add_section(spec, title)
-            moved["opened"] = "section"
+            # The block every section starts with, open, so it reads as the
+            # section's content rather than an example of it.
+            first = drafts.section(spec, moved["focus"])[1]["blocks"][0]
+            moved["opened"] = "block:" + first["key"]
 
     elif op == "delete":
 
@@ -284,12 +289,13 @@ async def draft_block_op(request: Request, draft_id: UUID):
             "label": builder.text(form, "label"),
             "kind": builder.text(form, "kind", "prose") or "prose",
             "hint": builder.text(form, "hint"),
-            "required": builder.flag(form, "required"),
             "multiple": builder.flag(form, "multiple"),
         }
+        required = builder.flag(form, "required")
 
         def mutate(spec):
             drafts.update_block(spec, section_key, key, **fields)
+            drafts.set_required(spec, section_key, key, required)
 
     return await _apply(
         request,
@@ -460,6 +466,51 @@ async def draft_criterion(request: Request, draft_id: UUID):
         focus="quality",
         opened=builder.text(form, "opened"),
         moved=moved,
+    )
+
+
+@router.post("/{draft_id}/criterion/suggest", response_class=HTMLResponse)
+async def suggest_criterion(request: Request, draft_id: UUID):
+    """Ask the assistant for a criterion over one section, and offer it.
+
+    Nothing is added until the person accepts: the suggestion comes back as a
+    proposal beside the button they pressed, and `op=accept` is what writes it,
+    through the token like any other edit.
+    """
+    from lcf.llm.calls import propose_criterion
+    from lcf.llm.provider import LLMMalformed, LLMUnavailable
+
+    form = await request.form()
+    section_key = builder.text(form, "section")
+
+    if builder.text(form, "op") == "accept":
+        kind = "mentions" if builder.text(form, "kind") == "mentions" else "rubric"
+        title = builder.text(form, "title")
+        points = builder.many(form, "must_mention")
+        rubric = builder.text(form, "rubric")
+        moved: dict = {}
+
+        def mutate(spec):
+            moved["opened"] = "criterion:" + drafts.add_suggested_criterion(
+                spec, section_key, title, kind, points, rubric
+            )
+
+        return await _apply(request, draft_id, form, mutate, focus="quality", moved=moved)
+
+    async with session() as s:
+        loaded = await drafts.load(s, draft_id)
+    try:
+        proposed = await propose_criterion(loaded.spec, section_key)
+    except (LLMUnavailable, LLMMalformed) as exc:
+        return draft_view(
+            request, loaded, focus="quality", conflict=f"The assistant could not suggest one: {exc}"
+        )
+    if proposed is None:
+        return draft_view(
+            request, loaded, focus="quality", conflict="The assistant had nothing to suggest."
+        )
+    return draft_view(
+        request, loaded, focus="quality", suggestion={"section": section_key, **vars(proposed)}
     )
 
 

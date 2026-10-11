@@ -25,6 +25,7 @@ from lcf.llm.provider import (
 from lcf.llm.provider import prompt as prompt_text
 from lcf.llm.quoting import quoted_from
 from lcf.llm.schemas import (
+    CRITERION_SCHEMA,
     KEYWORDS_SCHEMA,
     PATTERN_SCHEMA,
     captions_schema,
@@ -715,6 +716,83 @@ async def propose_keywords(
         seen.add(term.casefold())
         out.append(ProposedTerm(term=term, why=" ".join(str(entry.get("why") or "").split())))
     return out
+
+
+@dataclass
+class ProposedCriterion:
+    title: str
+    kind: str
+    must_mention: list[str]
+    rubric: str
+
+
+async def propose_criterion(spec: dict, section_key: str) -> ProposedCriterion | None:
+    """Suggest a quality criterion for one section, from the questions it asks.
+
+    An authoring call, like `propose_keywords`: what comes back is added to a
+    draft the person reads and edits before anything is published. `spec` is the
+    draft's raw JSON, which need not validate yet. None means the answer was
+    empty and there is nothing to offer.
+    """
+    from lcf.services.drafts import sentence
+
+    sec = next((x for x in spec.get("sections") or [] if x.get("key") == section_key), None)
+    if sec is None:
+        return None
+
+    def lines(items: list[str]) -> str:
+        return "\n".join(f"- {i}" for i in items if i) or "(none)"
+
+    questions = []
+    for q in sec.get("questions") or []:
+        line = q.get("prompt") or q.get("key", "")
+        if q.get("hint"):
+            line += f" ({q['hint']})"
+        if q.get("options"):
+            line += " Options: " + ", ".join(str(o) for o in q["options"])
+        questions.append(line)
+    blocks = [
+        b.get("label", "") + (f": {b['hint']}" if b.get("hint") else "")
+        for b in sec.get("blocks") or []
+    ]
+    checks = [sentence(r) for r in sec.get("requirements") or []]
+    checks += [
+        c.get("title", "")
+        for c in spec.get("quality_criteria") or []
+        if c.get("scope") != "document" and section_key in (c.get("scope") or [])
+    ]
+
+    user = "\n\n".join(
+        [
+            f"## The document type\n\n{spec.get('title', '')}: {spec.get('description', '')}",
+            f"## Written in\n\n{_language_name(spec.get('language', 'en'))}",
+            f"## The section\n\n{sec.get('title', '')}\n\n{sec.get('description', '')}".strip(),
+            f"## Guidance for writing it\n\n{sec.get('guidance') or '(none)'}",
+            f"## Questions the author answers first\n\n{lines(questions)}",
+            f"## What gets written in it\n\n{lines(blocks)}",
+            f"## Checks it already has\n\n{lines(checks)}",
+        ]
+    )
+    completion = await complete_json(
+        prompt_text("propose_criterion"),
+        user,
+        CRITERION_SCHEMA,
+        schema_name="criterion",
+        purpose="propose_criterion",
+    )
+    data = completion.data
+    kind = "mentions" if data.get("kind") == "mentions" else "rubric"
+    points = [" ".join(str(p).split()) for p in data.get("must_mention") or []]
+    points = [p for p in points if p]
+    rubric = " ".join(str(data.get("rubric") or "").split())
+    if (kind == "mentions" and not points) or (kind == "rubric" and not rubric):
+        return None
+    return ProposedCriterion(
+        title=" ".join(str(data.get("title") or "").split())[:80] or sec.get("title", ""),
+        kind=kind,
+        must_mention=points if kind == "mentions" else [],
+        rubric=rubric if kind == "rubric" else "",
+    )
 
 
 _LANGUAGE_NAMES = {
