@@ -753,6 +753,28 @@ async def test_renaming_the_document_type_keeps_it_url_safe(furnished, client):
     assert (await current(furnished))["id"] == "change_request_form"
 
 
+async def test_saving_a_type_with_no_sections_asks_for_the_first_one(draft_id, client):
+    response = client.post(
+        f"/doc-types/drafts/{draft_id}/meta",
+        data={"title": "Audit Report", "description": "", "language": "en", "version": "1"},
+        headers={"HX-Request": "true"},
+    )
+
+    assert "Now add the sections" in response.text
+    assert "What happens when you publish" not in response.text, "nothing to publish yet"
+    assert "ready to publish" not in response.text
+    assert "has no sections" in response.text, "an empty type is not publishable"
+
+    opened = client.get(f"/doc-types/drafts/{draft_id}?focus=type")
+    assert "Now add the sections" not in opened.text, "only right after saving"
+
+
+def test_the_favicon_is_served_at_the_root(client):
+    response = client.get("/favicon.ico")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("image/svg+xml")
+
+
 async def test_a_rename_shortens_a_key_that_was_too_long_to_store(draft_id, client):
     """The repair path for a type published before keys were bounded."""
     monster = "what_the_business_team_expects_from_the_solution_" + "x" * 120

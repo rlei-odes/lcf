@@ -2,6 +2,24 @@
 {# The type itself. Everything here is flat — the hard part of this editor is the
    checks, not this. #}
 
+{% if saved and not spec.sections %}
+<div class="notice proposal">
+  <h3>Saved. Now add the sections</h3>
+  <p>
+    A section is one part of the document, with its own questions and content.
+    Name the first one; you can add more and reorder them later.
+  </p>
+  <form hx-post="/doc-types/drafts/{{ draft.id }}/section" hx-target="#draft-body"
+        hx-swap="outerHTML" class="row next-add">
+    {{ m.state(token, 'type', '') }}
+    <input type="hidden" name="op" value="add">
+    <input type="text" name="title" placeholder="Problem description" required maxlength="80"
+           aria-label="Title of the first section" autofocus>
+    <button class="primary" type="submit">Add section</button>
+  </form>
+</div>
+{% endif %}
+
 <div class="card">
   <h3>The document type</h3>
   <form hx-post="/doc-types/drafts/{{ draft.id }}/meta" hx-target="#draft-body"
@@ -28,6 +46,7 @@
     <div class="row">
       <div class="field">
         <label for="type-language">Written in</label>
+        <p class="hint">The language documents and the assistant use.</p>
         <select id="type-language" name="language">
           <option value="en" {% if (spec.language or 'en') == 'en' %}selected{% endif %}>English</option>
           <option value="de" {% if spec.language == 'de' %}selected{% endif %}>German</option>
@@ -80,6 +99,9 @@
 </div>
 {% endif %}
 
+{# Only once there is something to publish; before that it answers a question
+   nobody is asking yet. #}
+{% if review.ok and spec.sections %}
 <div class="card">
   <h3>What happens when you publish</h3>
   <p class="lead">
@@ -92,3 +114,4 @@
     opens the <em>next</em> one.
   </p>
 </div>
+{% endif %}

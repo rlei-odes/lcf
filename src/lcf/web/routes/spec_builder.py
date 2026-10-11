@@ -29,6 +29,7 @@ def draft_view(
     focus: str | None = None,
     opened: str = "",
     conflict: str | None = None,
+    saved: bool = False,
 ) -> HTMLResponse:
     """Render the builder — the whole page, or just the part that swaps."""
     if not drafts.is_navigable(loaded.spec):
@@ -45,6 +46,7 @@ def draft_view(
         "focus_index": keys.index(focus) if focus in keys else None,
         "opened": opened,
         "conflict": conflict,
+        "saved": saved,
     }
     partial = request.headers.get("hx-request") == "true"
     return page(request, "partials/draft_body.html" if partial else "draft.html", **context)
@@ -59,6 +61,7 @@ async def _apply(
     focus: str | None = None,
     opened: str = "",
     moved: dict | None = None,
+    saved: bool = False,
 ) -> HTMLResponse:
     """One edit, then the editor again.
 
@@ -78,6 +81,7 @@ async def _apply(
         loaded,
         focus=after.get("focus", focus),
         opened=after.get("opened", opened),
+        saved=saved,
     )
 
 
@@ -119,7 +123,12 @@ async def draft_meta(request: Request, draft_id: UUID):
         "version": builder.num(form, "version") or 1,
     }
     return await _apply(
-        request, draft_id, form, lambda spec: drafts.update_meta(spec, **fields), focus="type"
+        request,
+        draft_id,
+        form,
+        lambda spec: drafts.update_meta(spec, **fields),
+        focus="type",
+        saved=True,
     )
 
 

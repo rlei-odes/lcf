@@ -102,6 +102,8 @@ def _sections_can_hold_content(spec: DocTypeSpec) -> list[LintError]:
     report. Questions do not rescue it, because an answer is an input to drafting
     and never content on its own (DESIGN decision 13).
     """
+    if not spec.sections:
+        return [LintError(spec.id, "has no sections: add at least one", ("sections",))]
     return [
         LintError(
             section.key,

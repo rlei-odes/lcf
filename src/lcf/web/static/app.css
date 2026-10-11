@@ -618,6 +618,9 @@ ul.rows .row-of { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
 .notice.proposal { border-color: var(--accent); background: var(--accent-soft); }
 .notice.proposal h3 { color: var(--accent-ink); }
 .notice.proposal .actions form { display: inline; }
+.notice .next-add { align-items: center; gap: var(--s2); margin-top: var(--s3); }
+.notice .next-add input { flex: 1; min-width: 0; }
+.notice .next-add button { flex: none; }
 /* htmx adds .htmx-request to the element that triggered the request, so an
    indicator inside that element shows for exactly as long as it is in flight.
    Never give one an inline display:none — that wins over these rules. */

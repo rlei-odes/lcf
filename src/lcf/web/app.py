@@ -13,7 +13,7 @@ the unconfigured redirect, and the handlers for failures any route can raise.
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
@@ -46,6 +46,12 @@ for router in ROUTERS:
     app.include_router(router)
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon() -> FileResponse:
+    """For clients that ask the root regardless of the page's icon link."""
+    return FileResponse(HERE / "static" / "favicon.svg", media_type="image/svg+xml")
+
+
 @app.middleware("http")
 async def unconfigured(request: Request, call_next):
     """An installation with no database has one thing to offer: setup.
@@ -56,7 +62,7 @@ async def unconfigured(request: Request, call_next):
     property of the installation, and a route added later must inherit it.
     """
     path = request.url.path
-    if path.startswith(("/setup", "/static")) or not setup.needed():
+    if path.startswith(("/setup", "/static", "/favicon.ico")) or not setup.needed():
         return await call_next(request)
     return RedirectResponse("/setup", status_code=307)
 

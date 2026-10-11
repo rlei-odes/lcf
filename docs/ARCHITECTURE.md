@@ -1128,11 +1128,12 @@ More, learned in the building:
    document came out as just its title — there is no block for the assistant to draft, so the draft
    button ran a job over nothing, and a section with no questions either can never leave `empty`,
    which `can_complete` refuses, so it was a permanent dead end. Every symptom appeared to the
-   *author*, days later, and none of them named the cause. The linter now refuses a section with no
-   blocks, and `add_section` gives every new section a paragraph so the ordinary case is right
-   without a decision. The general lesson is the one worth keeping: **in a YAML editor an omission
-   looks like an omission; in a form editor it looks like a field nobody happened to fill in**, so
-   anything the engine needs has to be either seeded or refused, never merely permitted.
+   *author*, days later, and none of them named the cause. The linter now refuses a type with no
+   sections and a section with no blocks, and `add_section` gives every new section a paragraph so
+   the ordinary case is right without a decision. The general lesson is the one worth keeping: **in
+   a YAML editor an omission looks like an omission; in a form editor it looks like a field nobody
+   happened to fill in**, so anything the engine needs has to be either seeded or refused, never
+   merely permitted.
 9. **A derived key needs a length, and the field it derives from has to look like a name.** The same
    type had a block whose label was, character for character, the section's *description* — giving a
    151-character key, in a `varchar(100)` column. It parsed, linted, published, and then failed on

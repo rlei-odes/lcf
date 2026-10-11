@@ -48,6 +48,7 @@
     {% endif %}
   </div>
   <p class="hint">
+    <code>{{ spec.id }}</code> ·
     {% if draft.based_on %}
       Will publish as v{{ spec.version }}. v{{ draft.based_on }} stays exactly as it is.
     {% else %}
@@ -64,7 +65,7 @@
         {% if draft.based_on %}Publish as v{{ spec.version }}{% else %}Publish it{% endif %}
       </button>
     </form>
-    <a href="/doc-types/drafts/{{ draft.id }}/preview"><button type="button">Read it back</button></a>
+    <a href="/doc-types/drafts/{{ draft.id }}/preview"><button type="button">Overview</button></a>
     <a href="/doc-types/drafts/{{ draft.id }}/prompt"><button type="button">What the assistant is told</button></a>
     <a href="/doc-types/drafts/{{ draft.id }}/yaml"><button type="button">As YAML</button></a>
     <form hx-post="/doc-types/drafts/{{ draft.id }}/discard"

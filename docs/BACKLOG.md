@@ -207,3 +207,4 @@ Not forgotten — decided against for now, with the condition that would change 
   is a different surface from one candidate to answer, and the cheap version (a remark reading
   "try again") is worse than either.
 - New type of Quality criteria: Typ "Have you thought about this?" - Just as input, maybe as a bubble type on the right?
+- Repeateable blocks or even sections
