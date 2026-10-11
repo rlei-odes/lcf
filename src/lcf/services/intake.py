@@ -265,6 +265,7 @@ async def links_for(
 
 @dataclass
 class FiledAnswer:
+    key: str
     question: str
     value: object
     confirmed: bool
@@ -277,6 +278,8 @@ class FiledSection:
     n: int
     passages: list[EvidenceLink] = field(default_factory=list)
     answers: list[FiledAnswer] = field(default_factory=list)
+    # Per passage, the question keys whose answers were read from it.
+    answered: dict[UUID, list[str]] = field(default_factory=dict)
 
 
 @dataclass
@@ -352,16 +355,23 @@ async def digests(session: AsyncSession, document_id: UUID) -> list[PasteDigest]
             if not quote or answer.id in claimed or not quoted_from(quote, text):
                 continue
             claimed.add(answer.id)
+            for link in by_key.get(key, FiledSection(key, "", 0)).passages:
+                if quoted_from(quote, link.quote):
+                    by_key[key].answered.setdefault(link.id, []).append(answer.question_key)
             spec_section = spec.section(key)
             question = spec_section.question(answer.question_key) if spec_section else None
             section(key).answers.append(
                 FiledAnswer(
+                    answer.question_key,
                     question.prompt if question else answer.question_key,
                     answer.value.get("v"),
                     answer.source != ANSWER_PROPOSED,
                 )
             )
         filed = sorted(by_key.values(), key=lambda s: s.n)
+        for s in filed:
+            asked = [q.key for q in spec.section(s.key).questions] if spec.section(s.key) else []
+            s.answers.sort(key=lambda a: asked.index(a.key) if a.key in asked else 99)
         spans = []
         for s in filed:
             for link in s.passages:
@@ -376,7 +386,7 @@ async def digests(session: AsyncSession, document_id: UUID) -> list[PasteDigest]
 class FiledHere:
     link: EvidenceLink
     pasted_at: object
-    answered: list[str]
+    answered: list[tuple[str, str]]
 
 
 async def filed_here(session: AsyncSession, document_id: UUID, section_key: str) -> list[FiledHere]:
@@ -407,7 +417,9 @@ async def filed_here(session: AsyncSession, document_id: UUID, section_key: str)
             quote = (answer.value or {}).get("quote")
             if quote and quoted_from(quote, link.quote):
                 question = spec_section.question(answer.question_key) if spec_section else None
-                answered.append(question.prompt if question else answer.question_key)
+                answered.append(
+                    (answer.question_key, question.prompt if question else answer.question_key)
+                )
         out.append(FiledHere(link, pasted_at, answered))
     return out
 
@@ -418,3 +430,49 @@ async def unlink(session: AsyncSession, link_id: UUID) -> None:
     if row is not None:
         await session.delete(row)
         await session.flush()
+
+
+@dataclass
+class Context:
+    before: str
+    quote: str
+    after: str
+    pasted_at: object
+    cut_before: bool
+    cut_after: bool
+
+
+# How much of the paste either side of a passage is shown, before snapping to a
+# paragraph or word boundary so the context starts and ends on whole words.
+CONTEXT_CHARS = 600
+
+
+async def context(session: AsyncSession, link_id: UUID) -> Context | None:
+    """The passage where it sits in the paste, with what surrounds it."""
+    link = await session.get(EvidenceLink, link_id)
+    if link is None:
+        return None
+    item = await session.get(EvidenceItem, link.evidence_id)
+    text = (item.text or "") if item else ""
+    found = _span(link.quote, text)
+    if found is None:
+        return None
+    start, end = found
+
+    lo = max(0, start - CONTEXT_CHARS)
+    if lo > 0:
+        para = text.find("\n\n", lo, start)
+        lo = para + 2 if para != -1 else (text.find(" ", lo, start) + 1 or lo)
+    hi = min(len(text), end + CONTEXT_CHARS)
+    if hi < len(text):
+        para = text.rfind("\n\n", end, hi)
+        space = text.rfind(" ", end, hi)
+        hi = para if para != -1 else (space if space != -1 else hi)
+    return Context(
+        text[lo:start],
+        text[start:end],
+        text[end:hi],
+        item.created_at,
+        lo > 0,
+        hi < len(text),
+    )

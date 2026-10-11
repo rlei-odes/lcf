@@ -7,6 +7,7 @@
    both the questions card and the drafting hint below speak about them. #}
 {% set unconfirmed = questions|selectattr('proposed')|list %}
 
+{% import "partials/quote_macros.html" as qm %}
 <div class="layout{{ ' three' if prose }}" id="workspace">
 
   {# The orientation lane. It answers three questions without being read closely:
@@ -95,7 +96,7 @@
         <span class="step-of">Step {{ step.n }} of {{ nav|length }}</span>
         <span class="pill {{ state.status }}">{{ state.status|replace('_', ' ') }}</span>
       </div>
-      <h2>{{ section.title }}</h2>
+      <h2><span class="ref ref-lg" title="Section {{ step.n }}">{{ ref(spec, section.key) }}</span> {{ section.title }}</h2>
       {% if section.description %}<p class="lead">{{ section.description }}</p>{% endif %}
       {% if section.guidance %}<p class="hint">{{ section.guidance }}</p>{% endif %}
 
@@ -104,14 +105,14 @@
         {% set next = nav[step.n] if step.n < nav|length else none %}
         {% if prev %}
         <a href="/documents/{{ document.id }}/sections/{{ prev.key }}" class="step-prev">
-          ← {{ prev.display_title }}</a>
+          ← <span class="ref">{{ ref(spec, prev.key) }}</span> {{ prev.display_title }}</a>
         {% endif %}
         {# The last section's way onward is out of the sections entirely: the
            gate and the export live on the overview, and a step sequence that
            simply stops at the end leaves the author looking for the door. #}
         {% if next %}
         <a href="/documents/{{ document.id }}/sections/{{ next.key }}" class="step-next">
-          {{ next.display_title }} →</a>
+          <span class="ref">{{ ref(spec, next.key) }}</span> {{ next.display_title }} →</a>
         {% else %}
         <a href="/documents/{{ document.id }}#gate" class="step-next">
           Quality gate and export →</a>
@@ -129,12 +130,13 @@
       </p>
       {% for e in evidence %}
       <div class="filed-here">
-        <blockquote class="quote">{{ e.link.quote }}</blockquote>
+        {{ qm.filed_quote(e.link) }}
         <div class="filed-meta">
           {% if e.link.why %}<p class="filed-why"><span>Why here</span> {{ e.link.why }}</p>{% endif %}
-          {% if e.answered %}
-          <p class="filed-why"><span>Answered</span> {{ e.answered|join(' · ') }}</p>
-          {% endif %}
+          {% for key, prompt in e.answered %}
+          <p class="filed-why"><span>Answered</span>
+            <span class="ref">{{ ref(spec, section.key, question=key) }}</span> {{ prompt }}</p>
+          {% endfor %}
           <p class="filed-source">
             From your paste of {{ e.pasted_at|localtime }}
             <a href="/documents/{{ document.id }}#intake">see it all</a>
@@ -176,6 +178,7 @@
         {% for q in questions %}
         <div class="field{{ ' proposed' if q.proposed }}">
           <label for="q-{{ q.question.key }}">
+            <span class="ref" title="{{ ref(spec, section.key, question=q.question.key) }}">{{ REF.question }}{{ loop.index }}</span>
             {{ q.question.prompt }}
             {%- if q.question.required %} <span class="s-needs_input">*</span>{% endif %}
             {%- if q.proposed %} <span class="pill drafted">from your notes</span>{% endif %}
@@ -239,7 +242,8 @@
       </p>
       {% for g in gaps %}
       <div class="check"><span class="mark">?</span>
-        <span>{{ g.question }}<span class="where">{{ g.block }} - {{ g.why }}</span></span>
+        <span>{{ g.question }}<span class="where">
+          {%- if g.block_key %}{{ ref(spec, section.key, block=g.block_key) }} {% endif %}{{ g.block }} - {{ g.why }}</span></span>
       </div>
       {% endfor %}
     </div>
@@ -298,6 +302,7 @@
               hx-target="#workspace" hx-swap="outerHTML" hx-disabled-elt="find button"
               data-dirty="{{ b.block.label }}">
           <div class="block-head">
+            <span class="ref" title="{{ ref(spec, section.key, block=b.block.key) }}">{{ REF.content }}{{ loop.index }}</span>
             <label>{{ b.block.label }}</label>
             <span class="kind">{{ b.block.kind }}</span>
             {% if b.block.kind == 'prose' %}
@@ -339,7 +344,7 @@
             <span class="dot {{ 's-needs_input' if p.status == 'rejected' else 's-complete' }}">
               {{ '✗' if p.status == 'rejected' else '✓' }}</span>
             <span>
-              <strong>{{ p.status|replace('_', ' ') }}</strong> · {{ block_key }}
+              <strong>{{ p.status|replace('_', ' ') }}</strong> · {{ ref(spec, section.key, block=block_key) or block_key }}
               <span class="where">{{ p.proposed_value['v']|string|truncate(160) }}</span>
             </span>
             <span class="meta">

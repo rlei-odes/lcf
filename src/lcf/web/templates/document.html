@@ -55,7 +55,7 @@
       <nav class="stepper">
         <span style="color:var(--muted)">Next up</span>
         <a href="/documents/{{ document.id }}/sections/{{ next_up.key }}" class="step-next">
-          {{ next_up.n }}. {{ next_up.display_title }} →</a>
+          <span class="ref">{{ ref(spec, next_up.key) }}</span> {{ next_up.display_title }} →</a>
       </nav>
       {% endif %}
     </div>

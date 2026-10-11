@@ -30,6 +30,7 @@
     <div class="block-tabs" role="tablist" aria-label="Which block">
       {% for b in prose %}
       <button type="button" class="block-tab" data-focus-to="{{ b.block.key }}">
+        <span class="ref">{{ ref(spec, section.key, block=b.block.key)|replace(ref(spec, section.key) ~ '-', '') }}</span>
         {{ b.block.label }}
         {%- if b.proposals %}<span class="badge" title="A version is waiting for you">1</span>{% endif %}
       </button>

@@ -949,6 +949,18 @@ judged checks). A pre-filled answer is stored as `source: proposed`, shows the w
 does not satisfy a required question until a person saves it — so drafting still waits for a human,
 exactly as it did before intake existed.
 
+**Every paste says what came of it.** Each one opens to its passages by section, the reason for
+each, the answers read from them and whether they are confirmed, and the whole paste with the used
+passages marked — built from the stored links and answers rather than the job's result, so it holds
+after a reload. A passage on a section page can be shown in its paste (the text around it muted),
+and taken out of a section it does not belong to. An answer confirmed unchanged keeps the words it
+was read from, so its source survives being accepted.
+
+**Sections, questions and blocks of content are numbered** `S3`, `S3-Q2`, `S3-C1`, by their order
+in the document type (`presenters.ref`). The number is derived, never stored: a reorder in the
+builder renumbers everything on the next render, and a reference always matches what the page shows.
+Content is `C` rather than `P` because a block may be a table, a list or a set of fields.
+
 **A mapping has at least one entry, and `none` is a section.** Left free to answer with an empty
 list, a constrained model takes it: the empty list is one cheap token, and gemma-4-26b answered
 `{"assignments": []}` to notes it sorted readily when asked without a schema. So the schema sets

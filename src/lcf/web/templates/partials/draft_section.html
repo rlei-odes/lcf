@@ -5,7 +5,7 @@
 
 <div class="card">
   <div class="block-head">
-    <h2>{{ sec.title or sec.key }}</h2>
+    <h2><span class="ref ref-lg">{{ REF.section }}{{ at[1] + 1 }}</span> {{ sec.title or sec.key }}</h2>
     {% if not sec.get('required', true) %}<span class="pill">optional</span>{% endif %}
     <span class="rowtools-right">
       {{ m.rowtools(url ~ '/section', token, focus, opened, {'key': sec.key}, 'the section “' ~ (sec.title or sec.key) ~ '” and everything in it') }}
@@ -125,6 +125,7 @@
   {% set qat = at + ['questions', loop.index0] %}
   <details class="item" {% if opened == 'question:' ~ q.key %}open{% endif %}>
     <summary>
+      <span class="ref">{{ REF.question }}{{ loop.index }}</span>
       <span class="item-name">{{ q.prompt or q.key }}</span>
       <span class="item-meta">
         {{ builder.QUESTION_TYPES | selectattr('0', 'equalto', q.get('type', 'text')) | map(attribute=1) | first }}
@@ -228,6 +229,7 @@
   {% set bat = at + ['blocks', loop.index0] %}
   <details class="item" {% if opened == 'block:' ~ b.key %}open{% endif %}>
     <summary>
+      <span class="ref">{{ REF.content }}{{ loop.index }}</span>
       <span class="item-name">{{ b.label or b.key }}</span>
       <span class="item-meta">
         {{ builder.BLOCK_LABELS.get(b.get('kind'), b.get('kind')) }}

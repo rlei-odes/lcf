@@ -1,0 +1,14 @@
+{# A filed passage where it sits in the paste. The passage is marked and the
+   text either side is muted: it is there to orient, not to be read closely. #}
+{% if ctx %}
+<div class="quote-context-body">
+  <div class="quote-context-head">In your paste of {{ ctx.pasted_at|localtime }}</div>
+  <p class="context-text">
+    {%- if ctx.cut_before %}<span class="context-cut">…</span>{% endif -%}
+    <span class="context-around">{{ ctx.before }}</span><mark>{{ ctx.quote }}</mark><span class="context-around">{{ ctx.after }}</span>
+    {%- if ctx.cut_after %}<span class="context-cut">…</span>{% endif -%}
+  </p>
+</div>
+{% else %}
+<div class="quote-context-body"><p class="hint">This passage could not be found in the paste any more.</p></div>
+{% endif %}

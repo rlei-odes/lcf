@@ -1,0 +1,13 @@
+{# A filed passage, with a way to see it in the paste it came from. #}
+{% macro filed_quote(link) %}
+<div class="quote-wrap">
+  <blockquote class="quote">{{ link.quote }}</blockquote>
+  <button type="button" class="quote-zoom" data-context-toggle
+          hx-get="/evidence-links/{{ link.id }}/context"
+          hx-target="next .quote-context" hx-swap="innerHTML"
+          title="Show where this sits in your paste" aria-label="Show where this sits in your paste">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.4 10.4 14 14"/></svg>
+  </button>
+  <div class="quote-context"></div>
+</div>
+{% endmacro %}

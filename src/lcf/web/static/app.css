@@ -337,7 +337,7 @@ blockquote.quote {
 .filed-head a:hover { color: var(--accent); text-decoration: underline; }
 .filed blockquote.quote, .filed-here blockquote.quote { margin-bottom: var(--s1); font-size: 13.5px; }
 .filed-why { margin: 0 0 var(--s3); font-size: 12.5px; color: var(--ink-2); }
-.filed-why > span {
+.filed-why > span:not(.ref) {
   display: inline-block; margin-right: var(--s1);
   font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; font-weight: 650; color: var(--faint);
 }
@@ -1782,4 +1782,51 @@ button.danger:hover { background: color-mix(in srgb, var(--blocker) 85%, #000); 
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) button.danger { color: #1f0f0b; }
+}
+
+/* S3, S3-Q2, S3-C1: how a section, a question and a block of content are
+   referred to anywhere on screen. Quiet, fixed-width, and always the same shape
+   so a reference is recognised rather than read. */
+.ref {
+  display: inline-block; flex: none;
+  font-family: var(--mono); font-size: 11px; font-weight: 600; line-height: 1.5;
+  padding: 0 5px; border-radius: 4px; vertical-align: 1px;
+  color: var(--accent-ink); background: var(--accent-soft);
+  border: 1px solid var(--accent-line); white-space: nowrap;
+}
+.ref-lg { font-size: 12.5px; padding: 1px 6px; vertical-align: 3px; margin-right: 2px; }
+label > .ref { margin-right: 4px; }
+.filed-why .ref { margin-left: 4px; }
+.block-tab .ref { font-size: 10px; padding: 0 4px; }
+nav.builder-nav a .ref { margin-right: 2px; }
+details.item > summary .ref { align-self: center; }
+
+/* A filed passage, and the magnifier that shows it in its paste. */
+.quote-wrap { position: relative; }
+.quote-wrap > blockquote.quote { padding-right: 40px; }
+.quote-zoom {
+  position: absolute; top: 6px; right: 6px;
+  width: 26px; height: 26px; min-height: 0; padding: 5px;
+  display: grid; place-items: center;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  box-shadow: var(--lift-1); color: var(--muted);
+  opacity: 0; transition: opacity .12s;
+}
+.quote-zoom svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+.quote-wrap:hover .quote-zoom, .quote-zoom:focus-visible, .quote-zoom.on { opacity: 1; }
+.quote-zoom:hover, .quote-zoom.on { color: var(--accent-ink); border-color: var(--accent-line); background: var(--accent-soft); }
+@media (hover: none) { .quote-zoom { opacity: .8; } }
+.quote-context-body {
+  margin: 0 0 var(--s2); padding: var(--s3) var(--s4);
+  border: 1px dashed var(--accent-line); border-radius: var(--radius-sm); background: var(--panel);
+}
+.quote-context-head {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em;
+  font-weight: 650; color: var(--faint); margin-bottom: var(--s1);
+}
+.context-text { margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.6; }
+.context-around, .context-cut { color: var(--faint); }
+.context-text mark {
+  background: var(--accent-soft); color: var(--ink); border-radius: 2px; padding: 0 1px;
+  box-shadow: inset 0 -1px 0 var(--accent-line);
 }

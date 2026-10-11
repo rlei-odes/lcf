@@ -537,7 +537,10 @@ async def test_a_passage_says_what_it_answered_and_can_be_taken_out(published, m
     async with session() as s:
         [here] = await intake.filed_here(s, document_id, "d1_team")
         assert here.link.why == "the lead"
-        assert here.answered and "team" in here.answered[0].lower()
+        assert [key for key, _ in here.answered] == ["members_raw"]
+        shown = await intake.context(s, here.link.id)
+        assert shown.quote == "Anna Brandt is leading this one for quality"
+        assert shown.before.endswith("on the 9th. ") and not shown.cut_before
         await intake.unlink(s, here.link.id)
     async with session() as s:
         view = await documents.view(s, document_id)
@@ -559,3 +562,13 @@ async def test_confirming_an_answer_unchanged_keeps_where_it_came_from(published
     async with session() as s:
         [digest] = await intake.digests(s, document_id)
     assert digest.sections[0].answers == [], "an answer the author rewrote is theirs"
+
+
+def test_sections_questions_and_blocks_are_numbered_in_spec_order(spec_4d):
+    from lcf.web.presenters import ref
+
+    second = spec_4d.sections[1]
+    assert ref(spec_4d, second.key) == "S2"
+    assert ref(spec_4d, second.key, question=second.questions[0].key) == "S2-Q1"
+    assert ref(spec_4d, second.key, block=second.blocks[-1].key) == f"S2-C{len(second.blocks)}"
+    assert ref(spec_4d, "no_such_section") == ""

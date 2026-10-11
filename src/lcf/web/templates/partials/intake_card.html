@@ -4,6 +4,7 @@
    what it will and will not do with the text: file passages under the sections
    they belong to, and propose answers, both quoting the author back to
    themselves. Nothing here writes content. #}
+{% import "partials/quote_macros.html" as q %}
 <div class="card" id="intake">
   <h3>Your material</h3>
 
@@ -104,18 +105,25 @@
         {% for s in d.sections %}
         <div class="filed">
           <div class="filed-head">
-            <span class="step-n">{{ s.n }}</span>
+            <span class="ref">{{ ref(spec, s.key) }}</span>
             <a href="/documents/{{ document_id }}/sections/{{ s.key }}">{{ s.title }}</a>
           </div>
           {% for link in s.passages %}
-          <blockquote class="quote">{{ link.quote }}</blockquote>
-          {% if link.why %}<p class="filed-why"><span>Why here</span> {{ link.why }}</p>{% endif %}
+          {{ q.filed_quote(link) }}
+          {% if link.why or s.answered.get(link.id) %}
+          <p class="filed-why">
+            {%- if link.why %}<span>Why here</span> {{ link.why }}{% endif %}
+            {%- for key in s.answered.get(link.id, []) %}
+            <span class="ref" title="Answered from this passage">{{ ref(spec, s.key, question=key) }}</span>
+            {%- endfor %}
+          </p>
+          {% endif %}
           {% endfor %}
           {% if s.answers %}
           <ul class="plain filed-answers">
             {% for a in s.answers %}
             <li>
-              <span class="q">{{ a.question }}</span>
+              <span class="q"><span class="ref">{{ ref(spec, s.key, question=a.key) }}</span> {{ a.question }}</span>
               <span class="a">{{ a.value|answer }}</span>
               <span class="pill {{ 'complete' if a.confirmed else 'drafted' }}">
                 {{- 'confirmed' if a.confirmed else 'waiting for you' -}}

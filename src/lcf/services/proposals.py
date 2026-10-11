@@ -127,7 +127,14 @@ async def draft_section(
             raise draft
 
         for gap in draft.gaps:
-            gaps.append({"block": spec_block.label, "question": gap.question, "why": gap.why})
+            gaps.append(
+                {
+                    "block": spec_block.label,
+                    "block_key": spec_block.key,
+                    "question": gap.question,
+                    "why": gap.why,
+                }
+            )
 
         if not draft.has_content:
             continue  # honest empty: the gaps are the answer

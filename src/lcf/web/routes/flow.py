@@ -135,9 +135,11 @@ async def intake_panel(request: Request, document_id: UUID, job: UUID | None = N
                 }
     async with session() as s:
         pasted = await intake.digests(s, document_id)
+        _, spec = await documents.load(s, document_id)
     return page(
         request,
         "partials/intake_card.html",
+        spec=spec,
         document_id=document_id,
         items=pasted,
         outcome=outcome,
@@ -340,6 +342,14 @@ async def pin_passage(
     async with session() as s:
         await proposals.pin(s, document_id, key, block_key, quote)
     return await _lane(request, document_id, key)
+
+
+@router.get("/evidence-links/{link_id}/context", response_class=HTMLResponse)
+async def passage_context(request: Request, link_id: UUID):
+    """A filed passage in the paste it came from, with the text around it."""
+    async with session() as s:
+        found = await intake.context(s, link_id)
+    return page(request, "partials/quote_context.html", ctx=found)
 
 
 @router.post("/evidence-links/{link_id}/remove", response_class=HTMLResponse)

@@ -93,7 +93,7 @@
     {% for s in spec.sections or [] %}
     <a href="/doc-types/drafts/{{ draft.id }}?focus={{ s.key }}"
        class="{{ 'active' if focus == s.key }}">
-      <span class="dot">{{ loop.index }}</span>
+      <span class="ref">{{ REF.section }}{{ loop.index }}</span>
       <span>{{ s.title or s.key }}</span>
       {{ m.count(review, ['sections', loop.index0]) }}
     </a>

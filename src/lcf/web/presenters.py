@@ -122,6 +122,28 @@ def chat_markdown(text: str) -> Markup:
     return Markup(_markdown.render(text or ""))
 
 
+# How sections, questions and the blocks of content are referred to on screen:
+# S3, S3-Q2, S3-C1. Numbered by their order in the document type, so a reorder
+# renumbers them and a reference always matches what the page shows.
+SECTION, QUESTION, CONTENT = "S", "Q", "C"
+
+
+def ref(spec, section_key: str, question: str | None = None, block: str | None = None) -> str:
+    """`S3`, `S3-Q2` or `S3-C1` for a section, one of its questions or blocks."""
+    keys = [s.key for s in spec.sections]
+    if section_key not in keys:
+        return ""
+    n = keys.index(section_key) + 1
+    section = spec.sections[n - 1]
+    if question is not None:
+        qs = [q.key for q in section.questions]
+        return f"{SECTION}{n}-{QUESTION}{qs.index(question) + 1}" if question in qs else ""
+    if block is not None:
+        bs = [b.key for b in section.blocks]
+        return f"{SECTION}{n}-{CONTENT}{bs.index(block) + 1}" if block in bs else ""
+    return f"{SECTION}{n}"
+
+
 def answer_text(value: Any) -> str:
     """An answer as the form shows it: Yes/No, and a choice without underscores."""
     if isinstance(value, bool):
