@@ -15,6 +15,18 @@
      hx-target="{{ done_target }}"
      hx-swap="outerHTML"
      hx-trigger="load"></div>
+{% elif compact %}
+<div class="msg ai pending"
+     hx-get="/jobs/{{ job.id }}/card?next={{ done_url|urlencode }}&target={{ done_target|urlencode }}&compact=1"
+     hx-trigger="load delay:900ms"
+     hx-swap="outerHTML">
+  {%- if job.status == 'failed' -%}
+    <span class="s-needs_input">Failed: {{ job.error or 'unknown error' }}</span>
+  {%- else -%}
+    <span class="typing" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span class="muted">{{ working_title|default('Working') }}…</span>
+  {%- endif -%}
+</div>
 {% else %}
 <div class="card"
      hx-get="/jobs/{{ job.id }}/card?next={{ done_url|urlencode }}&target={{ done_target|urlencode }}"

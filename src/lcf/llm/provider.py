@@ -20,7 +20,7 @@ from loguru import logger
 from openai import AsyncOpenAI
 
 from lcf.core.config import settings
-from lcf.ingest.text import clean_data
+from lcf.ingest.text import clean, clean_data
 
 PROMPTS = Path(__file__).parent / "prompts"
 
@@ -325,6 +325,78 @@ async def complete_json(
         )
 
     raise LLMMalformed(last_error)
+
+
+async def complete_text(
+    messages: list[dict[str, Any]],
+    purpose: str = "chat",
+    on_text: Callable[[str], Awaitable[None]] | None = None,
+) -> str:
+    """Free text, streamed. `on_text` receives the reply so far as it grows.
+
+    No schema and no retry: a conversational reply has no shape to violate, and
+    a failed one is better reported than silently asked again.
+    """
+    import time
+
+    s = settings()
+    started = time.monotonic()
+    out: list[str] = []
+    chunks = 0
+    readable = "\n\n---\n\n".join(f"[{m['role']}]\n{_readable(m['content'])}" for m in messages)
+    try:
+        stream = await client().chat.completions.create(
+            model=s.llm_model,
+            temperature=max(s.llm_temperature, 0.5),
+            max_tokens=s.llm_max_tokens,
+            messages=messages,
+            stream=True,
+        )
+        try:
+            async for chunk in stream:
+                if not chunk.choices:
+                    continue
+                piece = chunk.choices[0].delta.content or ""
+                if not piece:
+                    continue
+                chunks += 1
+                out.append(piece)
+                if on_text is not None:
+                    await on_text("".join(out))
+        finally:
+            await stream.close()
+    except Exception as exc:
+        await _emit(
+            CallRecord(
+                purpose,
+                s.llm_model,
+                False,
+                int((time.monotonic() - started) * 1000),
+                1,
+                chunks,
+                sum(map(len, out)),
+                f"{type(exc).__name__}: {exc}",
+                prompt=readable,
+                response="".join(out),
+            )
+        )
+        raise LLMUnavailable(f"{type(exc).__name__}: {exc}") from exc
+
+    text = clean("".join(out)).strip()
+    await _emit(
+        CallRecord(
+            purpose,
+            s.llm_model,
+            True,
+            int((time.monotonic() - started) * 1000),
+            1,
+            chunks,
+            len(text),
+            prompt=readable,
+            response=text,
+        )
+    )
+    return text
 
 
 def _readable(user: str | list[dict[str, Any]]) -> str:

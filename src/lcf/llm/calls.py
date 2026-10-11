@@ -15,6 +15,7 @@ from lcf.llm.provider import (
     Completion,
     complete_json,
     complete_json_with_images,
+    complete_text,
 )
 
 # The desk's calls take the author's question as a parameter called `prompt`,
@@ -152,6 +153,8 @@ async def revise_block(
     remark: str,
     pins: list[str],
     previous: Any = None,
+    history: list[tuple[str, str]] | None = None,
+    focus: str = "",
 ) -> BlockRevision:
     """Rewrite one block to a remark, holding the author's pinned passages.
 
@@ -168,7 +171,16 @@ async def revise_block(
     draft that may be exactly what they wanted apart from one sentence.
     """
     system = revise_system_message(section, block, style)
-    user = _revision_data(view, section, block, remark=remark, pins=pins, previous=previous)
+    user = _revision_data(
+        view,
+        section,
+        block,
+        remark=remark,
+        pins=pins,
+        previous=previous,
+        history=history or [],
+        focus=focus,
+    )
     schema = revise_response_schema(block)
 
     for attempt in (1, 2):
@@ -211,6 +223,8 @@ def _revision_data(
     remark: str,
     pins: list[str],
     previous: Any = None,
+    history: list[tuple[str, str]] | None = None,
+    focus: str = "",
 ) -> str:
     """The runtime half: the author's material, the text, and the remark last.
 
@@ -244,6 +258,21 @@ def _revision_data(
     if pins:
         listed = "\n\n".join(f"{i}. {p}" for i, p in enumerate(pins, start=1))
         parts.append(f"## Settled passages — reproduce each of these word for word\n\n{listed}")
+    if history:
+        listed = "\n".join(f"- “{asked}” — {outcome}" for asked, outcome in history)
+        parts.append(
+            "## Earlier in this conversation\n\n"
+            "What the author asked before, and what became of your answer. A remark"
+            " such as “more of that” refers back to these.\n\n"
+            f"{listed}"
+        )
+    if focus:
+        parts.append(
+            "## The passage this remark is about\n\n"
+            f"> {focus}\n\n"
+            "Change this passage to satisfy the remark, and leave the rest of the"
+            " block as it is, word for word. Return the whole block."
+        )
     parts.append(
         f"## What the author has asked you to change\n\n{remark}\n\n"
         "This is the task. If the text already satisfies it, say so in `rationale`"
@@ -251,6 +280,67 @@ def _revision_data(
         " answering."
     )
     return "\n\n".join(parts)
+
+
+#: Messages of a discussion sent back to the model. Older ones are dropped
+#: rather than summarised: the block's text carries what was settled.
+DISCUSS_HISTORY = 16
+
+
+def discuss_messages(
+    view: DocumentView,
+    section: Section,
+    block: Block,
+    style: str,
+    *,
+    conversation: list[tuple[str, str]],
+    pins: list[str],
+    previous: Any = None,
+) -> list[dict[str, str]]:
+    """The whole chat for one discussion turn: context in the system message,
+    then the conversation as alternating turns, the author's newest last."""
+    context = _material(view, section)
+    current = view.block_value(section.key, block.key)
+    context.append(
+        "## What this block says now\n\n"
+        + (_render(current) if current and _render(current).strip() else "(empty)")
+    )
+    if previous is not None and _render(previous).strip():
+        context.append("## A rewrite the author has not decided on yet\n\n" + _render(previous))
+    if pins:
+        context.append("## Passages the author has settled\n\n" + "\n".join(f"- {p}" for p in pins))
+    context += _upstream(view, section)
+
+    system = "\n\n".join(
+        part
+        for part in [
+            prompt_text("discuss_block"),
+            "## The house style this document is written in\n\n" + style,
+            _section_context(section, block).replace(
+                "The block you are drafting", "The block under discussion"
+            ),
+            _requirement_targets(section, block),
+            "# The material\n\n" + "\n\n".join(context),
+        ]
+        if part
+    )
+    messages = [{"role": "system", "content": system}]
+    for role, content in conversation[-DISCUSS_HISTORY:]:
+        role = "user" if role == "author" else "assistant"
+        if messages[-1]["role"] == role:
+            messages[-1]["content"] += "\n\n" + content
+        elif role == "assistant" and len(messages) == 1:
+            continue  # a chat has to open with the author
+        else:
+            messages.append({"role": role, "content": content})
+    return messages
+
+
+async def discuss_block(
+    messages: list[dict[str, str]],
+    on_text=None,
+) -> str:
+    return await complete_text(messages, purpose="discuss_block", on_text=on_text)
 
 
 @dataclass

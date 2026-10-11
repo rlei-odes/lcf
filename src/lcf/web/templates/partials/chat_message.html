@@ -1,0 +1,32 @@
+{# One message of the open discussion. A reply still being written asks for
+   itself again; once it is finished it reloads the lane, which re-enables the
+   composer. #}
+{% if m.role == 'author' %}
+<div class="msg me">{{ m.content }}</div>
+{% elif m.status == 'writing' %}
+<div class="msg ai"
+     hx-get="/documents/{{ document_id }}/sections/{{ section_key }}/messages/{{ m.id }}"
+     hx-trigger="load delay:700ms" hx-swap="outerHTML">
+  {% if m.content %}
+  <div class="md">{{ m.content|chat }}</div>
+  {% else %}
+  <span class="typing" aria-hidden="true"><i></i><i></i><i></i></span>
+  <span class="muted">Thinking…</span>
+  {% endif %}
+</div>
+{% elif m.status == 'failed' %}
+<div class="msg ai failed">
+  <span class="s-needs_input">No answer: {{ m.content or 'the assistant could not be reached' }}</span>
+</div>
+{% else %}
+<div class="msg ai">
+  <div class="md">{{ m.content|chat }}</div>
+  <div class="msg-tools">
+    <button type="button" class="tool" data-copy title="Copy this reply">Copy</button>
+  </div>
+</div>
+{% endif %}
+{% if not in_lane and m.role != 'author' and m.status != 'writing' %}
+<div hx-get="/documents/{{ document_id }}/sections/{{ section_key }}/assistant"
+     hx-target="#assistant" hx-swap="outerHTML" hx-trigger="load"></div>
+{% endif %}

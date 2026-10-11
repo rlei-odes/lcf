@@ -4,10 +4,12 @@ Templates get finished view models, never raw ORM rows or half-computed state �
 so a change to how status is derived touches one place, not a dozen `{% if %}`s.
 """
 
+import difflib
 import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from markdown_it import MarkdownIt
 from markupsafe import Markup, escape
 
 from lcf.engine.checks.result import CheckResult
@@ -53,6 +55,73 @@ def marked(text: str, pins: list[str]) -> Markup:
     return Markup("").join(out)
 
 
+_TOKENS = re.compile(r"\s+|\w+|[^\w\s]", re.UNICODE)
+
+
+def changes(before: str, after: str) -> Markup:
+    """`after`, with what it removed from `before` and what it added marked.
+
+    Word-level, because a rewrite that is nearly right is judged by the few words
+    it moved, and a line diff of a paragraph marks the whole paragraph.
+    """
+    old, new = _TOKENS.findall(before or ""), _TOKENS.findall(after or "")
+    out: list[Markup] = []
+    matcher = difflib.SequenceMatcher(None, old, new, autojunk=False)
+    for op, i1, i2, j1, j2 in matcher.get_opcodes():
+        if op == "equal":
+            out.append(escape("".join(new[j1:j2])))
+            continue
+        if op in ("delete", "replace"):
+            out.append(Markup("<del>{}</del>").format("".join(old[i1:i2])))
+        if op in ("insert", "replace"):
+            out.append(Markup("<ins>{}</ins>").format("".join(new[j1:j2])))
+    return Markup("").join(out)
+
+
+# html off: a reply is untrusted text, and markdown is the only markup it gets.
+_markdown = MarkdownIt("commonmark", {"html": False, "linkify": False}).disable("image")
+
+# A quoted or fenced passage is usually a wording on offer, so it carries its
+# own copy button; `assistant.js` copies the passage without the button.
+_COPY = (
+    '<button type="button" class="copy-passage" data-copy-passage title="Copy this passage">'
+    '<svg viewBox="0 0 16 16" aria-hidden="true">'
+    '<rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/>'
+    '<path d="M10.5 3.5v-.5A1.5 1.5 0 0 0 9 1.5H3A1.5 1.5 0 0 0 1.5 3v6'
+    'A1.5 1.5 0 0 0 3 10.5h.5"/></svg>'
+    "</button>"
+)
+
+
+def _copyable(default):
+    def render(tokens, idx, options, env):
+        return f'<div class="copyable">{_COPY}{default(tokens, idx, options, env)}</div>'
+
+    return render
+
+
+_markdown.renderer.rules["fence"] = _copyable(_markdown.renderer.rules["fence"])
+_markdown.renderer.rules["code_block"] = _copyable(_markdown.renderer.rules["code_block"])
+
+
+def _quote_depth(tokens, idx) -> int:
+    return sum({"blockquote_open": 1, "blockquote_close": -1}.get(t.type, 0) for t in tokens[:idx])
+
+
+_markdown.renderer.rules["blockquote_open"] = lambda tokens, idx, options, env: (
+    f'<div class="copyable">{_COPY}<blockquote>\n'
+    if _quote_depth(tokens, idx) == 0
+    else "<blockquote>\n"
+)
+_markdown.renderer.rules["blockquote_close"] = lambda tokens, idx, options, env: (
+    "</blockquote>\n</div>\n" if _quote_depth(tokens, idx) == 1 else "</blockquote>\n"
+)
+
+
+def chat_markdown(text: str) -> Markup:
+    return Markup(_markdown.render(text or ""))
+
+
 def _merged(spans: list[tuple[int, int]]) -> list[tuple[int, int]]:
     """Overlapping pins become one mark, so nesting cannot produce broken HTML."""
     merged: list[tuple[int, int]] = []
@@ -74,6 +143,8 @@ class BlockView:
     # The conversation about this block: pinned passages, and the turns so far.
     pins: list[Any] = field(default_factory=list)
     turns: list[Any] = field(default_factory=list)
+    # The open discussion, which never becomes content.
+    messages: list[Any] = field(default_factory=list)
 
     def __post_init__(self):
         self.proposals = self.proposals or []
@@ -96,6 +167,26 @@ class BlockView:
     def marked_preview(self, proposal) -> Markup:
         """A proposal with the author's settled passages shown as such."""
         return marked(self.preview(proposal), self.pin_quotes)
+
+    def changes(self, proposal) -> Markup | None:
+        """The proposal as a change to what the block says now, or None when
+        there is nothing to compare it with."""
+        if not str(self.text).strip():
+            return None
+        return changes(str(self.text), self.preview(proposal))
+
+    def unchanged(self, proposal) -> bool:
+        return " ".join(str(self.text).split()) == " ".join(self.preview(proposal).split())
+
+    @property
+    def timeline(self) -> list[Any]:
+        """Every turn of the rewrite conversation, and any first draft, in order."""
+        firsts = [p for p in self.proposals if not p.remark]
+        return sorted([*self.turns, *firsts], key=lambda p: p.created_at)
+
+    @property
+    def discussing(self) -> bool:
+        return any(m.status == "writing" for m in self.messages)
 
     @property
     def pin_quotes(self) -> list[str]:
@@ -171,6 +262,7 @@ def section_panel_context(
     evidence: list | None = None,
     pins: dict[str, list] | None = None,
     turns: dict[str, list] | None = None,
+    messages: dict[str, list] | None = None,
 ) -> dict[str, Any]:
     section: Section = spec.section(key)
     state: SectionState = section_state(view, key)
@@ -185,6 +277,7 @@ def section_panel_context(
     proposals = proposals or {}
     pins = pins or {}
     turns = turns or {}
+    messages = messages or {}
     blocks = []
     for block in section.blocks:
         value = view.block_value(key, block.key)
@@ -198,6 +291,7 @@ def section_panel_context(
                 proposals.get(block.key, []),
                 pins.get(block.key, []),
                 turns.get(block.key, []),
+                messages.get(block.key, []),
             )
         )
 
@@ -228,6 +322,17 @@ def section_panel_context(
         "gaps": gaps or [],
         "llm_errors": llm_errors or [],
         "pending_count": sum(len(v) for v in proposals.values()),
+        "prose": [b for b in blocks if b.block.kind == "prose"],
+        # Where the assistant lane opens: wherever something is going on.
+        "lane_focus": next(
+            (
+                b.block.key
+                for b in blocks
+                if b.block.kind == "prose"
+                and (b.proposals or b.discussing or any(t.status == "requested" for t in b.turns))
+            ),
+            next((b.block.key for b in blocks if b.block.kind == "prose"), None),
+        ),
         # Whether asking for a draft would do anything at all. Drafting only
         # touches empty blocks and never touches image references, so a section
         # that is full — or has no blocks — has nothing to ask for, and a button

@@ -1,0 +1,266 @@
+{# The assistant lane: one conversation per prose block, in two modes.
+
+   Rewrite answers a remark with a new version of the block, to accept or
+   decline. Discuss is an open conversation whose replies never reach the block.
+   Which block and which mode are showing is the browser's to remember
+   (`static/assistant.js`); the server renders every conversation and marks a
+   sensible default. #}
+{% set base = "/documents/" ~ document.id ~ "/sections/" ~ section.key %}
+<aside class="assistant lane-sticky" id="assistant" data-assistant
+       data-scope="{{ document.id }}/{{ section.key }}"
+       data-focus="{{ lane_focus }}" data-mode="rewrite">
+
+  <div class="assistant-head">
+    <div class="assistant-title">
+      <span class="glyph">✦</span>
+      <h3>Assistant</h3>
+    </div>
+
+    <div class="seg" role="tablist" aria-label="How the assistant answers">
+      <button type="button" role="tab" data-mode-to="rewrite"
+              title="It answers with a new version of the block, which you accept or decline">Rewrite</button>
+      <button type="button" role="tab" data-mode-to="discuss"
+              title="An open conversation. Nothing it says is written into the block">Discuss</button>
+    </div>
+
+    <button type="button" class="lane-close" data-lane-close
+            title="Close the assistant. ✦ Assistant on a block opens it again">✕</button>
+
+    {% if prose|length > 1 %}
+    <div class="block-tabs" role="tablist" aria-label="Which block">
+      {% for b in prose %}
+      <button type="button" class="block-tab" data-focus-to="{{ b.block.key }}">
+        {{ b.block.label }}
+        {%- if b.proposals %}<span class="badge" title="A version is waiting for you">1</span>{% endif %}
+      </button>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  {% if refused %}
+  <div class="lane-note blocker">{{ refused }}</div>
+  {% endif %}
+
+  {% for b in prose %}
+  {% set key = b.block.key %}
+  {% set busy_rewrite = revise_job and revise_in == key %}
+  <section class="conv" data-conv data-block="{{ key }}" {{ 'hidden' if key != lane_focus }}>
+
+    {# ---------------- Rewrite ---------------- #}
+    <div class="pane" data-pane="rewrite">
+      <div class="thread" data-thread>
+        {% if not b.timeline %}
+        <div class="lane-empty">
+          <p><strong>Ask for a change to {{ b.block.label|lower }}.</strong></p>
+          <p>The assistant answers with a whole new version, with what changed marked.
+            Nothing is written into the block until you accept it.</p>
+          {% if not b.revisable %}
+          <p class="muted">There is no text here yet. Write some, or ask for a draft.</p>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        {% for t in b.timeline %}
+          {% if t.remark %}
+          <div class="msg me">
+            {%- if (t.anchor or {}).get('focus') -%}
+            <span class="about">about “{{ t.anchor['focus']|truncate(80) }}”</span>
+            {%- endif -%}
+            {{ t.remark }}</div>
+          {% endif %}
+
+          {% if t.status == 'requested' %}
+            {% if busy_rewrite %}
+              {% with job = revise_job,
+                      done_url = base ~ "/assistant",
+                      done_target = "#assistant",
+                      working_title = "Rewriting",
+                      compact = true %}
+                {% include "partials/job.html" %}
+              {% endwith %}
+            {% else %}
+            <div class="msg ai pending"><span class="muted">Waiting for the assistant…</span></div>
+            {% endif %}
+
+          {% elif t.status == 'pending' %}
+          {% set diff = b.changes(t) %}
+          <div class="msg ai proposal-msg">
+            <div class="msg-head">
+              <span class="chip live">{{ 'New version' if t.remark else 'First draft' }}</span>
+              {% if diff is not none and b.unchanged(t) %}<span class="chip">no change to the text</span>{% endif %}
+              {% if t.confidence %}<span class="muted">confidence {{ '%.0f'|format(t.confidence * 100) }}%</span>{% endif %}
+              {% if diff is not none %}
+              <span class="view-toggle" data-view-toggle>
+                <button type="button" class="on" data-view="changes">Changes</button>
+                <button type="button" data-view="clean">Clean</button>
+              </span>
+              {% endif %}
+            </div>
+
+            {% if diff is not none %}
+            <pre class="candidate changes" data-view-pane="changes">{{ diff }}</pre>
+            <pre class="candidate" data-view-pane="clean" data-pinnable hidden>{{ b.marked_preview(t) }}</pre>
+            {% else %}
+            <pre class="candidate" data-pinnable>{{ b.marked_preview(t) }}</pre>
+            {% endif %}
+
+            {% set moved = (t.anchor or {}).get('moved') or [] %}
+            {% if moved %}
+            <div class="check blocker">
+              <span class="mark">✗</span>
+              <span>Does not keep {{ count(moved|length, 'settled passage') }}, after being asked twice.
+                Accepting it would lose
+                {% for quote in moved %}“{{ quote|truncate(90) }}”{% if not loop.last %}, {% endif %}{% endfor %}.</span>
+            </div>
+            {% endif %}
+
+            {% if t.rationale %}
+            <p class="rationale">{{ ('Still unresolved: ' if not t.remark else '') ~ t.rationale }}</p>
+            {% endif %}
+
+            <div class="msg-actions">
+              <form hx-post="/proposals/{{ t.id }}/accept" hx-target="#workspace" hx-swap="outerHTML">
+                <input type="hidden" name="document_id" value="{{ document.id }}">
+                <input type="hidden" name="section" value="{{ section.key }}">
+                <button class="primary" type="submit">Accept</button>
+              </form>
+              <form hx-post="/proposals/{{ t.id }}/reject" hx-target="#workspace" hx-swap="outerHTML">
+                <input type="hidden" name="document_id" value="{{ document.id }}">
+                <input type="hidden" name="section" value="{{ section.key }}">
+                <button type="submit">Decline</button>
+              </form>
+              <span class="muted">or ask for another change below</span>
+            </div>
+          </div>
+
+          {% elif t.status == 'failed' %}
+          <div class="msg ai failed">
+            <span class="s-needs_input">No answer: {{ t.proposed_value.get('error') or 'the assistant could not be reached' }}</span>
+          </div>
+
+          {% else %}
+          <div class="msg ai settled">
+            <div class="msg-head">
+              <span class="chip outcome o-{{ t.status }}">
+                {%- if t.status.startswith('accepted') %}✓ accepted
+                {%- elif t.status == 'rejected' %}✗ declined
+                {%- else %}↻ replaced by the next answer{% endif -%}
+              </span>
+            </div>
+            {% if t.rationale %}<p class="rationale">{{ t.rationale }}</p>{% endif %}
+            <details class="peek">
+              <summary>That version</summary>
+              <pre class="candidate">{{ b.preview(t) }}</pre>
+            </details>
+          </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+
+      <div class="composer">
+        {% if b.pins %}
+        {% set stale = b.stale_pins %}
+        <div class="settled">
+          <span class="settled-label" title="Reproduced word for word in every rewrite">Settled</span>
+          {% for pin in b.pins %}
+          <span class="pin-chip{{ ' stale' if pin in stale }}"
+                title="{{ 'No longer in the text — edited away by hand' if pin in stale else pin.quote }}">
+            <span class="pin-quote">{{ pin.quote|truncate(60) }}</span>
+            <form hx-post="/pins/{{ pin.id }}/remove" hx-target="#assistant" hx-swap="outerHTML">
+              <input type="hidden" name="document_id" value="{{ document.id }}">
+              <input type="hidden" name="section" value="{{ section.key }}">
+              <button type="submit" class="unpin" title="Let the assistant change this again">✕</button>
+            </form>
+          </span>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        {# Filled by assistant.js from whatever the author selects in this
+           block's text or in a proposed version. #}
+        <div class="selection-bar" data-selection hidden>
+          <span class="sel-quote" data-sel-quote></span>
+          <form class="pin-form" hx-post="{{ base }}/blocks/{{ key }}/pins"
+                hx-target="#assistant" hx-swap="outerHTML">
+            <input type="hidden" name="quote" data-pin-quote>
+            <button type="submit" class="tool" title="Reproduce this word for word in every rewrite">Settle it</button>
+          </form>
+          <button type="button" class="tool" data-focus-selection
+                  title="Change only this passage">Rewrite only this</button>
+        </div>
+
+        <form class="compose" data-compose
+              hx-post="{{ base }}/blocks/{{ key }}/revise"
+              hx-target="#assistant" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]">
+          <div class="focus-chip" data-focus-chip hidden>
+            <span>About “<span data-focus-text></span>”</span>
+            <button type="button" class="unpin" data-focus-clear title="Rewrite the whole block">✕</button>
+          </div>
+          <input type="hidden" name="focus" data-focus-field>
+          <div class="quick">
+            {% for label, remark in [
+                 ('Shorter', 'Make it shorter. Keep every fact.'),
+                 ('Plainer', 'Use plainer words and shorter sentences.'),
+                 ('More formal', 'Make the tone more formal.'),
+                 ('Fix language', 'Fix spelling, grammar and punctuation only. Change nothing else.'),
+               ] %}
+            <button type="button" class="quick-chip" data-fill="{{ remark }}">{{ label }}</button>
+            {% endfor %}
+          </div>
+          <textarea name="remark" rows="3" required
+                    {{ 'disabled' if busy_rewrite or not b.revisable }}
+                    placeholder="{{ 'Say what to change…' if b.revisable else 'Nothing to rewrite yet' }}"></textarea>
+          <div class="compose-foot">
+            <span class="muted kbd-hint">Ctrl+Enter to send</span>
+            <button class="primary" type="submit" {{ 'disabled' if busy_rewrite or not b.revisable }}>
+              Rewrite
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    {# ---------------- Discuss ---------------- #}
+    <div class="pane" data-pane="discuss">
+      <div class="thread" data-thread>
+        {% if not b.messages %}
+        <div class="lane-empty">
+          <p><strong>Talk {{ b.block.label|lower }} through.</strong></p>
+          <p>Ask what is missing or weak, try another angle, get alternative wordings.
+            Replies are suggestions only: nothing here is written into the block.</p>
+        </div>
+        {% endif %}
+        {% for m in b.messages %}
+          {% with in_lane = true, document_id = document.id, section_key = section.key %}
+            {% include "partials/chat_message.html" %}
+          {% endwith %}
+        {% endfor %}
+      </div>
+
+      <div class="composer">
+        <div class="selection-bar" data-selection hidden>
+          <span class="sel-quote" data-sel-quote></span>
+          <button type="button" class="tool" data-quote-selection>Quote in message</button>
+        </div>
+        <form class="compose" data-compose
+              hx-post="{{ base }}/blocks/{{ key }}/discuss"
+              hx-target="#assistant" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]">
+          <textarea name="text" rows="3" required {{ 'disabled' if b.discussing }}
+                    placeholder="Ask anything about this block…"></textarea>
+          <div class="compose-foot">
+            {% if b.messages and not b.discussing %}
+            <button type="button" class="tool"
+                    hx-post="{{ base }}/blocks/{{ key }}/discuss/clear"
+                    hx-target="#assistant" hx-swap="outerHTML"
+                    hx-confirm="Clear this conversation?">Start over</button>
+            {% endif %}
+            <span class="muted kbd-hint">Ctrl+Enter to send</span>
+            <button class="primary" type="submit" {{ 'disabled' if b.discussing }}>Send</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </section>
+  {% endfor %}
+</aside>

@@ -301,7 +301,8 @@ async def test_a_running_job_is_picked_back_up_on_reload(published_4d, client):
     assert str(job_id) in page.text, "the page rejoins the running job"
     assert "The assistant is working" in page.text
 
-    i = page.text.find("Draft the empty blocks")
+    i = page.text.find("Ask the assistant for a draft")
+    assert i != -1
     button = page.text.rfind("<button", 0, i)
     assert "disabled" in page.text[button:i], "no second draft while one is running"
 

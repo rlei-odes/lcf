@@ -1315,77 +1315,327 @@ form.inline-form { display: inline; margin: 0; }
   max-width: var(--measure); margin: 0 auto;
 }
 
-/* --- Working on a prose block with the assistant ------------------------ */
+/* --- The assistant lane ------------------------------------------------- */
 
-/* Sunken, and inside the block rather than beside it: the conversation is about
-   this one piece of text, and reads as a workbench under it rather than as
-   another card competing with it. */
-.revise {
-  margin-top: var(--s4); padding: var(--s4);
-  background: var(--panel-2); border: 1px solid var(--line-2);
-  border-radius: var(--radius-sm);
+/* A third lane, beside the text it is about rather than under it. The page
+   widens for it: the middle lane keeps the width it had. */
+main:has(> .layout.three) { max-width: 1640px; }
+.layout.three {
+  grid-template-columns: 236px minmax(0, 1fr) minmax(360px, 430px);
+  gap: var(--s5);
 }
-.revise-head { display: flex; align-items: baseline; gap: var(--s3); margin-bottom: var(--s3); }
-.revise-head h4 { margin: 0; font-size: 13.5px; color: var(--muted); font-weight: 600; }
-.revise textarea { min-height: 54px; }
-.revise > form { margin-top: var(--s3); }
 
-/* A settled passage. Marked the way a pinned passage is marked inside the text,
-   so the chip and the highlight are recognisably the same thing. */
-ul.pins { margin-bottom: var(--s3); }
-ul.pins li.pin {
-  display: flex; align-items: baseline; gap: var(--s2);
-  padding: var(--s2) 0; border-top: 1px solid var(--line-2);
+.assistant {
+  display: flex; flex-direction: column;
+  height: calc(100vh - 56px - var(--s4) * 2);
+  background: var(--panel);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--lift-2);
+  overflow: hidden;
 }
-ul.pins li.pin:first-child { border-top: 0; }
-.pin-quote {
+
+/* Closed, the lane leaves the page as it was without it. */
+.layout.three.lane-closed { grid-template-columns: var(--rail) minmax(0, 1fr); }
+.layout.three.lane-closed > .assistant { display: none; }
+main:has(> .layout.three.lane-closed) { max-width: var(--measure); }
+
+/* Narrower screens keep all three lanes by folding the rail down to its step
+   numbers and states; each still names its section on hover. */
+@media (max-width: 1280px) and (min-width: 981px) {
+  .layout.three.lane-closed { grid-template-columns: var(--rail) minmax(0, 1fr); }
+  .layout.three:not(.lane-closed) { grid-template-columns: 62px minmax(0, 1fr) minmax(330px, 380px); gap: var(--s4); }
+  .layout.three:not(.lane-closed) > nav.sections { padding: var(--s3) var(--s2); }
+  .layout.three:not(.lane-closed) > nav.sections .rail-head > :not(.meter),
+  .layout.three:not(.lane-closed) > nav.sections .step-name,
+  .layout.three:not(.lane-closed) > nav.sections .step-count,
+  .layout.three:not(.lane-closed) > nav.sections .actions { display: none; }
+  .layout.three:not(.lane-closed) > nav.sections a { flex-direction: column; gap: 2px; padding: var(--s2) 0; align-items: center; }
+}
+@media (max-width: 980px) {
+  .layout.three, .layout.three.lane-closed { grid-template-columns: 1fr; }
+  .layout.three > .assistant { position: static; height: min(760px, 88vh); }
+}
+
+.assistant-head {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3);
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--line-2);
+  background: var(--panel-2);
+}
+.assistant-title { display: flex; align-items: center; gap: var(--s2); margin-right: auto; }
+.assistant-title h3 { margin: 0; color: var(--ink-2); }
+.assistant-title .glyph { color: var(--accent); font-size: 14px; }
+button.lane-close {
+  padding: 2px 6px; min-height: 0; font-size: 13px; line-height: 1;
+  background: none; border: 0; box-shadow: none; color: var(--faint);
+}
+button.lane-close:hover { color: var(--ink); background: var(--sunken); }
+
+/* A quoted or fenced passage in a reply: copied on its own, from an icon that
+   shows when the passage is hovered. */
+.md .copyable { position: relative; margin: 0 0 var(--s2); }
+.md .copyable > blockquote, .md .copyable > pre { margin: 0; }
+.copy-passage {
+  position: absolute; top: 4px; right: 4px; z-index: 1;
+  width: 24px; height: 24px; min-height: 0; padding: 4px;
+  display: grid; place-items: center;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  box-shadow: var(--lift-1); color: var(--muted);
+  opacity: 0; transition: opacity .12s;
+}
+.copy-passage svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.4; }
+.copyable:hover .copy-passage, .copy-passage:focus-visible, .copy-passage.copied { opacity: 1; }
+.copy-passage:hover { color: var(--accent-ink); border-color: var(--accent-line); }
+.copy-passage.copied { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
+.copy-passage.copied svg { display: none; }
+.copy-passage.copied::after { content: "✓"; font-size: 13px; line-height: 1; }
+@media (hover: none) { .copy-passage { opacity: .8; } }
+.md pre { background: var(--sunken); padding: var(--s2) var(--s3); border-radius: 6px; overflow-x: auto; }
+
+/* Two modes, one control: a segmented switch rather than two buttons, so it
+   reads as a setting and not as an action. */
+.seg {
+  display: inline-flex; padding: 2px; gap: 2px;
+  background: var(--sunken); border: 1px solid var(--line); border-radius: 8px;
+}
+.seg button {
+  border: 0; background: transparent; box-shadow: none;
+  padding: 3px var(--s3); font-size: 12.5px; font-weight: 600;
+  color: var(--muted); border-radius: 6px; min-height: 0;
+}
+.seg button:hover { color: var(--ink); background: transparent; }
+.seg button.on { background: var(--panel); color: var(--ink); box-shadow: var(--lift-1); }
+
+.block-tabs { display: flex; gap: var(--s1); flex-basis: 100%; overflow-x: auto; }
+.block-tab {
+  flex: none; display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px var(--s3); font-size: 12.5px; min-height: 0;
+  border-radius: 999px; color: var(--muted); background: transparent; box-shadow: none;
+}
+.block-tab.on { background: var(--accent-soft); color: var(--accent-ink); border-color: var(--accent-line); }
+.block-tab .badge {
+  font-size: 10px; font-weight: 700; line-height: 1; padding: 2px 5px;
+  border-radius: 8px; background: var(--accent); color: var(--on-accent);
+}
+
+.lane-note { padding: var(--s2) var(--s4); font-size: 13px; border-bottom: 1px solid var(--line-2); }
+.lane-note.blocker { background: var(--blocker-soft); color: var(--blocker); }
+
+.conv, .pane { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.conv[hidden] { display: none; }
+.assistant[data-mode="rewrite"] [data-pane="discuss"],
+.assistant[data-mode="discuss"] [data-pane="rewrite"] { display: none; }
+
+.thread {
+  flex: 1; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: var(--s3);
+  padding: var(--s4);
+  overscroll-behavior: contain;
+}
+
+.lane-empty { margin: auto 0; padding: var(--s4); color: var(--muted); font-size: 13.5px; text-align: center; }
+.lane-empty p { margin: 0 0 var(--s2); }
+.lane-empty strong { color: var(--ink-2); }
+
+/* --- messages --- */
+.msg { font-size: 14px; line-height: 1.55; max-width: 100%; }
+.msg.me {
+  align-self: flex-end; max-width: 88%;
   background: var(--accent-soft); color: var(--ink);
-  padding: 1px 5px; border-radius: 3px; font-size: 13px;
+  border: 1px solid var(--accent-line);
+  padding: var(--s2) var(--s3); border-radius: 12px 12px 3px 12px;
+  white-space: pre-wrap; word-break: break-word;
 }
-li.pin.stale .pin-quote {
-  background: var(--warning-soft); color: var(--ink-2);
-  text-decoration: line-through; text-decoration-color: var(--warning);
+.msg.me .about {
+  display: block; font-size: 11.5px; color: var(--accent-ink); margin-bottom: 2px;
+  white-space: normal;
 }
-button.unpin {
-  margin-left: auto; padding: 0 var(--s2); min-height: 0;
-  background: none; border: 0; color: var(--faint); font-size: 12px;
+.msg.ai {
+  align-self: stretch;
+  background: var(--panel-2); border: 1px solid var(--line-2);
+  padding: var(--s3); border-radius: 12px 12px 12px 3px;
 }
-button.unpin:hover { color: var(--blocker); background: none; }
+.msg.ai.pending { display: flex; align-items: center; gap: var(--s2); align-self: flex-start; }
+.msg.ai.failed { background: var(--blocker-soft); border-color: transparent; }
+.msg.ai.settled { padding: var(--s2) var(--s3); }
+.msg.proposal-msg { background: var(--panel); border-color: var(--accent-line); box-shadow: var(--lift-1); }
+.msg-head { display: flex; align-items: center; gap: var(--s2); margin-bottom: var(--s2); flex-wrap: wrap; }
+.msg-head:last-child { margin-bottom: 0; }
+.muted { color: var(--muted); font-size: 12.5px; }
 
-/* The pin button says what it will pin, so the author is never guessing which
-   selection the page saw. `.why` carries the quote once there is one. */
-form.pin-form { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
-form.pin-form .why { font-style: italic; }
+.chip.live { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.chip.outcome { font-size: 11.5px; }
+.chip.o-accepted, .chip.o-accepted_edited { background: var(--ok-soft); color: var(--ok); }
+.chip.o-rejected { background: var(--blocker-soft); color: var(--blocker); }
 
-/* What the assistant proposed, with settled passages marked inside it. Prose,
-   not code: it is the document's own text and has to read like it. */
+.rationale { margin: var(--s2) 0 0; font-size: 13px; color: var(--ink-2); }
+
+.msg-actions { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s3); flex-wrap: wrap; }
+.msg-actions form { display: inline; margin: 0; }
+.msg-tools { display: flex; justify-content: flex-end; margin-top: var(--s1); }
+.msg-tools .tool { font-size: 12px; padding: 1px var(--s2); }
+
+/* Changes or clean text: the same answer read two ways. */
+.view-toggle { margin-left: auto; display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.view-toggle button {
+  border: 0; border-radius: 0; box-shadow: none; min-height: 0;
+  padding: 1px var(--s2); font-size: 11.5px; color: var(--muted); background: var(--panel);
+}
+.view-toggle button + button { border-left: 1px solid var(--line); }
+.view-toggle button.on { background: var(--sunken); color: var(--ink); font-weight: 600; }
+
 pre.candidate {
-  margin: 0 0 var(--s3); padding: 0;
-  font: inherit; white-space: pre-wrap; word-break: break-word;
+  margin: 0; padding: 0;
+  font: inherit; font-size: 14px; white-space: pre-wrap; word-break: break-word;
 }
 pre.candidate mark {
   background: color-mix(in srgb, var(--accent-soft) 80%, var(--panel));
   color: var(--ink); padding: 0 2px; border-radius: 2px;
   box-shadow: inset 0 -1px 0 var(--accent-line);
 }
-
-/* What the author asked for, quoted back above the answer to it. */
-.remark {
-  margin: 0 0 var(--s3); padding-left: var(--s3);
-  border-left: 2px solid var(--accent-line);
-  color: var(--ink-2); font-size: 13.5px;
+pre.candidate del {
+  background: var(--blocker-soft); color: var(--blocker);
+  text-decoration-color: color-mix(in srgb, var(--blocker) 60%, transparent);
+  border-radius: 2px;
 }
-.remark::before { content: "“"; }
-.remark::after { content: "”"; }
+pre.candidate ins {
+  background: var(--ok-soft); color: var(--ok); text-decoration: none;
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--ok) 45%, transparent);
+  border-radius: 2px;
+}
 
-details.transcript { margin-bottom: var(--s3); }
-details.transcript > summary { font-size: 13px; color: var(--muted); cursor: pointer; }
-details.transcript ul.plain { margin-top: var(--s2); }
-details.transcript li.turn { display: block; }
-details.transcript .remark { margin: 0; font-size: 13px; }
-details.transcript .where {
-  display: block; margin-top: var(--s1);
-  color: var(--muted); font-size: 12px;
+/* A reply in the open discussion: the model writes light markdown. */
+.md { font-size: 14px; word-break: break-word; }
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md p, .md ul, .md ol, .md blockquote { margin: 0 0 var(--s2); }
+.md ul, .md ol { padding-left: 1.3em; }
+.md li { margin: 2px 0; }
+.md blockquote {
+  padding: var(--s2) var(--s3); border-left: 3px solid var(--accent-line);
+  background: var(--panel); border-radius: 0 6px 6px 0; color: var(--ink);
+}
+.md h1, .md h2, .md h3, .md h4 {
+  font-size: 13.5px; text-transform: none; letter-spacing: 0;
+  color: var(--ink); margin: var(--s3) 0 var(--s1); font-weight: 650;
+}
+.md code { font-family: var(--mono); font-size: 12.5px; background: var(--sunken); padding: 0 3px; border-radius: 3px; }
+
+.typing { display: inline-flex; gap: 3px; }
+.typing i {
+  width: 5px; height: 5px; border-radius: 50%; background: var(--accent);
+  animation: typing 1.1s infinite ease-in-out; opacity: .3;
+}
+.typing i:nth-child(2) { animation-delay: .15s; }
+.typing i:nth-child(3) { animation-delay: .3s; }
+@keyframes typing { 0%, 80%, 100% { opacity: .25; transform: none; } 40% { opacity: 1; transform: translateY(-2px); } }
+@media (prefers-reduced-motion: reduce) { .typing i { animation: none; opacity: .7; } }
+
+/* --- the composer, pinned to the foot of the lane --- */
+.composer {
+  border-top: 1px solid var(--line-2); background: var(--panel-2);
+  padding: var(--s3) var(--s4) var(--s4);
+  display: flex; flex-direction: column; gap: var(--s2);
+}
+.compose { display: flex; flex-direction: column; gap: var(--s2); margin: 0; }
+.compose textarea { min-height: 64px; max-height: 30vh; resize: vertical; font-size: 14px; background: var(--panel); }
+.compose-foot { display: flex; align-items: center; gap: var(--s2); }
+.compose-foot .kbd-hint { margin-left: auto; font-size: 11.5px; }
+.compose-foot .primary { min-width: 90px; }
+
+.quick { display: flex; flex-wrap: wrap; gap: 6px; }
+.quick-chip {
+  padding: 1px var(--s2); font-size: 12px; min-height: 0;
+  border-radius: 999px; color: var(--muted); background: var(--panel); box-shadow: none;
+}
+.quick-chip:hover { color: var(--accent-ink); border-color: var(--accent-line); background: var(--accent-soft); }
+
+.settled { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.settled-label {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--faint); font-weight: 650; cursor: help;
+}
+.pin-chip { display: inline-flex; align-items: center; gap: 2px; max-width: 100%; }
+.pin-chip form { display: inline; margin: 0; }
+.pin-quote {
+  background: var(--accent-soft); color: var(--ink);
+  padding: 1px 6px; border-radius: 4px; font-size: 12.5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px;
+}
+.pin-chip.stale .pin-quote {
+  background: var(--warning-soft); color: var(--ink-2);
+  text-decoration: line-through; text-decoration-color: var(--warning);
+}
+button.unpin {
+  padding: 0 var(--s1); min-height: 0;
+  background: none; border: 0; box-shadow: none; color: var(--faint); font-size: 12px;
+}
+button.unpin:hover { color: var(--blocker); background: none; }
+
+.selection-bar, .focus-chip {
+  display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap;
+  padding: var(--s1) var(--s2); border-radius: 6px;
+  background: var(--panel); border: 1px dashed var(--accent-line); font-size: 12.5px;
+}
+.selection-bar[hidden], .focus-chip[hidden] { display: none; }
+.selection-bar .sel-quote { flex: 1 1 100%; color: var(--ink-2); font-style: italic; }
+.selection-bar form { display: inline; margin: 0; }
+.selection-bar .tool { font-size: 12px; color: var(--accent-ink); border-color: var(--accent-line); }
+.focus-chip { border-style: solid; background: var(--accent-soft); color: var(--accent-ink); }
+.focus-chip > span { flex: 1; }
+
+/* A short screen gives the conversation the height: one row of shortcuts, a
+   two-line box that grows while it is being typed in, tighter edges. */
+@media (max-height: 860px) {
+  .assistant-head { padding: var(--s2) var(--s3); gap: var(--s2); }
+  .thread { padding: var(--s3); }
+  .composer { padding: var(--s2) var(--s3) var(--s3); gap: 6px; }
+  .quick { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .quick-chip { flex: none; }
+  .compose textarea { min-height: 44px; height: 44px; transition: height .15s; }
+  .compose textarea:focus, .compose textarea:not(:placeholder-shown) { height: 96px; }
+  .compose-foot .kbd-hint { display: none; }
+  .compose-foot .primary { margin-left: auto; }
+}
+
+/* --- the middle lane, pointing at the lane --- */
+.block { border-radius: var(--radius-sm); transition: box-shadow .2s; }
+.block.focused { box-shadow: -10px 0 0 -7px var(--accent); }
+.block-head .tool.ask { margin-left: auto; font-size: 12.5px; color: var(--accent); }
+.block-head .tool.ask.waiting {
+  background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent-ink);
+}
+
+/* --- disclosures ------------------------------------------------------------
+   A browser's own triangle reads as unfinished. Every <details> gets the same
+   chevron unless its class draws its own marker. */
+details > summary { cursor: pointer; }
+details:not(.item):not(.check-group):not(.rename) > summary {
+  list-style: none; display: flex; align-items: center; gap: var(--s2);
+  font-size: 13px; color: var(--muted); user-select: none;
+  padding: 2px 0; border-radius: 4px; width: fit-content;
+}
+details:not(.item):not(.check-group):not(.rename) > summary::-webkit-details-marker { display: none; }
+details:not(.item):not(.check-group):not(.rename) > summary::before {
+  content: ""; flex: none; width: 6px; height: 6px;
+  border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg); transition: transform .15s; margin: 0 2px;
+}
+details:not(.item):not(.check-group):not(.rename)[open] > summary::before { transform: rotate(45deg); }
+details:not(.item):not(.check-group):not(.rename) > summary:hover { color: var(--accent); }
+details > summary .count {
+  font-size: 11px; font-family: var(--mono); padding: 0 6px;
+  border-radius: 8px; background: var(--sunken); color: var(--muted);
+}
+details.disclose > summary {
+  font-size: 11.5px; text-transform: uppercase; letter-spacing: .09em;
+  color: var(--faint); font-weight: 650;
+}
+details.peek { margin-top: var(--s1); }
+details.peek > summary { font-size: 12px; }
+details.peek pre.candidate {
+  margin-top: var(--s2); padding: var(--s2) var(--s3);
+  background: var(--panel); border-radius: 6px; font-size: 13px; color: var(--ink-2);
 }
 
 /* --- Reading one model call -------------------------------------------- */
@@ -1414,4 +1664,40 @@ details.transcript .where {
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .modal { background: rgba(0, 0, 0, .55); }
+}
+
+/* --- Centred lanes -----------------------------------------------------------
+   Where the screen has room, the lane being worked in sits in the middle of it,
+   with a column of equal width either side: the rail hugs it from the left, and
+   on the right is either empty or the assistant. Opening or closing the
+   assistant then fills or empties that column and moves nothing else. Below
+   these widths the room is needed for the content, and the lanes pack left. */
+:root { --centre: 880px; }
+
+@media (min-width: 1520px) {
+  main:has(> .layout:not(.split):not(.three)) { max-width: none; }
+  main > .layout:not(.split):not(.three) {
+    grid-template-columns: minmax(var(--rail), 1fr) minmax(0, var(--centre)) minmax(var(--rail), 1fr);
+  }
+  main > .layout:not(.split):not(.three) > :first-child { justify-self: end; width: var(--rail); }
+}
+
+@media (min-width: 1700px) {
+  main:has(> .layout.split) { max-width: none; }
+  main > .layout.split {
+    grid-template-columns: minmax(352px, 1fr) minmax(0, var(--centre)) minmax(352px, 1fr);
+  }
+  main > .layout.split > :first-child { justify-self: end; width: 352px; }
+}
+
+@media (min-width: 1600px) {
+  main:has(> .layout.three),
+  main:has(> .layout.three.lane-closed) { max-width: none; }
+  .layout.three,
+  .layout.three.lane-closed {
+    grid-template-columns: minmax(360px, 1fr) minmax(0, var(--centre)) minmax(360px, 1fr);
+    gap: var(--s6);
+  }
+  .layout.three > nav.sections { justify-self: end; width: var(--rail); }
+  .layout.three > .assistant { justify-self: start; width: 100%; max-width: 500px; }
 }

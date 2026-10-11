@@ -13,9 +13,9 @@ from sqlalchemy import delete, select
 from lcf.core.db import session
 from lcf.llm import calls
 from lcf.llm.provider import Completion, LLMUnavailable
-from lcf.models.tables import DocType, DocTypeVersion, Document
+from lcf.models.tables import DocType, DocTypeVersion, Document, Proposal
 from lcf.services import doc_types, documents, proposals
-from lcf.web.presenters import marked
+from lcf.web.presenters import changes, marked
 
 PASSAGE = (
     "The defect was found on 14 March on batch 44871. Operators reported burrs on the sealing face."
@@ -304,3 +304,55 @@ def test_marking_never_trusts_the_text_as_html():
 def test_overlapping_pins_become_one_mark():
     html = str(marked("the sealing face burrs", ["sealing face", "face burrs"]))
     assert html == "the <mark>sealing face burrs</mark>"
+
+
+async def test_a_follow_up_remark_is_told_what_came_before(published, answers):
+    document_id = await _document(published)
+    first = await _turn(document_id, "Make it one sentence.")
+    answers("One sentence.")
+    async with session() as s:
+        await proposals.revise(s, first)
+    async with session() as s:
+        await proposals.reject(s, first)
+
+    second = await _turn(document_id, "Now try that again, but keep the date.")
+    asked = answers("Another sentence.")
+    async with session() as s:
+        await proposals.revise(s, second)
+
+    user = asked[-1]["user"]
+    assert "Earlier in this conversation" in user
+    assert "“Make it one sentence.” — the author declined it" in user
+
+
+async def test_a_remark_about_a_passage_is_scoped_to_it(published, answers):
+    document_id = await _document(published)
+    async with session() as s:
+        turn = await proposals.request_revision(
+            s,
+            document_id,
+            "d2_problem",
+            "description",
+            "Say burrs more precisely.",
+            focus="  Operators reported   burrs ",
+        )
+        turn_id = turn.id
+
+    asked = answers(PASSAGE)
+    async with session() as s:
+        await proposals.revise(s, turn_id)
+        row = await s.get(Proposal, turn_id)
+
+    assert "> Operators reported burrs" in asked[-1]["user"]
+    assert row.anchor == {"focus": "Operators reported burrs"}
+
+
+def test_a_rewrite_is_shown_as_the_words_it_changed():
+    html = str(
+        changes(
+            "Found on 14 March. Operators saw burrs.", "Found on 14 March 2026. Burrs <b>seen</b>."
+        )
+    )
+    assert "<ins> 2026</ins>" in html
+    assert "<del>saw burrs</del>" in html
+    assert "&lt;b&gt;" in html and "<b>" not in html

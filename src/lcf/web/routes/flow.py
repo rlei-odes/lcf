@@ -15,6 +15,7 @@ from lcf.core.db import session
 from lcf.engine.state import Status, document_state
 from lcf.services import (
     assessment,
+    discussion,
     doc_types,
     documents,
     exports,
@@ -338,7 +339,7 @@ async def pin_passage(
     """Settle a passage the author selected, so a rewrite cannot move it."""
     async with session() as s:
         await proposals.pin(s, document_id, key, block_key, quote)
-    return await _panel(request, document_id, key)
+    return await _lane(request, document_id, key)
 
 
 @router.post("/pins/{pin_id}/remove", response_class=HTMLResponse)
@@ -347,7 +348,7 @@ async def unpin_passage(
 ):
     async with session() as s:
         await proposals.unpin(s, pin_id)
-    return await _panel(request, UUID(document_id), section)
+    return await _lane(request, UUID(document_id), section)
 
 
 @router.post(
@@ -355,7 +356,12 @@ async def unpin_passage(
     response_class=HTMLResponse,
 )
 async def revise_block(
-    request: Request, document_id: UUID, key: str, block_key: str, remark: str = Form("")
+    request: Request,
+    document_id: UUID,
+    key: str,
+    block_key: str,
+    remark: str = Form(""),
+    focus: str = Form(""),
 ):
     """Ask the assistant to rewrite this block, and return at once.
 
@@ -365,24 +371,77 @@ async def revise_block(
     """
     try:
         async with session() as s:
-            turn = await proposals.request_revision(s, document_id, key, block_key, remark)
+            turn = await proposals.request_revision(
+                s, document_id, key, block_key, remark, focus=focus
+            )
             turn_id = turn.id
     except proposals.NotRevisable as refused:
-        return page(request, "partials/notice.html", message=str(refused))
+        return await _lane(request, document_id, key, refused=str(refused))
 
-    job = await jobs.enqueue("revise_block", document_id, str(turn_id))
+    await jobs.enqueue("revise_block", document_id, str(turn_id))
+    return await _lane(request, document_id, key)
+
+
+@router.post(
+    "/documents/{document_id}/sections/{key}/blocks/{block_key}/discuss",
+    response_class=HTMLResponse,
+)
+async def discuss_block(
+    request: Request, document_id: UUID, key: str, block_key: str, text: str = Form("")
+):
+    """Say something to the assistant about this block. The reply never touches it."""
+    try:
+        async with session() as s:
+            reply = await discussion.post(s, document_id, key, block_key, text)
+            reply_id = reply.id
+    except discussion.NotDiscussable as refused:
+        return await _lane(request, document_id, key, refused=str(refused))
+    await jobs.enqueue("discuss_block", document_id, str(reply_id))
+    return await _lane(request, document_id, key)
+
+
+@router.post(
+    "/documents/{document_id}/sections/{key}/blocks/{block_key}/discuss/clear",
+    response_class=HTMLResponse,
+)
+async def clear_discussion(request: Request, document_id: UUID, key: str, block_key: str):
+    async with session() as s:
+        await discussion.clear(s, document_id, key, block_key)
+    return await _lane(request, document_id, key)
+
+
+@router.get(
+    "/documents/{document_id}/sections/{key}/messages/{message_id}", response_class=HTMLResponse
+)
+async def discussion_message(request: Request, document_id: UUID, key: str, message_id: UUID):
+    """One reply, as far as it has been written. Asks for itself again until done."""
+    async with session() as s:
+        message = await discussion.get(s, message_id)
+    if message is None:
+        return HTMLResponse("")
     return page(
         request,
-        "partials/job.html",
-        job=job,
-        done_url=f"/documents/{document_id}/sections/{key}/panel?job={job.id}",
-        done_target="#workspace",
-        working_title="The assistant is rewriting",
+        "partials/chat_message.html",
+        m=message,
+        document_id=document_id,
+        section_key=key,
     )
 
 
+@router.get("/documents/{document_id}/sections/{key}/assistant", response_class=HTMLResponse)
+async def assistant_lane(request: Request, document_id: UUID, key: str):
+    """The assistant lane on its own: what a lane action answers with."""
+    return await _lane(request, document_id, key)
+
+
 @router.get("/jobs/{job_id}/card", response_class=HTMLResponse)
-async def job_card(request: Request, job_id: UUID, next: str = "/", target: str = "#workspace"):
+async def job_card(
+    request: Request,
+    job_id: UUID,
+    next: str = "/",
+    target: str = "#workspace",
+    compact: bool = False,
+):
     """One poll of a running job.
 
     Returns the progress card, which asks for itself again a second later, or —
@@ -398,6 +457,7 @@ async def job_card(request: Request, job_id: UUID, next: str = "/", target: str 
         done_url=_safe_path(next, "/"),
         done_target=_safe_target(target),
         working_title=_WORKING_TITLES.get(job.kind),
+        compact=compact,
     )
 
 
@@ -462,6 +522,7 @@ async def _panel_context(
         evidence = await intake.links_for(s, document_id, key)
         pins = await proposals.pins_for(s, document_id, key)
         turns = await proposals.turns_for(s, document_id, key)
+        messages = await discussion.messages_for(s, document_id, key)
         open_turn = await proposals.open_turn(s, document_id, key)
     # A job may still be running from an earlier visit — pick it back up rather
     # than offering a second one.
@@ -502,6 +563,7 @@ async def _panel_context(
         evidence,
         pins,
         turns,
+        messages,
     )
     context["running_job"] = latest if latest is not None and not latest.done else None
     context["revise_job"] = revise_job
@@ -514,6 +576,13 @@ async def _panel(
 ) -> HTMLResponse:
     ctx = await _panel_context(document_id, key, dependents, gaps, errors)
     return page(request, "partials/panel.html", **ctx)
+
+
+async def _lane(
+    request: Request, document_id: UUID, key: str, refused: str | None = None
+) -> HTMLResponse:
+    ctx = await _panel_context(document_id, key)
+    return page(request, "partials/assistant.html", refused=refused, **ctx)
 
 
 def _coerce_answer(question, raw: Any) -> Any:

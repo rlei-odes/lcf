@@ -13,6 +13,8 @@ server, or a hosted API if you would rather.
 *A finished document. The rail tracks how far in you are, the quality gate has run its judged checks,
 and export only unlocks once they pass.*
 
+![A 4d report section, discussed with the assistant](docs/lcf_screenshot_assistant.png)
+
 ---
 
 A **rule builder** defines document types: sections, the questions a creator must answer,

@@ -75,7 +75,8 @@ need a framework. `assets/` is still not in the repo and there is still no build
 
 | Piece | State |
 |---|---|
-| Pinning a passage, remarks, whole-block rewrites | **Built**, with `revise_block` and ~90 lines of vanilla JS |
+| Pinning a passage, remarks, whole-block rewrites | **Built**, in the assistant lane, with `revise_block` and vanilla JS |
+| Remarks scoped to a selected passage, shown as a word diff | **Built** — `anchor.focus`, rendered server-side |
 | Span proposals as ProseMirror decorations, with a hover card | Not built — this is what TipTap is actually for |
 | Blame view from a server-computed diff | Not built; wants decorations too |
 | A markdown subset enforced by the editor's own schema | Not built — see [§5](#5-markdown-normalisation) |
@@ -197,6 +198,9 @@ Not forgotten — decided against for now, with the condition that would change 
 - Extract Requirements from input documents. A sentence saying "and" would have to be split in two reqs
 - ~~Give Feedback on a draft, ask a re-write~~ · ~~Mark the text that is fine~~ — built, as the
   conversation surface on a prose block ([ARCHITECTURE §6](ARCHITECTURE.md#6-working-on-a-prose-block))
+- **From Discuss to Rewrite.** A button on a discussion reply that hands its suggestion over as a
+  rewrite remark. Left out until Discuss has been used enough to say whether its replies are
+  usually worth applying wholesale or mostly mined by hand.
 - **Re-run for a new proposal.** Asking again with no remark, for a different draft rather than a
   changed one. Nearly free now — a remark is already a row and a rewrite is already a job — but it
   needs an answer to what the second draft is *for*: two candidates side by side to choose between

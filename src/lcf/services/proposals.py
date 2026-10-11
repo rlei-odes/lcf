@@ -196,7 +196,12 @@ async def pins_for(
 
 
 async def request_revision(
-    session: AsyncSession, document_id: UUID, section_key: str, block_key: str, remark: str
+    session: AsyncSession,
+    document_id: UUID,
+    section_key: str,
+    block_key: str,
+    remark: str,
+    focus: str = "",
 ) -> Proposal:
     """Record what the author asked for, before any call is made.
 
@@ -220,9 +225,11 @@ async def request_revision(
     if await _open_turn_on(session, block.id) is not None:
         raise NotRevisable("the assistant is already working on this block")
 
+    focus = " ".join(focus.split())
     turn = Proposal(
         block_id=block.id,
         proposed_value={"v": None},
+        anchor={"focus": focus} if focus else None,
         remark=remark,
         status=Status.REQUESTED,
     )
@@ -275,6 +282,7 @@ async def revise(session: AsyncSession, turn_id: UUID, progress=None) -> dict:
 
     pins = [p.quote for p in await _pins_on(session, block.id)]
     previous = await _live_candidate(session, block.id, excluding=turn.id)
+    focus = (turn.anchor or {}).get("focus") or ""
 
     if progress is not None:
         await progress.start(1, "Reading what is there…")
@@ -286,6 +294,8 @@ async def revise(session: AsyncSession, turn_id: UUID, progress=None) -> dict:
         remark=turn.remark or "",
         pins=pins,
         previous=previous,
+        history=await _history_on(session, block.id, excluding=turn.id),
+        focus=focus,
     )
     if progress is not None:
         await progress.step(f"Rewrote {spec_block.label}")
@@ -297,7 +307,10 @@ async def revise(session: AsyncSession, turn_id: UUID, progress=None) -> dict:
     # (`revise_response_schema`).
     # Whole-block output, so there is no span to anchor — what this records is
     # what the rewrite was held to, which changes as the author pins and unpins.
-    turn.anchor = {"pins": pins, "moved": revision.moved} if pins else None
+    anchor = {"focus": focus} if focus else {}
+    if pins:
+        anchor |= {"pins": pins, "moved": revision.moved}
+    turn.anchor = anchor or None
     turn.status = Status.PENDING
 
     for other in await _pending_on(session, block.id):
@@ -417,6 +430,31 @@ async def _pending_on(session: AsyncSession, block_id: UUID) -> list[Proposal]:
             select(Proposal).where(Proposal.block_id == block_id, Proposal.status == Status.PENDING)
         )
     )
+
+
+_OUTCOMES = {
+    Status.ACCEPTED: "the author accepted it",
+    Status.ACCEPTED_EDITED: "the author accepted it",
+    Status.REJECTED: "the author declined it",
+    Status.SUPERSEDED: "the author asked for another change instead",
+}
+
+
+async def _history_on(
+    session: AsyncSession, block_id: UUID, excluding: UUID, keep: int = 6
+) -> list[tuple[str, str]]:
+    """Earlier remarks on a block and what became of each answer, oldest first."""
+    rows = await session.scalars(
+        select(Proposal)
+        .where(
+            Proposal.block_id == block_id,
+            Proposal.remark.is_not(None),
+            Proposal.id != excluding,
+            Proposal.status.in_(tuple(_OUTCOMES)),
+        )
+        .order_by(Proposal.created_at)
+    )
+    return [(p.remark, _OUTCOMES[p.status]) for p in rows][-keep:]
 
 
 async def _open_turn_on(session: AsyncSession, block_id: UUID) -> Proposal | None:

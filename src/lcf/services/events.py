@@ -205,6 +205,8 @@ def _readable(purpose: str) -> str:
     """The schema name a call was made under, said in English."""
     return {
         "draft_block": "Drafted a block",
+        "revise_block": "Rewrote a block",
+        "discuss_block": "Discussed a block",
         "map_evidence": "Sorted pasted material into sections",
         "prefill_answers": "Proposed answers from your material",
         "judge_mentions": "Judged whether required points are covered",

@@ -102,6 +102,7 @@ async def enqueue(kind: str, document_id: UUID | None = None, scope: str | None 
 _TITLES = {
     "draft_section": "Drafted a section",
     "revise_block": "Rewrote a block",
+    "discuss_block": "Discussed a block",
     "intake": "Sorted pasted material",
     "assess": "Ran the quality gate",
     "parse_source": "Read a file",

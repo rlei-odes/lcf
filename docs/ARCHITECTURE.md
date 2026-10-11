@@ -152,6 +152,7 @@ document ───────────────────────�
    │      └──< block         key, kind
    │             ├──< revision    seq, value, author, proposal_id     (append-only)
    │             ├──< block_pin   quote — a passage a rewrite may not move
+   │             ├──< block_message  role, content, status — the open discussion
    │             └──< proposal    anchor, proposed_value, remark, rationale,
    │                              based_on, confidence, status
    ├──< assessment ──< check_result
@@ -402,7 +403,8 @@ returns one schema. The complete set:
 | `caption_images` | ≤ image budget | caption per image |
 | `prefill_answers` | one section's questions + mapped evidence | proposed answers, or "ask the user" |
 | `draft_section` | one section: spec, style, answers, evidence | block proposals + open gaps + unsupported claims |
-| `revise_block` | one prose block + the author's remark + their pinned passages | the block rewritten + rationale |
+| `revise_block` | one prose block + the author's remark + their pinned passages + earlier remarks | the block rewritten + rationale |
+| `discuss_block` | one prose block + its material + the discussion so far | free text, never content |
 | `evaluate_check` | one LLM check + referenced blocks | pass/fail + reason + confidence |
 | `evaluate_consistency` | one criterion across 2–n sections | pass/fail + reason + evidence refs |
 | `summarize` | one section or the evidence pool | compact standing summary for later context |
@@ -491,30 +493,72 @@ compute, and it catches the specific way few-shot prompting fails.
 A block-level accept or decline settles a draft in one gesture, which is the right shape when the
 draft is right. When it is nearly right, the author has something to say about it — *shorter*, *drop
 that sentence*, *this part is finished, leave it alone* — and a single Accept/Decline cannot carry
-that. So a prose block has a conversation surface beneath it, and the two halves of what an author
-needs are a **pin** and a **remark**.
+that. So a section with prose in it gets a third lane, the **assistant**, beside the text rather
+than under it: the author reads the block and talks about it without scrolling between the two.
+
+Where the screen has room, the middle lane sits in the middle of it, with equal columns either
+side — the rail on the left, the assistant on the right — so opening or closing the assistant
+(a reader preference, remembered across sections) fills or empties a column and moves nothing
+else. Every page with a rail is centred the same way. On narrower screens the lanes pack left
+instead, and the rail folds to its step numbers to leave the assistant its width.
+
+The lane holds one conversation per prose block, and two ways of having it:
+
+| Mode | What the assistant does | What it can change |
+|---|---|---|
+| **Rewrite** (default) | Answers a remark with the whole block rewritten, as a proposal | The block, once the author accepts |
+| **Discuss** | Talks: ideas, questions back, alternative wordings, what is weak or missing | Nothing. A reply is never content |
+
+Rewrite is strict because its output can become content: a schema-constrained call, holding the
+author's pins, under the never-invent rule. Discuss is free because its output cannot: an
+unconstrained chat call, without the never-invent frame — told only to say plainly when a suggestion
+goes beyond the material. The author carries anything worth keeping across by hand, or asks for it
+as a rewrite. Keeping that boundary in the data rather than the prompt is why the two modes store
+differently.
 
 | Concern | Mechanism |
 |---|---|
 | A settled passage | A `block_pin` row holding the text. Rendered into the draft as `<mark>` **by the server** |
 | Asking for a change | A remark, stored as `proposal.remark` before any call, then a `revise_block` job |
+| A remark about one passage | The selected text, stored as `proposal.anchor.focus`; the call changes only that passage |
+| A follow-up remark | The last few remarks and what became of each are part of the call |
+| Reading a rewrite | A word-level diff against the block's current text, or the clean text with pins marked |
 | Holding a pin | `llm/quoting.py` checks every pin against the answer; one retry naming what moved |
 | Accept / reject | Unchanged — HTMX `POST` to `/proposals/{id}/accept`, which appends the revision |
 | Editing by hand | Unchanged — the textarea and its Save button stay exactly as they were |
-| The transcript | The block's `proposal` rows in order: each remark and what came of it |
-| Decision log | Server-rendered collapsed strip; no JS beyond the disclosure toggle |
+| The rewrite transcript | The block's `proposal` rows in order: each remark and what came of it |
+| The discussion | `block_message` rows. A reply is written into its row as it streams, and the lane polls it |
+
+### Why the discussion is its own table
+
+A `proposal` is something that can be accepted; a discussion reply must not be. Storing replies as
+proposals with a status that happens never to be accepted would put invariant I one forgotten
+`WHERE` clause from being broken. A separate table makes it structural: there is no path from a
+`block_message` to a revision.
 
 ### Why this is not a framework
 
-The surface needs exactly one fact the server cannot have: **what the author just selected**. Not
-where it falls, not how to draw it — the server knows the block's text and the pins, so it renders
-the marks itself. `static/pins.js` reads `selectionStart`/`selectionEnd` from a textarea or
-`window.getSelection()` from a rendered draft, puts the text in a hidden field, and stops. That is
-the whole island, and it is why this repo still has no build step.
+The lane needs a few facts the server cannot have: **what the author just selected**, which block
+and mode they are looking at, and anything typed and not yet sent. `static/assistant.js` reads the
+selection from a textarea or a rendered draft, remembers block and mode per section in
+`sessionStorage`, and carries an unsent remark across a redraw. Everything it shows is
+server-rendered: the marks, the diff, the transcript and the markdown of a reply (rendered with
+`html` disabled, because a reply is untrusted text). That is why this repo still has no build step.
 
 Everything else in the UI is plain server-rendered HTML with HTMX swaps. The few behaviours that
 are not worth a round trip — the dirty-form tracker, the scrollspy, the dropdown placement — are
 small vanilla scripts in `static/`, not a framework.
+
+### The page holds still
+
+Every action answers with a region re-rendered from the database, and a region replaced wholesale
+leaves the browser's own scroll anchoring with nothing to hold on to. `static/steady.js` measures
+one element before each swap — the one the action came from, or the first thing on screen — and puts
+the same element back at the same height after it. It finds the element again by id or block key,
+or failing that by what it is: its tag, what it posts to, its name or heading, counted among the
+elements that look the same, so a row added above it does not throw the count. Sticky lanes are
+never measured, since they do not move. Lane actions answer with the lane alone, so asking,
+pinning and discussing never redraw the text being read.
 
 ### A pin is text, not a position
 
@@ -633,7 +677,11 @@ POST  /proposals/{id}/reject
 PATCH /blocks/{id}                        direct user edit → revision
 POST  /documents/{id}/sections/{key}/blocks/{block}/pins     settle a selected passage
 POST  /pins/{id}/remove                   let a rewrite change it again
-POST  /documents/{id}/sections/{key}/blocks/{block}/revise   remark → job (prose only)
+POST  /documents/{id}/sections/{key}/blocks/{block}/revise   remark [+ focus] → job (prose only)
+POST  /documents/{id}/sections/{key}/blocks/{block}/discuss  a message → streamed reply job
+POST  /documents/{id}/sections/{key}/blocks/{block}/discuss/clear
+GET   /documents/{id}/sections/{key}/messages/{message}      one reply, as far as it is written
+GET   /documents/{id}/sections/{key}/assistant                the lane on its own
 POST  /documents/{id}/sections/{key}/complete
 POST  /documents/{id}/assess                                    → job
 GET   /documents/{id}/blame

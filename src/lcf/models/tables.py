@@ -271,6 +271,9 @@ class Block(Base):
     pins: Mapped[list["BlockPin"]] = relationship(
         back_populates="block", cascade="all, delete-orphan", order_by="BlockPin.created_at"
     )
+    messages: Mapped[list["BlockMessage"]] = relationship(
+        back_populates="block", cascade="all, delete-orphan", order_by="BlockMessage.created_at"
+    )
 
 
 class BlockPin(Base):
@@ -291,6 +294,26 @@ class BlockPin(Base):
     created_at: Mapped[datetime] = _created()
 
     block: Mapped[Block] = relationship(back_populates="pins")
+
+
+class BlockMessage(Base):
+    """One message of the open discussion about a block.
+
+    Separate from `Proposal` because nothing here can be accepted: the assistant's
+    side is advice to the author, never a value for the block (DESIGN invariant I
+    holds by construction). `status` is `writing` while a reply streams in.
+    """
+
+    __tablename__ = "block_message"
+
+    id: Mapped[UUID] = _pk()
+    block_id: Mapped[UUID] = mapped_column(ForeignKey("block.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)  # author | assistant
+    content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="done")
+    created_at: Mapped[datetime] = _created()
+
+    block: Mapped[Block] = relationship(back_populates="messages")
 
 
 class Revision(Base):

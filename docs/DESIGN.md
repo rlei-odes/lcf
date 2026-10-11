@@ -439,6 +439,11 @@ author can go round as many times as they like without accepting anything. Nothi
 path changes — the text box and its Save button are still there, and editing by hand is still the
 shortest way to fix a word.
 
+Beside that strict mode, **Discuss** is an open conversation about the block: the assistant may
+suggest, ask back and offer wordings the material does not support yet, because nothing it says
+there can become content. Its replies are kept apart from proposals for exactly that reason
+([ARCHITECTURE §6](ARCHITECTURE.md#6-working-on-a-prose-block)).
+
 The pin is the part worth defending. Without it, every rewrite risks the sentence the author had
 already got right, so the only safe way to ask for a change to one paragraph is to accept the draft
 and edit the rest by hand. A pin makes *"change this, not that"* a thing the author can say, and

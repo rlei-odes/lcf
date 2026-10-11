@@ -7,7 +7,7 @@
    both the questions card and the drafting hint below speak about them. #}
 {% set unconfirmed = questions|selectattr('proposed')|list %}
 
-<div class="layout" id="workspace">
+<div class="layout{{ ' three' if prose }}" id="workspace">
 
   {# The orientation lane. It answers three questions without being read closely:
      which document is this, how far through am I, and what is the next thing
@@ -136,7 +136,7 @@
     {% endif %}
 
     {% if questions %}
-    <div class="card">
+    <div class="card" id="questions">
       <h3>Questions{% if state.missing_answers %} · {{ state.missing_answers|length }} open{% endif %}</h3>
       <p class="lead">
         Answer these and the assistant can draft the section for you. What you
@@ -239,7 +239,7 @@
       {% endif %}
     </div>
 
-    <div class="card">
+    <div class="card" id="blocks">
       <div class="block-head">
         <h3 style="margin:0">What gets written</h3>
         <form hx-post="/documents/{{ document.id }}/sections/{{ section.key }}/draft"
@@ -269,10 +269,10 @@
       </p>
 
       {% for b in blocks %}
-      {# A prose block renders its proposals inside the conversation panel below
-         the text, where the next remark is typed. Every other kind keeps them
-         above it, which is where its only decision is. #}
-      <div class="block">
+      {# A prose block's proposals live in the assistant lane, where the next
+         remark is typed. Every other kind keeps them above it, which is where
+         its only decision is. #}
+      <div class="block" data-block="{{ b.block.key }}">
         {% if b.block.kind != 'prose' %}
           {% for p in b.proposals %}{% include "partials/proposal_card.html" %}{% endfor %}
         {% endif %}
@@ -283,6 +283,12 @@
           <div class="block-head">
             <label>{{ b.block.label }}</label>
             <span class="kind">{{ b.block.kind }}</span>
+            {% if b.block.kind == 'prose' %}
+            <button type="button" class="tool ask{{ ' waiting' if b.proposals }}" data-focus-to="{{ b.block.key }}"
+                    title="Work on this block with the assistant">
+              {{- '✦ A new version is waiting' if b.proposals else '✦ Assistant' -}}
+            </button>
+            {% endif %}
           </div>
           {% if b.block.hint %}<div class="hint">{{ b.block.hint }}</div>{% endif %}
           {% include "partials/block_" + b.block.kind|string + ".html" ignore missing %}
@@ -300,19 +306,14 @@
           </div>
         </form>
 
-        {% if b.block.kind == 'prose' %}
-          {% include "partials/block_revise.html" %}
-        {% endif %}
       </div>
       {% endfor %}
     </div>
 
     {% if decided %}
-    <div class="card">
-      <details>
-        <summary style="cursor:pointer;color:var(--muted);font-size:13px">
-          Decisions ({{ decided|length }})
-        </summary>
+    <div class="card" id="decisions">
+      <details class="disclose">
+        <summary>Decisions <span class="count">{{ decided|length }}</span></summary>
         <ul class="plain" style="margin-top:12px">
           {% for block_key, p in decided %}
           <li>
@@ -333,7 +334,7 @@
     </div>
     {% endif %}
 
-    <div class="card">
+    <div class="card" id="checks">
       <h3>Checks</h3>
       {% if state.results %}
         {% for r in state.results %}
@@ -386,4 +387,8 @@
       </div>
     </div>
   </div>
+
+  {% if prose %}
+    {% include "partials/assistant.html" %}
+  {% endif %}
 </div>
