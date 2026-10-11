@@ -258,7 +258,7 @@
             <label>What shape it takes</label>
             <select name="kind">
               {% for value, label, blurb in builder.BLOCK_KINDS %}
-              <option value="{{ value }}" {% if b.get('kind') == value %}selected{% endif %}>{{ label }} - {{ blurb }}</option>
+              <option value="{{ value }}" title="{{ blurb }}" {% if b.get('kind') == value %}selected{% endif %}>{{ label }}</option>
               {% endfor %}
             </select>
             {{ m.problems(review, bat + ['kind']) }}
@@ -274,7 +274,9 @@
         </div>
 
         <label class="option">
-          <input type="checkbox" name="required" {% if b.get('required', true) %}checked{% endif %}>
+          <input type="checkbox" name="required"
+                 {% if (sec.requirements or []) | selectattr('kind', 'equalto', 'present')
+                       | selectattr('block', 'equalto', b.key) | list %}checked{% endif %}>
           <span>This has to be filled in before the section can be finished</span>
         </label>
         {% if b.get('kind') == 'image_ref' %}
@@ -319,7 +321,7 @@
            aria-label="A short name for the new block">
     <select name="kind" aria-label="What shape it takes">
       {% for value, label, blurb in builder.BLOCK_KINDS %}
-      <option value="{{ value }}">{{ label }}</option>
+      <option value="{{ value }}" title="{{ blurb }}">{{ label }}</option>
       {% endfor %}
     </select>
     <button type="submit">Add</button>
@@ -350,7 +352,7 @@
   <details class="item check-item {{ r.get('severity', 'blocker') }}"
            {% if opened == 'check:' ~ r.id %}open{% endif %}>
     <summary>
-      <span class="mark">{{ '!' if r.get('severity', 'blocker') == 'blocker' else '·' }}</span>
+      <span class="mark" title="{{ 'Blocker: cannot be exported without writing down why' if r.get('severity', 'blocker') == 'blocker' else 'Warning: flagged to the author, but not blocking' }}">{{ '!' if r.get('severity', 'blocker') == 'blocker' else '·' }}</span>
       <span class="item-name">{{ sentence or builder.CHECK_LABELS.get(r.get('kind'), 'Unfinished check') }}</span>
       <span class="item-meta">
         {{ (drafts.blocks_of(spec, sec.key) | selectattr('key', 'equalto', r.get('block')) | map(attribute='label') | first) or r.get('block') }}

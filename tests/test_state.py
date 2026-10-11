@@ -134,5 +134,7 @@ def test_a_section_that_can_be_filled_in_can_be_finished():
     empty = DocumentView(parsed, {}, {})
     assert not section_state(empty, "business_requirements").can_complete
 
-    filled = DocumentView(parsed, {"business_requirements": {"text": "Auditable."}}, {})
+    filled = DocumentView(
+        parsed, {"business_requirements": {"business_requirements": "Auditable."}}, {}
+    )
     assert section_state(filled, "business_requirements").can_complete

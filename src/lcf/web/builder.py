@@ -25,11 +25,11 @@ from lcf.services import drafts
 # --- what the rule builder reads ---------------------------------------------
 
 BLOCK_KINDS: list[tuple[str, str, str]] = [
-    ("prose", "Paragraphs", "Written text: the usual one."),
-    ("list", "A list of points", "Short items, one per line."),
-    ("table", "A table", "Rows and columns you define."),
-    ("keyvalue", "A set of labelled fields", "Like a form header: a label and a value."),
-    ("image_ref", "Pictures", "References to images the author supplies."),
+    ("prose", "Paragraphs", "Running text."),
+    ("list", "List", "Short items, one per line."),
+    ("table", "Table", "Rows and columns you define."),
+    ("keyvalue", "Labelled fields", "A label and a value, like a form header."),
+    ("image_ref", "Pictures", "Images the author supplies."),
 ]
 
 QUESTION_TYPES: list[tuple[str, str]] = [

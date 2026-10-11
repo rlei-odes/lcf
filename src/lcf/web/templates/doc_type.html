@@ -137,7 +137,7 @@
   </p>
   {% for r in section.requirements %}
   <div class="check {{ r.severity }}">
-    <span class="mark">{{ '!' if r.severity|string == 'blocker' else '·' }}</span>
+    <span class="mark" title="{{ 'Blocker: cannot be exported without writing down why' if r.severity|string == 'blocker' else 'Warning: flagged to the author, but not blocking' }}">{{ '!' if r.severity|string == 'blocker' else '·' }}</span>
     <span>
       {{ r|describe }}
       <span class="where">
@@ -161,7 +161,7 @@
   </p>
   {% for c in spec.quality_criteria %}
   <div class="check {{ c.severity }}">
-    <span class="mark">{{ '!' if c.severity|string == 'blocker' else '·' }}</span>
+    <span class="mark" title="{{ 'Blocker: cannot be exported without writing down why' if c.severity|string == 'blocker' else 'Warning: flagged to the author, but not blocking' }}">{{ '!' if c.severity|string == 'blocker' else '·' }}</span>
     <span>
       <strong>{{ c.title }}</strong> - {{ c|describe_criterion }}
       <span class="where">
