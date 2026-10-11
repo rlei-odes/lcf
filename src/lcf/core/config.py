@@ -82,7 +82,7 @@ class Settings(BaseSettings):
     # call per part keeps every call in the range where sorting is thorough, and
     # gives each its own share of the passage ceiling. Beyond `intake_max_parts`
     # the rest is not read, and the author is told.
-    intake_chunk_chars: int = 6000
+    intake_chunk_chars: int = 12000
     intake_chunk_tolerance: int = 15
     intake_max_parts: int = 20
 

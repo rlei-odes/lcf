@@ -458,12 +458,16 @@ token count at call time:
 1. **Drafting and rewriting** get the section spec, resolved style, confirmed answers, the passages
    filed under that section, and the sections it depends on — never the whole paste.
 2. **Intake** reads a paste in parts (`ingest/split.py`): about `LCF_INTAKE_CHUNK_CHARS` characters
-   each (6,000 by default), cut within ± `LCF_INTAKE_CHUNK_TOLERANCE` percent at the best boundary
+   each (12,000 by default), cut within ± `LCF_INTAKE_CHUNK_TOLERANCE` percent at the best boundary
    the window offers — a blank line, then a line break, then a sentence end — and never just after a
    heading or a line ending in a colon. Each part is sorted by its own call with its own passage
    ceiling, and the results are merged with duplicates dropped. A section's answers are proposed
    from its passages and the parts they came from, at most three. Both settings are on the setup
-   page.
+   page. The default is measured, not a context limit — gemma-4-26b serves 131k tokens. With the
+   4D notes inside 20,000 characters of unrelated text, parts of 6,000 and 12,000 filed the same
+   15–16 passages across all five sections; the whole text in one call filed 12 and missed a
+   section. A model asked to point out every relevant passage grows less thorough as the text
+   grows, well inside its window.
 3. **Nothing is cut off silently.** A part that reached its passage ceiling, and text past
    `LCF_INTAKE_MAX_PARTS` parts, are reported on the intake card.
 4. **Discussing a block** sends the last 16 messages; the evidence desk works from chunks by
