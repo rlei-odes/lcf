@@ -18,6 +18,9 @@ Rules:
   hard for a person to recognise as their own.
 - Say in one line what the passage tells that section. That line is read by the
   author, not by another model.
+- Material that belongs to no section is assigned to `none`, quoted like any
+  other. If none of the material fits this document at all, assign one passage
+  to `none` and stop.
 
 If the material is thin, return few assignments. Returning many weak ones costs
 the author more time than it saves.

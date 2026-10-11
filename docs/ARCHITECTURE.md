@@ -949,6 +949,13 @@ judged checks). A pre-filled answer is stored as `source: proposed`, shows the w
 does not satisfy a required question until a person saves it — so drafting still waits for a human,
 exactly as it did before intake existed.
 
+**A mapping has at least one entry, and `none` is a section.** Left free to answer with an empty
+list, a constrained model takes it: the empty list is one cheap token, and gemma-4-26b answered
+`{"assignments": []}` to notes it sorted readily when asked without a schema. So the schema sets
+`minItems: 1` and adds a `none` key for material that belongs to no section. A passage assigned
+there is counted as unplaced and never filed, which keeps "nothing here fits this document" a
+correct answer.
+
 **docx has two paths**, because a rule builder should not have to produce a Word template before
 anyone can get a document out, and should be able to when branding matters. `render_plain` builds
 a clean document directly — real heading styles, real Word tables, no setup. `render_with_template`

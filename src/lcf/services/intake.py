@@ -50,6 +50,7 @@ class SectionIntake:
 class IntakeOutcome:
     sections: list[SectionIntake]
     discarded: int = 0
+    unplaced: int = 0
     errors: list[str] = field(default_factory=list)
 
     @property
@@ -70,6 +71,7 @@ class IntakeOutcome:
             ],
             "placed": self.placed,
             "discarded": self.discarded,
+            "unplaced": self.unplaced,
             "errors": self.errors,
         }
 
@@ -131,6 +133,7 @@ async def distribute(
             for key, quotes in by_section.items()
         ],
         discarded=mapping.discarded,
+        unplaced=mapping.unplaced,
     )
     # Ordered as the spec declares, not as the model happened to answer.
     order = {key: i for i, key in enumerate(spec.section_keys)}

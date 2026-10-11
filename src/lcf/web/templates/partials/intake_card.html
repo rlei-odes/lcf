@@ -29,6 +29,13 @@
   </div>
   {% endfor %}
 
+  {% if outcome.unplaced %}
+  <p class="hint" style="margin-top:14px">
+    {{ count(outcome.unplaced, 'passage') }} {{ 'belongs' if outcome.unplaced == 1 else 'belong' }}
+    to no section of this document, and {{ 'was' if outcome.unplaced == 1 else 'were' }} left out.
+  </p>
+  {% endif %}
+
   {% if outcome.discarded %}
   <div class="notice" style="margin-top:14px">
     <strong>{{ count(outcome.discarded, 'fragment') }} discarded.</strong>

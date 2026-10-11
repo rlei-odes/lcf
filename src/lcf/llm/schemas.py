@@ -152,6 +152,14 @@ def mentions_schema(must_mention: list[str]) -> dict[str, Any]:
     }
 
 
+def nowhere_key(section_keys: list[str]) -> str:
+    """The section a passage is assigned to when it belongs to none of them."""
+    key = "none"
+    while key in section_keys:
+        key = f"_{key}"
+    return key
+
+
 def mapping_schema(section_keys: list[str], titles: dict[str, str]) -> dict[str, Any]:
     """Where the pasted material belongs.
 
@@ -161,7 +169,11 @@ def mapping_schema(section_keys: list[str], titles: dict[str, str]) -> dict[str,
     into what they wrote, never a rewrite of it, which is why intake can run
     without anyone approving each fragment.
     """
-    described = "\n".join(f"{key}: {titles.get(key, key)}" for key in section_keys)
+    nowhere = nowhere_key(section_keys)
+    described = "\n".join(
+        [f"{nowhere}: belongs to no section of this document"]
+        + [f"{key}: {titles.get(key, key)}" for key in section_keys]
+    )
     return {
         "type": "object",
         "properties": {
@@ -172,7 +184,7 @@ def mapping_schema(section_keys: list[str], titles: dict[str, str]) -> dict[str,
                     "properties": {
                         "section": {
                             "type": "string",
-                            "enum": list(section_keys),
+                            "enum": [nowhere, *section_keys],
                             "description": f"One of:\n{described}",
                         },
                         "quote": {
@@ -190,6 +202,12 @@ def mapping_schema(section_keys: list[str], titles: dict[str, str]) -> dict[str,
                     "required": ["section", "quote", "why"],
                     "additionalProperties": False,
                 },
+                # At least one entry, with `nowhere` as the honest way to give it.
+                # Without the floor the empty list is a single cheap token, and a
+                # constrained model takes it for material it sorts readily when
+                # asked without a schema — measured on gemma-4-26b, 0 placements
+                # against 15.
+                "minItems": 1,
                 "maxItems": min(3 * len(section_keys), 24) or 1,
             },
             "confidence": {"type": "number"},

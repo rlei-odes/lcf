@@ -18,6 +18,7 @@ from lcf.engine.view import DocumentView
 from lcf.llm import calls
 from lcf.llm.calls import Assignment, Mapping, Prefilled
 from lcf.llm.provider import Completion, LLMUnavailable
+from lcf.llm.schemas import mapping_schema, nowhere_key
 from lcf.models.tables import DocType, DocTypeVersion, Document, EvidenceItem, Job
 from lcf.services import doc_types, documents, intake, jobs
 
@@ -110,6 +111,32 @@ async def test_a_section_outside_the_spec_is_refused(spec_4d, stub_model):
 
     assert mapping.assignments == []
     assert mapping.discarded == 1
+
+
+async def test_material_that_belongs_nowhere_is_counted_not_filed(spec_4d, stub_model):
+    stub_model(
+        {
+            "assignments": [
+                {"section": "none", "quote": "Anna Brandt is leading", "why": "unrelated"}
+            ],
+            "confidence": 0.9,
+        }
+    )
+
+    mapping = await calls.map_evidence_to_sections(spec_4d, PASTE)
+
+    assert mapping.assignments == []
+    assert (mapping.unplaced, mapping.discarded) == (1, 0)
+
+
+def test_the_mapping_cannot_answer_with_an_empty_list(spec_4d):
+    """The empty list is the token a constrained model takes for material it can
+    sort; the floor removes it, and `none` is the honest way to say nothing fits."""
+    schema = mapping_schema(spec_4d.section_keys, {})
+    assignments = schema["properties"]["assignments"]
+    assert assignments["minItems"] == 1
+    assert assignments["items"]["properties"]["section"]["enum"][0] == "none"
+    assert nowhere_key(["none", "header"]) == "_none"
 
 
 async def test_the_mapping_call_is_told_what_each_section_is_for(spec_4d, stub_model):

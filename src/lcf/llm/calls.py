@@ -31,6 +31,7 @@ from lcf.llm.schemas import (
     chunk_answer_schema,
     draft_response_schema,
     mapping_schema,
+    nowhere_key,
     prefill_schema,
     revise_response_schema,
 )
@@ -360,6 +361,9 @@ class Mapping:
     # rather than silently dropped: a mapping that invents half its quotes is a
     # fact about the model the author should hear about.
     discarded: int = 0
+    # Passages the model placed nowhere, on purpose: material that belongs to no
+    # section of this document.
+    unplaced: int = 0
 
 
 async def map_evidence_to_sections(spec: DocTypeSpec, material: str) -> Mapping:
@@ -389,10 +393,14 @@ async def map_evidence_to_sections(spec: DocTypeSpec, material: str) -> Mapping:
     data = completion.data
 
     assignments: list[Assignment] = []
-    discarded = 0
+    discarded = unplaced = 0
+    nowhere = nowhere_key(keys)
     for raw in data.get("assignments", []):
         section_key = str(raw.get("section") or "")
         quote = str(raw.get("quote") or "").strip()
+        if section_key == nowhere:
+            unplaced += 1
+            continue
         if section_key not in keys or not quote:
             discarded += 1
             continue
@@ -401,7 +409,7 @@ async def map_evidence_to_sections(spec: DocTypeSpec, material: str) -> Mapping:
             continue
         assignments.append(Assignment(section_key, quote, str(raw.get("why") or "").strip()))
 
-    return Mapping(assignments, float(data.get("confidence") or 0.0), discarded)
+    return Mapping(assignments, float(data.get("confidence") or 0.0), discarded, unplaced)
 
 
 @dataclass

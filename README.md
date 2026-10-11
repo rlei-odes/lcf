@@ -162,7 +162,7 @@ endpoint.
 
 ![The setup page guides through the necessary steps.](docs/lcf_screenshot_setup.png)
 
-*The setup page. Guides the administrator through the setup flow*
+*The setup page. Guides the administrator through the setup flow.*
 
 PostgreSQL is the deployment this is built for and keeps the better of anything the two dialects do
 differently; SQLite takes the lesser. The whole of that difference today is the resolution of one
