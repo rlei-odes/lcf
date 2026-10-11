@@ -122,6 +122,32 @@ def chat_markdown(text: str) -> Markup:
     return Markup(_markdown.render(text or ""))
 
 
+def answer_text(value: Any) -> str:
+    """An answer as the form shows it: Yes/No, and a choice without underscores."""
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    text = "" if value is None else str(value)
+    return text.replace("_", " ") if re.fullmatch(r"[a-z0-9_]+", text) else text
+
+
+def marked_spans(text: str, spans: list[tuple[int, int, int]]) -> Markup:
+    """Text with the given spans marked and numbered by the section they went to."""
+    out: list[Markup] = []
+    cursor = 0
+    for start, end, n in sorted(spans):
+        if start < cursor:
+            continue
+        out.append(escape(text[cursor:start]))
+        out.append(
+            Markup('<mark data-n="{}" title="Filed under section {}">{}</mark>').format(
+                n, n, text[start:end]
+            )
+        )
+        cursor = end
+    out.append(escape(text[cursor:]))
+    return Markup("").join(out)
+
+
 def _merged(spans: list[tuple[int, int]]) -> list[tuple[int, int]]:
     """Overlapping pins become one mark, so nesting cannot produce broken HTML."""
     merged: list[tuple[int, int]] = []

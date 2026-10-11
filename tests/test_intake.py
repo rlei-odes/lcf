@@ -491,3 +491,71 @@ def test_an_unconfirmed_answer_keeps_the_section_needing_input():
 
     assert not state.can_draft
     assert state.missing_answers == ["q1"]
+
+
+async def _distributed(published, monkeypatch):
+    async def fake_mapping(spec, material):
+        return Mapping(
+            assignments=[
+                Assignment("d1_team", "Anna Brandt is leading this one for quality", "the lead"),
+                Assignment("d2_problem", "cracked housings on order 4471", "the defect"),
+            ],
+            confidence=0.9,
+        )
+
+    async def fake_prefill(section, material, whole=None):
+        if section.key != "d1_team":
+            return []
+        return [Prefilled("members_raw", "Anna Brandt — quality", "Anna Brandt is leading")]
+
+    monkeypatch.setattr(intake, "map_evidence_to_sections", fake_mapping)
+    monkeypatch.setattr(intake, "prefill_answers", fake_prefill)
+    async with session() as s:
+        document = await documents.create(s, published.id, "Intake test")
+        item = await intake.record(s, document.id, PASTE)
+        await intake.distribute(s, document.id, item.id)
+        return document.id
+
+
+async def test_a_paste_says_what_was_filed_from_it_and_what_it_answered(published, monkeypatch):
+    document_id = await _distributed(published, monkeypatch)
+    async with session() as s:
+        [digest] = await intake.digests(s, document_id)
+
+    assert [(f.key, len(f.passages)) for f in digest.sections] == [
+        ("d1_team", 1),
+        ("d2_problem", 1),
+    ]
+    [answer] = digest.sections[0].answers
+    assert (answer.value, answer.confirmed) == ("Anna Brandt — quality", False)
+    marked = [PASTE[a:b] for a, b, _ in digest.spans]
+    assert "cracked housings on order 4471" in marked
+
+
+async def test_a_passage_says_what_it_answered_and_can_be_taken_out(published, monkeypatch):
+    document_id = await _distributed(published, monkeypatch)
+    async with session() as s:
+        [here] = await intake.filed_here(s, document_id, "d1_team")
+        assert here.link.why == "the lead"
+        assert here.answered and "team" in here.answered[0].lower()
+        await intake.unlink(s, here.link.id)
+    async with session() as s:
+        view = await documents.view(s, document_id)
+    assert "d1_team" not in view.evidence, "drafting no longer reads it"
+
+
+async def test_confirming_an_answer_unchanged_keeps_where_it_came_from(published, monkeypatch):
+    document_id = await _distributed(published, monkeypatch)
+    async with session() as s:
+        await documents.set_answers(
+            s, document_id, "d1_team", {"members_raw": "Anna Brandt — quality"}
+        )
+    async with session() as s:
+        [digest] = await intake.digests(s, document_id)
+    assert digest.sections[0].answers[0].confirmed is True
+
+    async with session() as s:
+        await documents.set_answers(s, document_id, "d1_team", {"members_raw": "Someone else"})
+    async with session() as s:
+        [digest] = await intake.digests(s, document_id)
+    assert digest.sections[0].answers == [], "an answer the author rewrote is theirs"

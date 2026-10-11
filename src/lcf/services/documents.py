@@ -224,6 +224,11 @@ async def set_answers(
                 Answer(section_id=section.id, question_key=key, value=stored, source=source)
             )
         else:
+            # Confirmed unchanged, an answer keeps the words it was read from, so
+            # where it came from is still answerable after it is accepted.
+            kept = (existing.value or {}).get("quote")
+            if kept and "quote" not in stored and existing.value.get("v") == value:
+                stored["quote"] = kept
             existing.value = stored
             existing.source = source
     await session.flush()

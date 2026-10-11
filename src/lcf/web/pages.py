@@ -21,7 +21,7 @@ from lcf.ingest import commands as ingest_commands
 from lcf.services import drafts, events
 from lcf.spec.describe import describe_criterion, describe_requirement, scope_of
 from lcf.web import builder
-from lcf.web.presenters import chat_markdown, marked
+from lcf.web.presenters import answer_text, chat_markdown, marked, marked_spans
 
 HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=str(HERE / "templates"))
@@ -45,6 +45,8 @@ def _localtime(value):
 templates.env.filters["localtime"] = _localtime
 templates.env.filters["event_label"] = events.label
 templates.env.filters["chat"] = chat_markdown
+templates.env.globals["marked_spans"] = marked_spans
+templates.env.filters["answer"] = answer_text
 
 
 # The three things this application is for. The app bar names them, and every

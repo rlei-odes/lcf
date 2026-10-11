@@ -484,7 +484,7 @@ async def test_the_intake_panel_reports_where_the_material_landed(published_4d, 
 
     assert response.status_code == 200
     assert "Placed 1 passage" in response.text
-    assert "1 answer proposed" in response.text
+    assert "What went where is under" in response.text
     assert "2 fragments discarded" in response.text, "quotes it could not find, said out loud"
     assert "Nothing was written into the document" in response.text
 
@@ -513,8 +513,9 @@ async def test_a_section_shows_the_material_filed_under_it(published_4d, client,
 
     page_html = client.get(f"{location}/sections/d2_problem").text
 
-    assert "What you supplied about this" in page_html
+    assert "From your material" in page_html
     assert "cracked housings on order 4471" in page_html
+    assert "Why here" in page_html and "From your paste of" in page_html
     assert "from your notes" in page_html, "the answer is marked as unconfirmed"
     assert "Read from:" in page_html, "with the words it was read from"
     assert "Confirm the answers filled in from your" in page_html, "drafting still waits"

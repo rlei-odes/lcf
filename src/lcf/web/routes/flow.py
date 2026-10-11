@@ -61,7 +61,7 @@ async def document_overview(request: Request, document_id: UUID):
         # must not cost a dozen model calls.
         report = await assessment.report_for(s, document_id)
         past_exports = await exports.history(s, document_id)
-        pasted = await intake.items(s, document_id)
+        pasted = await intake.digests(s, document_id)
     running = await jobs.latest_for(document_id, "assess")
     running_intake = await jobs.latest_for(document_id, "intake")
     nav = document_nav(spec, view)
@@ -134,7 +134,7 @@ async def intake_panel(request: Request, document_id: UUID, job: UUID | None = N
                     "errors": [finished.error]
                 }
     async with session() as s:
-        pasted = await intake.items(s, document_id)
+        pasted = await intake.digests(s, document_id)
     return page(
         request,
         "partials/intake_card.html",
@@ -342,6 +342,16 @@ async def pin_passage(
     return await _lane(request, document_id, key)
 
 
+@router.post("/evidence-links/{link_id}/remove", response_class=HTMLResponse)
+async def unlink_passage(
+    request: Request, link_id: UUID, document_id: str = Form(...), section: str = Form(...)
+):
+    """A passage filed under the wrong section. Drafting stops reading it there."""
+    async with session() as s:
+        await intake.unlink(s, link_id)
+    return await _panel(request, UUID(document_id), section)
+
+
 @router.post("/pins/{pin_id}/remove", response_class=HTMLResponse)
 async def unpin_passage(
     request: Request, pin_id: UUID, document_id: str = Form(...), section: str = Form(...)
@@ -519,7 +529,7 @@ async def _panel_context(
         view = await documents.view(s, document_id)
         pending = await proposals.pending_for(s, document_id, key)
         decided = await proposals.decided_for(s, document_id, key)
-        evidence = await intake.links_for(s, document_id, key)
+        evidence = await intake.filed_here(s, document_id, key)
         pins = await proposals.pins_for(s, document_id, key)
         turns = await proposals.turns_for(s, document_id, key)
         messages = await discussion.messages_for(s, document_id, key)

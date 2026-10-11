@@ -16,6 +16,7 @@ safe to run automatically on a paste.
 """
 
 import asyncio
+import re
 from dataclasses import dataclass, field
 from uuid import UUID
 
@@ -28,6 +29,7 @@ from lcf.core.db import session as db_session
 from lcf.core.text import count
 from lcf.llm.calls import map_evidence_to_sections, prefill_answers
 from lcf.llm.provider import LLMMalformed, LLMUnavailable
+from lcf.llm.quoting import quoted_from
 from lcf.models.tables import Answer, EvidenceItem, EvidenceLink, Section
 from lcf.services import jobs
 from lcf.services.doc_types import NotFound
@@ -256,3 +258,163 @@ async def links_for(
             .order_by(EvidenceLink.created_at)
         )
     )
+
+
+# --- what came of a paste, for the author to read ------------------------------
+
+
+@dataclass
+class FiledAnswer:
+    question: str
+    value: object
+    confirmed: bool
+
+
+@dataclass
+class FiledSection:
+    key: str
+    title: str
+    n: int
+    passages: list[EvidenceLink] = field(default_factory=list)
+    answers: list[FiledAnswer] = field(default_factory=list)
+
+
+@dataclass
+class PasteDigest:
+    item: EvidenceItem
+    sections: list[FiledSection]
+    # (start, end, section number) over the item's text, for marking what was used.
+    spans: list[tuple[int, int, int]] = field(default_factory=list)
+
+    @property
+    def passages(self) -> int:
+        return sum(len(s.passages) for s in self.sections)
+
+    @property
+    def answers(self) -> int:
+        return sum(len(s.answers) for s in self.sections)
+
+
+def _span(quote: str, text: str) -> tuple[int, int] | None:
+    """Where a quote sits in the paste, tolerating reflowed whitespace and the
+    `>` of a quoted mail, which a quote drops and the paste keeps."""
+    words = [re.escape(w) for w in quote.split() if w != ">"]
+    if not words:
+        return None
+    found = re.search(r"[\s>]+".join(words), text, re.IGNORECASE)
+    return (found.start(), found.end()) if found else None
+
+
+async def digests(session: AsyncSession, document_id: UUID) -> list[PasteDigest]:
+    """Every paste, newest first, with what was filed from it and what it answered.
+
+    An answer is attributed to the paste its quote comes from, and only while it
+    still carries that quote: one the author retyped is theirs, not the paste's.
+    """
+    _, spec = await load(session, document_id)
+    order = {key: i for i, key in enumerate(spec.section_keys)}
+    pasted = await items(session, document_id)
+    links = list(
+        await session.scalars(
+            select(EvidenceLink)
+            .join(EvidenceItem, EvidenceLink.evidence_id == EvidenceItem.id)
+            .where(EvidenceItem.document_id == document_id)
+            .order_by(EvidenceLink.created_at)
+        )
+    )
+    answer_rows = (
+        await session.execute(
+            select(Section.key, Answer)
+            .join(Answer, Answer.section_id == Section.id)
+            .where(Section.document_id == document_id)
+        )
+    ).all()
+
+    claimed: set[UUID] = set()
+    out: list[PasteDigest] = []
+    for item in pasted:
+        text = item.text or ""
+        by_key: dict[str, FiledSection] = {}
+
+        def section(key: str, by_key: dict[str, FiledSection] = by_key) -> FiledSection:
+            if key not in by_key:
+                spec_section = spec.section(key)
+                by_key[key] = FiledSection(
+                    key, spec_section.title if spec_section else key, order.get(key, 99) + 1
+                )
+            return by_key[key]
+
+        for link in links:
+            if link.evidence_id == item.id:
+                section(link.section_key).passages.append(link)
+        for key, answer in answer_rows:
+            quote = (answer.value or {}).get("quote")
+            if not quote or answer.id in claimed or not quoted_from(quote, text):
+                continue
+            claimed.add(answer.id)
+            spec_section = spec.section(key)
+            question = spec_section.question(answer.question_key) if spec_section else None
+            section(key).answers.append(
+                FiledAnswer(
+                    question.prompt if question else answer.question_key,
+                    answer.value.get("v"),
+                    answer.source != ANSWER_PROPOSED,
+                )
+            )
+        filed = sorted(by_key.values(), key=lambda s: s.n)
+        spans = []
+        for s in filed:
+            for link in s.passages:
+                found = _span(link.quote, text)
+                if found:
+                    spans.append((*found, s.n))
+        out.append(PasteDigest(item, filed, sorted(spans)))
+    return out
+
+
+@dataclass
+class FiledHere:
+    link: EvidenceLink
+    pasted_at: object
+    answered: list[str]
+
+
+async def filed_here(session: AsyncSession, document_id: UUID, section_key: str) -> list[FiledHere]:
+    """The passages under one section, with where they came from and what the
+    section's proposed or confirmed answers were read from them."""
+    _, spec = await load(session, document_id)
+    spec_section = spec.section(section_key)
+    rows = (
+        await session.execute(
+            select(EvidenceLink, EvidenceItem.created_at)
+            .join(EvidenceItem, EvidenceLink.evidence_id == EvidenceItem.id)
+            .where(EvidenceItem.document_id == document_id)
+            .where(EvidenceLink.section_key == section_key)
+            .order_by(EvidenceLink.created_at)
+        )
+    ).all()
+    answers = list(
+        await session.scalars(
+            select(Answer)
+            .join(Section, Answer.section_id == Section.id)
+            .where(Section.document_id == document_id, Section.key == section_key)
+        )
+    )
+    out = []
+    for link, pasted_at in rows:
+        answered = []
+        for answer in answers:
+            quote = (answer.value or {}).get("quote")
+            if quote and quoted_from(quote, link.quote):
+                question = spec_section.question(answer.question_key) if spec_section else None
+                answered.append(question.prompt if question else answer.question_key)
+        out.append(FiledHere(link, pasted_at, answered))
+    return out
+
+
+async def unlink(session: AsyncSession, link_id: UUID) -> None:
+    """Take a passage out of a section. The paste itself is untouched."""
+    row = await session.get(EvidenceLink, link_id)
+    if row is not None:
+        await session.delete(row)
+        await session.flush()

@@ -120,17 +120,34 @@
     </div>
 
     {% if evidence %}
-    <div class="card">
-      <h3>What you supplied about this</h3>
+    <div class="card" id="supplied">
+      <h3>From your material · {{ count(evidence|length, 'passage') }}</h3>
       <p class="lead">
-        Your own words, filed here from what you pasted. The draft is written from
-        these, nothing else about this case reaches the assistant.
+        Passages from what you pasted, filed under this section when the assistant
+        sorted your material. They are your own words, unchanged. Drafting works
+        from these and your answers, and from nothing else you pasted.
       </p>
       {% for e in evidence %}
-      <blockquote class="quote">
-        {{ e.quote }}
-        {% if e.why %}<span class="where">{{ e.why }}</span>{% endif %}
-      </blockquote>
+      <div class="filed-here">
+        <blockquote class="quote">{{ e.link.quote }}</blockquote>
+        <div class="filed-meta">
+          {% if e.link.why %}<p class="filed-why"><span>Why here</span> {{ e.link.why }}</p>{% endif %}
+          {% if e.answered %}
+          <p class="filed-why"><span>Answered</span> {{ e.answered|join(' · ') }}</p>
+          {% endif %}
+          <p class="filed-source">
+            From your paste of {{ e.pasted_at|localtime }}
+            <a href="/documents/{{ document.id }}#intake">see it all</a>
+          </p>
+        </div>
+        <form hx-post="/evidence-links/{{ e.link.id }}/remove" hx-target="#workspace"
+              hx-swap="outerHTML" class="inline-form filed-remove">
+          <input type="hidden" name="document_id" value="{{ document.id }}">
+          <input type="hidden" name="section" value="{{ section.key }}">
+          <button type="submit" class="tool" title="Drafting stops reading it here. Your paste is kept.">
+            Not about this section</button>
+        </form>
+      </div>
       {% endfor %}
     </div>
     {% endif %}

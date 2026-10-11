@@ -11,26 +11,14 @@
   <p class="lead">
     {%- if outcome.sections -%}
       Placed {{ count(outcome.placed, 'passage') }} across {{ count(outcome.sections|length, 'section') }}.
+      What went where is under <em>What you pasted</em> below.
     {%- else -%}
       Nothing in that text matched a section of this document.
     {%- endif -%}
   </p>
 
-  {% for s in outcome.sections %}
-  <div class="check pass">
-    <span class="mark">·</span>
-    <span>
-      <a href="/documents/{{ document_id }}/sections/{{ s.key }}">{{ s.title }}</a>
-      <span class="where">
-        {{ count(s.passages|length, 'passage') }}{% if s.prefilled %},
-        {{ count(s.prefilled|length, 'answer') }} proposed{% endif %}
-      </span>
-    </span>
-  </div>
-  {% endfor %}
-
   {% if outcome.unplaced %}
-  <p class="hint" style="margin-top:14px">
+  <p class="hint">
     {{ count(outcome.unplaced, 'passage') }} {{ 'belongs' if outcome.unplaced == 1 else 'belong' }}
     to no section of this document, and {{ 'was' if outcome.unplaced == 1 else 'were' }} left out.
   </p>
@@ -51,8 +39,8 @@
   {% endfor %}
 
   <p class="hint" style="margin-top:14px">
-    Nothing was written into the document. Open a section to see what was filed
-    there, and confirm the proposed answers before drafting.
+    Nothing was written into the document. Confirm the proposed answers in each
+    section before drafting.
   </p>
   {% else %}
   <p class="lead">
@@ -94,19 +82,60 @@
   </form>
 
   {% if items %}
-  <details style="margin-top:14px">
-    <summary style="cursor:pointer;color:var(--muted);font-size:13px">
-      What you pasted ({{ items|length }})
-    </summary>
-    <ul class="plain" style="margin-top:12px">
-      {% for item in items %}
-      <li>
-        <span class="dot s-complete">·</span>
-        <span><span class="where">{{ item.text|truncate(180) }}</span></span>
-        <span class="meta">{{ item.created_at|localtime }}</span>
-      </li>
-      {% endfor %}
-    </ul>
-  </details>
+  <div class="pastes">
+    <h4>What you pasted</h4>
+    {% for d in items %}
+    {# The newest opens on its own right after it was sorted: that is the
+       question the author has at that moment. #}
+    <details class="item paste-digest" {{ 'open' if outcome and loop.first }}>
+      <summary>
+        <span class="item-name">{{ d.item.created_at|localtime }}</span>
+        <span class="item-meta">
+          {%- if d.passages -%}
+            {{ count(d.passages, 'passage') }} in {{ count(d.sections|selectattr('passages')|list|length, 'section') }}
+          {%- else -%}
+            nothing filed
+          {%- endif -%}
+          {%- if d.answers %} · {{ count(d.answers, 'answer') }} read from it{% endif %}
+          · {{ (d.item.text or '')|length }} characters
+        </span>
+      </summary>
+      <div class="item-body">
+        {% for s in d.sections %}
+        <div class="filed">
+          <div class="filed-head">
+            <span class="step-n">{{ s.n }}</span>
+            <a href="/documents/{{ document_id }}/sections/{{ s.key }}">{{ s.title }}</a>
+          </div>
+          {% for link in s.passages %}
+          <blockquote class="quote">{{ link.quote }}</blockquote>
+          {% if link.why %}<p class="filed-why"><span>Why here</span> {{ link.why }}</p>{% endif %}
+          {% endfor %}
+          {% if s.answers %}
+          <ul class="plain filed-answers">
+            {% for a in s.answers %}
+            <li>
+              <span class="q">{{ a.question }}</span>
+              <span class="a">{{ a.value|answer }}</span>
+              <span class="pill {{ 'complete' if a.confirmed else 'drafted' }}">
+                {{- 'confirmed' if a.confirmed else 'waiting for you' -}}
+              </span>
+            </li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+        </div>
+        {% else %}
+        <p class="hint">Nothing from this paste was filed under a section.</p>
+        {% endfor %}
+
+        <details class="quiet-details whole-paste">
+          <summary>The whole paste{% if d.spans %}, with what was used marked{% endif %}</summary>
+          <pre class="paste-text">{{ marked_spans(d.item.text or '', d.spans) }}</pre>
+        </details>
+      </div>
+    </details>
+    {% endfor %}
+  </div>
   {% endif %}
 </div>
