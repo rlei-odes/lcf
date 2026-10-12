@@ -108,7 +108,7 @@ async def draft_block(view: DocumentView, section: Section, block: Block, style:
     data = completion.data
     return BlockDraft(
         block_key=block.key,
-        value=data.get("value"),
+        value=_without_heading(data.get("value"), section, block),
         gaps=[Gap(g.get("question", ""), g.get("why", "")) for g in data.get("gaps", [])],
         confidence=_fraction(data.get("confidence")),
         based_on=[str(b) for b in data.get("based_on", [])],
@@ -195,7 +195,7 @@ async def revise_block(
             optional=("rationale",),  # the rewrite is the answer; the note is not
         )
         data = completion.data
-        value = data.get("value")
+        value = _without_heading(data.get("value"), section, block)
         moved = [p for p in pins if not quoted_from(p, _render(value))]
         written = BlockRevision(
             value=value,
@@ -1013,6 +1013,22 @@ def _runtime_data(view: DocumentView, section: Section, block: Block) -> str:
             "value and ask for what you would need."
         )
     return "\n\n".join(parts)
+
+
+def _without_heading(value: Any, section: Section, block: Block) -> Any:
+    """Prose without a first line that only repeats the section or block title.
+
+    The prompt names both in bold, and a model writing the block sometimes opens
+    with one of them. The export already prints the heading, so it would appear
+    twice.
+    """
+    if not isinstance(value, str):
+        return value
+    first, _, rest = value.lstrip().partition("\n")
+    titles = {" ".join(t.split()).casefold() for t in (section.title, block.label) if t}
+    if " ".join(first.strip("#*_: \t").split()).casefold() in titles:
+        return rest.lstrip()
+    return value
 
 
 def _render(value: Any) -> str:

@@ -23,20 +23,14 @@
     try { sessionStorage.setItem(storeKey(el), JSON.stringify(state)); } catch (e) { /* private mode */ }
   }
 
-  // Open or closed is a preference of the reader rather than of a section, so
-  // it is remembered across sections and sessions.
-  function closed() {
-    try { return localStorage.getItem("lcf.lane.closed") === "1"; } catch (e) { return false; }
-  }
-
-  function setClosed(value) {
-    try { localStorage.setItem("lcf.lane.closed", value ? "1" : "0"); } catch (e) { /* private mode */ }
-  }
+  // Closed until the author asks for it with ✦ Assistant, and only for this
+  // page: a redraw keeps it open, a new page starts closed again.
+  var open = false;
 
   function apply(state) {
     var el = lane();
     if (!el) return;
-    var shut = closed();
+    var shut = !open;
     var workspace = el.closest(".layout");
     if (workspace) workspace.classList.toggle("lane-closed", shut);
     state = state || {};
@@ -97,7 +91,7 @@
     var state = current();
 
     if (t.hasAttribute("data-lane-close")) {
-      setClosed(true);
+      open = false;
       apply(state);
     } else if (t.hasAttribute("data-copy-passage")) {
       var passage = t.parentElement.cloneNode(true);
@@ -109,7 +103,7 @@
       toBottom();
     } else if (t.dataset.focusTo) {
       state.focus = t.dataset.focusTo;
-      setClosed(false);
+      open = true;
       apply(state);
       toBottom();
       var el = lane();

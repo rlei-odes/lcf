@@ -8,7 +8,7 @@
 {% set unconfirmed = questions|selectattr('proposed')|list %}
 
 {% import "partials/quote_macros.html" as qm %}
-<div class="layout{{ ' three' if prose }}" id="workspace">
+<div class="layout{{ ' three lane-closed' if prose }}" id="workspace">
 
   {# The orientation lane. It answers three questions without being read closely:
      which document is this, how far through am I, and what is the next thing

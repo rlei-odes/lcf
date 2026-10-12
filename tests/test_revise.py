@@ -347,6 +347,16 @@ async def test_a_remark_about_a_passage_is_scoped_to_it(published, answers):
     assert row.anchor == {"focus": "Operators reported burrs"}
 
 
+def test_a_first_line_repeating_the_title_is_cut(spec_4d):
+    section = next(s for s in spec_4d.sections if s.key == "d2_problem")
+    block = next(b for b in section.blocks if b.key == "description")
+    for heading in (section.title, f"**{section.title}**", f"## {block.label}:"):
+        assert calls._without_heading(f"{heading}\n\n{PASSAGE}", section, block) == PASSAGE
+    opening = f"{section.title} was found late.\n{PASSAGE}"
+    assert calls._without_heading(opening, section, block) == opening
+    assert calls._without_heading(["a list"], section, block) == ["a list"]
+
+
 def test_a_rewrite_is_shown_as_the_words_it_changed():
     html = str(
         changes(
