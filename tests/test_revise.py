@@ -265,10 +265,16 @@ async def test_a_turn_the_assistant_could_not_answer_keeps_the_remark(published,
     assert open_turn is None, "the block is free to be asked again"
 
 
-async def test_only_prose_can_be_talked_about(published):
+async def test_images_cannot_be_rewritten(published):
     document_id = await _document(published)
     with pytest.raises(proposals.NotRevisable):
-        await _turn(document_id, "Shorter.", block="is_is_not")
+        await _turn(document_id, "Shorter.", block="photos")
+
+
+async def test_a_table_can_be_rewritten(published):
+    document_id = await _document(published)
+    turn_id = await _turn(document_id, "Add a row for the shift.", block="is_is_not")
+    assert turn_id is not None
 
 
 async def test_an_empty_remark_is_refused(published):
@@ -357,6 +363,24 @@ def test_a_first_line_repeating_the_title_is_cut(spec_4d):
     assert calls._without_heading(["a list"], section, block) == ["a list"]
 
 
+def test_list_items_lose_the_markers_a_model_puts_in_front(spec_product):
+    section = spec_product.section("purpose")
+    block = next(b for b in section.blocks if b.kind == "list")
+    drafted = [
+        "* Booking at the cell",
+        "> Offline buffer\n",
+        ". No rework tracking",
+        ": ",
+        "10 inch screen",
+    ]
+    assert calls._tidy(drafted, section, block) == [
+        "Booking at the cell",
+        "Offline buffer",
+        "No rework tracking",
+        "10 inch screen",
+    ]
+
+
 def test_a_rewrite_is_shown_as_the_words_it_changed():
     html = str(
         changes(
@@ -366,3 +390,24 @@ def test_a_rewrite_is_shown_as_the_words_it_changed():
     assert "<ins> 2026</ins>" in html
     assert "<del>saw burrs</del>" in html
     assert "&lt;b&gt;" in html and "<b>" not in html
+
+
+async def test_an_empty_rewrite_proposes_no_change_instead_of_clearing(published, answers):
+    """A model that declines answers with an empty value and says why. Accepting
+    that must not wipe the block."""
+    document_id = await _document(published)
+    turn_id = await _turn(document_id, "Capitalise his name.")
+
+    answers("")
+    async with session() as s:
+        await proposals.revise(s, turn_id)
+        row = await s.get(Proposal, turn_id)
+
+    assert row.proposed_value["v"] == PASSAGE
+    assert row.rationale
+
+
+def test_a_field_set_is_shown_to_the_model_in_its_declared_order(spec_4d):
+    block = spec_4d.section("header").block("meta")
+    stored = {"part_no": "A-4471", "report_no": "4D-1"}
+    assert list(calls._in_spec_order(stored, block)) == ["report_no", "part_no"]

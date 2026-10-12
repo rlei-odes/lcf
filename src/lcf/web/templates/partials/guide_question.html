@@ -1,0 +1,83 @@
+{# One question. What intake read from the material is already in the field, with
+   the words it came from beside it: confirming is reading those two against each
+   other, and editing is just typing. #}
+{% set q = current %}
+{% set index = questions.index(q) + 1 %}
+{% set url = guide.url(document.id, section.key, 'q/' ~ q.question.key) %}
+<div class="card guide-q">
+  <div class="q-meta">
+    Question {{ index }} of {{ questions|length }}
+    · {{ 'required' if q.question.required else 'optional' }}
+    {% if q.proposed %}<span class="pill drafted">from your material</span>
+    {% elif q.skipped %}<span class="pill optional">skipped</span>
+    {% elif q.settled %}<span class="pill complete">confirmed</span>{% endif %}
+  </div>
+
+  <form hx-post="{{ url }}" hx-target="#workspace" hx-swap="outerHTML show:window:top"
+        hx-disabled-elt="find button" data-ctrl-enter>
+    <label class="q-prompt" for="answer">{{ q.question.prompt }}</label>
+    {% if q.question.hint %}<p class="hint">{{ q.question.hint }}</p>{% endif %}
+
+    {% if q.proposed and q.proposed_from %}
+    <blockquote class="q-source">
+      <span class="q-source-label">Read from your material</span>
+      {{ q.proposed_from|truncate(400) }}
+    </blockquote>
+    {% endif %}
+
+    <div class="field{{ ' proposed' if q.proposed }}">
+      {% if q.question.type == 'choice' %}
+        <div class="choices" role="radiogroup">
+          {% for option in q.question.options %}
+          <label class="choice">
+            <input type="radio" name="answer" value="{{ option }}"
+                   {{ 'checked' if q.text == option }} {{ 'autofocus' if loop.first }}>
+            {{ option|replace('_', ' ') }}
+          </label>
+          {% endfor %}
+        </div>
+      {% elif q.question.type == 'boolean' %}
+        <div class="choices" role="radiogroup">
+          <label class="choice"><input type="radio" name="answer" value="true"
+                 {{ 'checked' if q.text == 'true' }} autofocus> Yes</label>
+          <label class="choice"><input type="radio" name="answer" value="false"
+                 {{ 'checked' if q.text == 'false' }}> No</label>
+        </div>
+      {% elif q.question.type == 'date' %}
+        <input type="date" id="answer" name="answer" value="{{ q.text }}" autofocus>
+      {% elif q.question.type == 'number' %}
+        <input type="number" step="any" id="answer" name="answer" value="{{ q.text }}" autofocus>
+      {% else %}
+        <textarea id="answer" name="answer" rows="4" autofocus>{{ q.text }}</textarea>
+      {% endif %}
+    </div>
+
+    {% if problem %}<p class="field-problem">{{ problem }}</p>{% endif %}
+
+    <div class="actions guide-actions">
+      <a href="{{ previous_url }}" class="back">← Back</a>
+      <span class="spacer"></span>
+      {% if not q.question.required %}
+      <button type="button" class="quiet-skip"
+              hx-post="{{ url }}" hx-vals='{"action": "skip"}'
+              hx-target="#workspace" hx-swap="outerHTML show:window:top">Skip</button>
+      {% endif %}
+      <button class="primary" type="submit" name="action" value="confirm">
+        {{ 'Confirm' if q.proposed or q.answered else 'Continue' }} →</button>
+    </div>
+    <p class="kbd-hint muted">Ctrl+Enter to confirm</p>
+  </form>
+</div>
+
+{% if questions|length > 1 %}
+<nav class="q-chips" aria-label="Questions in this section">
+  {% for other in questions %}
+  <a href="{{ guide.url(document.id, section.key, guide.question_step(other.question.key)) }}"
+     class="{{ 'on' if other is sameas q }} {{ 'proposed' if other.proposed }} {{ 'settled' if other.settled }}"
+     title="{{ other.question.prompt }}">
+    <span class="ref">{{ REF.question }}{{ loop.index }}</span>
+    {%- if other.settled %} ✓{% elif other.proposed %} •{% endif %}
+  </a>
+  {% endfor %}
+</nav>
+{% endif %}

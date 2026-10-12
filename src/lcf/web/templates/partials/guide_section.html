@@ -1,0 +1,63 @@
+{# One section, at one of its steps: a question, the writing, or the check. #}
+{% set n = (nav|selectattr('key', 'equalto', section.key)|list|first).n %}
+{% set qstep = guide.question_of(step) %}
+{% set open_q = questions|rejectattr('settled')|list %}
+{% set first_q = guide.question_step(questions[0].question.key) if questions else none %}
+
+<div class="card step-head guide-head">
+  <div class="block-head">
+    <span class="step-of">Section {{ n }} of {{ nav|length }}</span>
+    <span class="pill {{ state.status }}">{{ state.status|replace('_', ' ') }}</span>
+  </div>
+  <h2><span class="ref ref-lg">{{ ref(spec, section.key) }}</span> {{ section.title }}</h2>
+  {% if section.description %}<p class="lead">{{ section.description }}</p>{% endif %}
+
+  <ol class="phases">
+    {% if questions %}
+    <li class="{{ 'on' if qstep }}">
+      <a href="{{ guide.url(document.id, section.key, first_q) }}">Questions</a>
+      <span class="phase-count">{{ questions|length - open_q|length }}/{{ questions|length }}</span>
+    </li>
+    {% endif %}
+    <li class="{{ 'on' if step == guide.WRITE }}">
+      <a href="{{ guide.url(document.id, section.key, guide.WRITE) }}">Write</a>
+    </li>
+    <li class="{{ 'on' if step == guide.CHECK }}">
+      <a href="{{ guide.url(document.id, section.key, guide.CHECK) }}">Review</a>
+    </li>
+  </ol>
+</div>
+
+{% if dependents %}
+<div class="notice">
+  <h3>You changed a completed section</h3>
+  <p>These were built on {{ section.title }}. Which of them does the change affect?</p>
+  <form hx-post="/documents/{{ document.id }}/affected"
+        hx-target="#workspace" hx-swap="outerHTML">
+    <input type="hidden" name="origin" value="{{ section.key }}">
+    {% for key in dependents %}
+    <label><input type="checkbox" name="affected" value="{{ key }}">
+      {{ spec.section(key).title }}</label>
+    {% endfor %}
+    <div class="actions">
+      <button class="primary" type="submit">Mark those as needing rework</button>
+      <span class="why">Leave all unticked if the change was cosmetic.</span>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+{% if state.status == Status.STALE %}
+<div class="notice">
+  <h3>Needs rework</h3>
+  <p>A section this one was built on has changed since it was completed.</p>
+</div>
+{% endif %}
+
+{% if qstep %}
+  {% include "partials/guide_question.html" %}
+{% elif step == guide.WRITE %}
+  {% include "partials/guide_write.html" %}
+{% else %}
+  {% include "partials/guide_check.html" %}
+{% endif %}

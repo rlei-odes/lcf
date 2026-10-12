@@ -69,7 +69,7 @@ def test_present_on_keyvalue_requires_the_required_fields():
     view = DocumentView(spec, {"a": {"meta": {"a": "", "b": "set"}}})
     result = evaluate(view, section, req)
     assert result.outcome is Outcome.FAIL
-    assert "missing a" in result.reason
+    assert result.reason == "Meta: A not filled in", "named by label, not key"
 
 
 # --------------------------------------------------------------------------- #
@@ -136,7 +136,7 @@ def test_fields_filled_reports_row_and_column():
     rows = [{"id": "1", "name": "ok"}, {"id": "2", "name": ""}]
     result = run_on("items", {"items": rows}, kind="fields_filled", fields=["id", "name"])
     assert result.outcome is Outcome.FAIL
-    assert "row 2 missing name" in result.reason
+    assert "row 2 has no Name" in result.reason, "the column by its label"
     assert result.evidence == ["a.items[1].name"]
 
 

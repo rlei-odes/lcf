@@ -160,7 +160,9 @@ def nowhere_key(section_keys: list[str]) -> str:
     return key
 
 
-def mapping_schema(section_keys: list[str], titles: dict[str, str]) -> dict[str, Any]:
+def mapping_schema(
+    section_keys: list[str], titles: dict[str, str], length: int = 0
+) -> dict[str, Any]:
     """Where the pasted material belongs.
 
     Two constraints do the work. `section` is an `enum` of the spec's own keys, so
@@ -168,8 +170,13 @@ def mapping_schema(section_keys: list[str], titles: dict[str, str]) -> dict[str,
     words, and is verified against the paste afterwards — a mapping is a pointer
     into what they wrote, never a rewrite of it, which is why intake can run
     without anyone approving each fragment.
+
+    The ceiling grows with the text being sorted: notes written as lists hold a
+    passage every line or two, and a fixed ceiling per section stops short of
+    them. At most 40, which keeps the answer inside the output budget.
     """
     nowhere = nowhere_key(section_keys)
+    ceiling = min(max(5 * len(section_keys), length // 100), 40) or 1
     described = "\n".join(
         [f"{nowhere}: belongs to no section of this document"]
         + [f"{key}: {titles.get(key, key)}" for key in section_keys]
@@ -208,7 +215,7 @@ def mapping_schema(section_keys: list[str], titles: dict[str, str]) -> dict[str,
                 # asked without a schema — measured on gemma-4-26b, 0 placements
                 # against 15.
                 "minItems": 1,
-                "maxItems": min(5 * len(section_keys), 30) or 1,
+                "maxItems": ceiling,
             },
             "confidence": {"type": "number"},
         },

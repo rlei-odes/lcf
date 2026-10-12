@@ -1,0 +1,88 @@
+{# The check step: the section read back as it will stand, what the checks found
+   wrong with it, and the way on. Which checks ran, by name, is behind the scenes. #}
+{% set failing = state.results|selectattr('failed')|list %}
+{% set passing = state.results|rejectattr('failed')|list %}
+
+<div class="card guide-check">
+  <h3>What it says</h3>
+  {% for b in blocks %}
+  <div class="readback">
+    <div class="readback-label">{{ b.block.label }}</div>
+    {% if b.empty %}
+      <p class="muted">Nothing written.</p>
+    {% elif b.block.kind == 'table' %}
+      {% set cols = b.block.columns %}
+      <div class="table-wrap"><table class="readback-table">
+        <thead><tr>{% for c in cols %}<th>{{ c.label }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for row in b.rows %}
+          <tr>{% for c in cols %}<td>{{ row.get(c.key, '')|answer }}</td>{% endfor %}</tr>
+          {% endfor %}
+        </tbody>
+      </table></div>
+    {% elif b.block.kind == 'keyvalue' and b.value is mapping %}
+      <dl class="readback-kv">
+        {% for f in b.block.fields %}
+        <dt>{{ f.label }}</dt><dd>{{ b.value.get(f.key, '')|answer or '—' }}</dd>
+        {% endfor %}
+      </dl>
+    {% elif b.value is iterable and b.value is not string %}
+      <ul>{% for item in b.value %}<li>{{ item }}</li>{% endfor %}</ul>
+    {% else %}
+      <div class="readback-text">{{ b.text }}</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h3>Checks</h3>
+  {% if failing %}
+    {% for r in failing %}
+    <div class="check {{ r.severity }}">
+      <span class="mark">✗</span>
+      <span>{{ r.reason or 'Does not meet one of this section\'s rules.' }}
+        {%- if r.severity == 'blocker' %}<span class="note">has to be fixed before export</span>{% endif %}</span>
+    </div>
+    {% endfor %}
+    <p class="hint" style="margin-top:var(--s3)">
+      <a href="{{ guide.url(document.id, section.key, guide.WRITE) }}">Back to writing</a> to fix
+      {{ 'it' if failing|length == 1 else 'them' }}.
+    </p>
+  {% elif state.results %}
+    <div class="check pass"><span class="mark">✓</span>
+      <span>{{ 'The check passes.' if passing|length == 1 else 'All ' ~ passing|length ~ ' checks pass.' }}</span></div>
+  {% else %}
+    <p class="lead">Nothing in this section is checked automatically. The full
+      check runs over the whole document at the end.</p>
+  {% endif %}
+</div>
+
+<div class="actions guide-actions guide-foot">
+  <a href="{{ previous_url }}" class="back">← Back</a>
+  <span class="spacer"></span>
+  {% if state.status == Status.COMPLETE %}
+    <button class="tool" hx-post="/documents/{{ document.id }}/sections/{{ section.key }}/reopen"
+            hx-target="#workspace" hx-swap="outerHTML">Reopen</button>
+    {% set later = nav|rejectattr('status', 'equalto', Status.COMPLETE)|list %}
+    <a class="button primary" href="{{ guide.url(document.id, later[0].key) if later else guide.url(document.id, step=guide.QUALITY) }}">
+      Continue →</a>
+  {% else %}
+    {% if not state.can_complete %}
+    <span class="why">
+      {%- if state.blocked_by -%}
+        Complete {% for key in state.blocked_by %}<a href="{{ guide.url(document.id, key) }}">{{ spec.section(key).title }}</a>
+        {%- if not loop.last %} and {% endif %}{% endfor %} first.
+      {%- elif state.blockers -%}
+        {{ count(state.blockers|length, 'problem') }} to fix first.
+      {%- else -%}
+        Nothing written here yet.
+      {%- endif -%}
+    </span>
+    {% endif %}
+    <button class="primary"
+            hx-post="{{ guide.url(document.id, section.key, 'complete') }}"
+            hx-target="#workspace" hx-swap="outerHTML show:window:top"
+            {{ 'disabled' if not state.can_complete }}>Complete section and continue →</button>
+  {% endif %}
+</div>

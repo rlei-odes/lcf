@@ -1,0 +1,56 @@
+{# The rail of the guided flow: the material, every section, the finish. Any of
+   them can be jumped to; the steps inside a section are walked in order. #}
+<nav class="sections card">
+  <div class="rail-head">
+    <p class="rail-title">{{ document.title }}</p>
+    <div class="rail-sub">{{ spec.title }} v{{ spec.version }}</div>
+    <div class="meter {{ 'done' if progress.done }}">
+      <span style="width: {{ progress.percent }}%"></span>
+    </div>
+    <div class="meter-note">
+      {{ progress.answered }} of {{ count(progress.questions, 'question') }} answered ·
+      {{ progress.complete }}/{{ progress.sections }} sections complete
+    </div>
+  </div>
+
+  <a href="{{ guide.url(document.id, step=guide.MATERIAL) }}" class="{{ 'active' if at == guide.MATERIAL }}">
+    <span class="step-n">¶</span>
+    <span class="dot {{ 's-complete' if pasted }}">{{ '✓' if pasted else '·' }}</span>
+    <span class="step-name">Your material</span>
+  </a>
+
+  {% for s in nav %}
+  <a href="{{ guide.url(document.id, s.key) }}"
+     class="{{ 'active' if s.key == at }} {{ 'blocked' if s.status == Status.BLOCKED }}"
+     title="{{ s.title }}{% if s.state.blocked_by %} · waiting on {{ s.state.blocked_by|join(', ') }}{% endif %}">
+    <span class="step-n">{{ s.n }}</span>
+    <span class="dot s-{{ s.status }}">
+      {%- if s.status == Status.COMPLETE %}✓{% elif s.status == Status.BLOCKED %}⊘
+      {%- elif s.status == Status.NEEDS_INPUT %}!{% elif s.status == Status.STALE %}~
+      {%- elif s.status == Status.DRAFTED %}◐{% else %}·{% endif -%}
+    </span>
+    <span class="step-name">{{ s.display_title }}</span>
+    {% if s.total %}
+    <span class="step-count {{ 'all-in' if s.all_in }}"
+          title="{{ s.answered }} of {{ count(s.total, 'question') }} answered{% if s.unconfirmed %}, {{ s.unconfirmed }} unconfirmed{% endif %}">
+      {{ s.answered }}/{{ s.total }}{% if s.unconfirmed %}<span class="s-drafted">•</span>{% endif %}
+    </span>
+    {% endif %}
+  </a>
+  {% endfor %}
+
+  <a href="{{ guide.url(document.id, step=guide.QUALITY) }}" class="{{ 'active' if at == guide.QUALITY }}">
+    <span class="step-n">✓</span>
+    <span class="dot">·</span>
+    <span class="step-name">Quality check</span>
+  </a>
+  <a href="{{ guide.url(document.id, step=guide.EXPORT) }}" class="{{ 'active' if at == guide.EXPORT }}">
+    <span class="step-n">↓</span>
+    <span class="dot">·</span>
+    <span class="step-name">Export</span>
+  </a>
+
+  <div class="rail-foot">
+    <a href="/documents/{{ document.id }}/record" class="{{ 'active' if at == 'record' }}">Behind the scenes</a>
+  </div>
+</nav>

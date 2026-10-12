@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}{% if section is defined and at == section.key %}{{ section.title }} · {% endif %}{{ document.title }}{% endblock %}
+{% block subtitle %}{{ spec.title }} v{{ spec.version }}{% endblock %}
+
+{% block content %}
+{% include "partials/guide.html" %}
+{% endblock %}

@@ -208,7 +208,7 @@ def test_a_full_round_trip_brands_the_export(published, client, storage, spec_4d
         data={"doc_type": published.id, "title": "Templated"},
         follow_redirects=False,
     )
-    document_id = created.headers["location"].rsplit("/", 1)[-1]
+    document_id = created.headers["location"].removesuffix("/guide").rsplit("/", 1)[-1]
 
     export = client.post(
         f"/documents/{document_id}/export/docx",
@@ -363,7 +363,7 @@ def test_the_house_style_brands_an_export_that_has_no_template(
     created = client.post(
         "/documents", data={"doc_type": published.id, "title": "Branded"}, follow_redirects=False
     )
-    document_id = created.headers["location"].rsplit("/", 1)[-1]
+    document_id = created.headers["location"].removesuffix("/guide").rsplit("/", 1)[-1]
     export = client.post(f"/documents/{document_id}/export/docx", data={"override_reason": "test"})
     assert export.status_code == 200
 

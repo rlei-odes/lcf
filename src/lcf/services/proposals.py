@@ -225,8 +225,8 @@ async def request_revision(
     spec_block = spec_section.block(block_key) if spec_section else None
     if spec_block is None:
         raise NotFound(f"no block {section_key}.{block_key}")
-    if str(spec_block.kind) != "prose":
-        raise NotRevisable(f"{spec_block.label} is a {spec_block.kind}, not prose")
+    if str(spec_block.kind) == "image_ref":
+        raise NotRevisable(f"{spec_block.label} holds images, which the assistant cannot rewrite")
 
     block = await _block_row(session, document_id, section_key, block_key)
     if await _open_turn_on(session, block.id) is not None:
@@ -307,7 +307,15 @@ async def revise(session: AsyncSession, turn_id: UUID, progress=None) -> dict:
     if progress is not None:
         await progress.step(f"Rewrote {spec_block.label}")
 
-    turn.proposed_value = {"v": revision.value}
+    # An empty answer to a block that has content is the model declining — it
+    # says why in `rationale` — not a request to clear the block. Proposed as it
+    # came, Accept would wipe the block; the text being worked on is proposed
+    # instead, which reads as "no change" beside the explanation.
+    value = revision.value
+    working_on = previous if previous is not None else view.block_value(section.key, block.key)
+    if not revision.has_content and working_on:
+        value = working_on
+    turn.proposed_value = {"v": value}
     turn.rationale = revision.rationale or None
     # Left null: a rewrite does not report a confidence, because asking for one
     # cost a retry per call and the model answered 1.0 to everything
@@ -385,6 +393,8 @@ async def accept(
 
     block = await session.get(Block, proposal.block_id)
     section = await session.get(Section, block.section_id)
+    if edited_value is not None and same_value(edited_value, proposal.proposed_value["v"]):
+        edited_value = None
     edited = edited_value is not None
     value = edited_value if edited else proposal.proposed_value["v"]
 
@@ -402,6 +412,31 @@ async def accept(
     proposal.decided_at = datetime.now(UTC)
     proposal.decided_by = actor
     await session.flush()
+
+
+def same_value(a: Any, b: Any) -> bool:
+    """Equal once blanks are ignored.
+
+    A draft accepted from a form comes back through the form: a field the draft
+    left out returns as an empty string, a number as text. That is the draft
+    unchanged, and recording it as edited would make the record say the author
+    changed something they did not.
+    """
+
+    def plain(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {k: plain(v) for k, v in value.items() if plain(v) not in ("", None, [], {})}
+        if isinstance(value, list):
+            return [plain(v) for v in value if plain(v) not in ("", None, [], {})]
+        if isinstance(value, bool) or value is None:
+            return value
+        return " ".join(str(value).split())
+
+    def blank(value: Any) -> Any:
+        value = plain(value)
+        return None if value in ("", None, [], {}) else value
+
+    return blank(a) == blank(b)
 
 
 async def reject(session: AsyncSession, proposal_id: UUID, actor: str = "local") -> None:

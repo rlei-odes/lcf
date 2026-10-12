@@ -1855,3 +1855,115 @@ details.item > summary .ref { align-self: center; }
 }
 .conv-head .conv-title { font-weight: 600; color: var(--ink); }
 .conv-head .muted { margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 55%; }
+
+/* ---------------------------------------------------------------------------
+   The guided flow: one step at a time, the way on always in the same place.
+   --------------------------------------------------------------------------- */
+
+.guide-main { min-width: 0; max-width: 820px; }
+.layout.guide.three .guide-main { max-width: none; }
+
+nav.sections .rail-foot {
+  margin-top: var(--s3); padding-top: var(--s3); border-top: 1px solid var(--line-2);
+}
+nav.sections .rail-foot a { font-size: 12.5px; color: var(--muted); }
+
+/* Within a section: questions, write, check. */
+ol.phases {
+  display: flex; gap: var(--s1); list-style: none; padding: 0;
+  margin: var(--s4) 0 0; padding-top: var(--s3); border-top: 1px solid var(--line-2);
+  counter-reset: phase;
+}
+ol.phases li {
+  counter-increment: phase; display: flex; align-items: baseline; gap: var(--s2);
+  padding: 5px var(--s3); border-radius: 20px; font-size: 13px;
+}
+ol.phases li::before { content: counter(phase); font: 600 10.5px/1 var(--mono); color: var(--faint); }
+ol.phases li a { color: var(--muted); text-decoration: none; }
+ol.phases li a:hover { color: var(--accent); }
+ol.phases li.on { background: var(--accent-soft); }
+ol.phases li.on a { color: var(--accent-ink); font-weight: 600; }
+ol.phases li.on::before { color: var(--accent-ink); }
+.phase-count { font: 500 11px/1 var(--mono); color: var(--faint); }
+
+/* One question, given room. */
+.guide-q { padding: var(--s6); }
+.q-meta { font-size: 12px; color: var(--muted); margin-bottom: var(--s3); display: flex; gap: var(--s2); align-items: center; }
+.q-prompt { display: block; font-size: 18px; font-weight: 600; line-height: 1.35; letter-spacing: -.01em; margin-bottom: var(--s2); color: var(--ink); }
+.guide-q .field { margin: var(--s4) 0 0; }
+.guide-q textarea { font-size: 15px; }
+.q-source {
+  margin: var(--s3) 0 0; padding: var(--s3) var(--s4);
+  border-left: 3px solid var(--accent-line); background: var(--panel-2);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: 13.5px; color: var(--ink-2); white-space: pre-wrap;
+}
+.q-source-label {
+  display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--accent-ink); font-weight: 650; margin-bottom: var(--s1);
+}
+.choices { display: flex; flex-direction: column; gap: var(--s2); }
+.choices .choice {
+  display: flex; gap: var(--s3); align-items: center; font-weight: 400; cursor: pointer;
+  padding: var(--s3) var(--s4); border: 1px solid var(--line); border-radius: var(--radius-sm);
+}
+.choices .choice:hover { border-color: var(--accent-line); }
+.choices .choice:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.choices input { width: auto; margin: 0; }
+.guide-q .kbd-hint { font-size: 11.5px; text-align: right; margin: var(--s2) 0 0; }
+
+/* The way on: back on the left, onward on the right, the same on every step. */
+.guide-actions .spacer { margin-left: auto; }
+.guide-actions a.back { color: var(--muted); text-decoration: none; font-size: 13.5px; }
+.guide-actions a.back:hover { color: var(--accent); }
+.guide-foot { margin: 0 0 var(--s5); }
+.guide-foot a.muted { font-size: 12.5px; color: var(--faint); }
+button.quiet-skip { border-color: transparent; box-shadow: none; color: var(--muted); }
+button.quiet-skip:hover { color: var(--ink); border-color: var(--line); }
+
+/* A link that is the step's main action. */
+a.button {
+  display: inline-block; padding: 7px 14px; border-radius: var(--radius-sm);
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  text-decoration: none; font-size: 14px; font-weight: 550;
+}
+a.button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+a.button.primary:hover { background: var(--accent-ink); border-color: var(--accent-ink); }
+
+/* Every question of the section, to jump between. */
+nav.q-chips { display: flex; flex-wrap: wrap; gap: var(--s1); margin: calc(var(--s2) * -1) 0 var(--s4); }
+nav.q-chips a {
+  font-size: 12px; text-decoration: none; color: var(--muted);
+  padding: 3px var(--s2); border-radius: var(--radius-sm); border: 1px solid transparent;
+}
+nav.q-chips a:hover { border-color: var(--line); }
+nav.q-chips a.settled { color: var(--ok); }
+nav.q-chips a.proposed { color: var(--accent-ink); }
+nav.q-chips a.on { border-color: var(--accent); background: var(--accent-soft); }
+
+/* The section read back before it is completed. */
+.readback { padding: var(--s3) 0; border-top: 1px solid var(--line-2); }
+.readback:first-of-type { border-top: 0; padding-top: 0; }
+.readback-label { font-size: 12px; font-weight: 650; color: var(--muted); margin-bottom: var(--s1); }
+.readback-text { white-space: pre-wrap; }
+.readback ul { margin: 0; padding-left: var(--s5); }
+.readback-kv { display: grid; grid-template-columns: max-content 1fr; gap: var(--s1) var(--s4); margin: 0; }
+.readback-kv dt { color: var(--muted); }
+.readback-kv dd { margin: 0; }
+.readback-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.readback-table th, .readback-table td { text-align: left; padding: var(--s1) var(--s2); border-bottom: 1px solid var(--line-2); vertical-align: top; }
+.readback-table th { color: var(--muted); font-weight: 600; }
+.table-wrap { overflow-x: auto; }
+
+/* What sorting the material came to. */
+ul.sorted-into li { display: flex; gap: var(--s2); align-items: baseline; padding: var(--s1) 0; }
+ul.sorted-into .meta { margin-left: auto; color: var(--muted); font-size: 12.5px; }
+.record-section details.disclose + details.disclose { margin-top: var(--s2); }
+.check .note { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+.check a.ref { text-decoration: none; margin-right: var(--s1); }
+nav.sections a.active.blocked { color: var(--accent-ink); }
+/* While a swap settles, the new workspace briefly wears the old one's classes;
+   a layout without the third lane must not show it even for that moment. */
+.layout:not(.three) > .assistant { display: none; }
+.block.drafted { border-left: 3px solid var(--accent-line); padding-left: var(--s4); }
+.block.drafted .field input, .block.drafted textarea, .block.drafted select { background: var(--accent-soft); }

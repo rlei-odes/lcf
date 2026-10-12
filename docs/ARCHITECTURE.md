@@ -521,16 +521,19 @@ compute, and it catches the specific way few-shot prompting fails.
 A block-level accept or decline settles a draft in one gesture, which is the right shape when the
 draft is right. When it is nearly right, the author has something to say about it — *shorter*, *drop
 that sentence*, *this part is finished, leave it alone* — and a single Accept/Decline cannot carry
-that. So a section with prose in it gets a third lane, the **assistant**, beside the text rather
-than under it: the author reads the block and talks about it without scrolling between the two.
+that. So a section gets a third lane, the **assistant**, beside the text rather than under it: the
+author reads the block and talks about it without scrolling between the two. Every block that holds
+content of its own can be worked on there — prose, lists, tables and field sets; only image
+references cannot. A rewrite of a list or a table comes back in the block's own shape, and is
+compared with what the block holds by reading both as text, fields and columns by their labels.
 
 Where the screen has room, the middle lane sits in the middle of it, with equal columns either
 side — the rail on the left, the assistant on the right — so opening or closing the assistant
-(a reader preference, remembered across sections) fills or empties a column and moves nothing
-else. Every page with a rail is centred the same way. On narrower screens the lanes pack left
+(closed until ✦ on a block opens it, and open only for that page) fills or empties a column and
+moves nothing else. Every page with a rail is centred the same way. On narrower screens the lanes pack left
 instead, and the rail folds to its step numbers to leave the assistant its width.
 
-The lane holds one conversation per prose block, and two ways of having it:
+The lane holds one conversation per block, and two ways of having it:
 
 | Mode | What the assistant does | What it can change |
 |---|---|---|
@@ -708,7 +711,16 @@ POST  /doc-types/{key}/versions/{v}/template/remove
 GET   /doc-types/{key}/versions/{v}/template/card
 
 # Creator
-POST  /documents                          {doc_type_id, version}
+POST  /documents                          {doc_type_id, version} → the guided flow
+GET   /documents/{id}/guide               resume: the first step still waiting on the author
+GET   /documents/{id}/guide/material      paste and sort
+POST  /documents/{id}/guide/material      paste text → intake job
+GET   /documents/{id}/guide/s/{key}/{step}             q-{question} | write | check
+POST  /documents/{id}/guide/s/{key}/q/{question}       confirm, edit or skip → next step
+POST  /documents/{id}/guide/s/{key}/complete           → the next section still open
+GET   /documents/{id}/guide/quality-check  the full check over the whole document
+GET   /documents/{id}/guide/export        the deliverable
+GET   /documents/{id}/record              behind the scenes: filing, decisions, checks by name
 GET   /documents/{id}                     flow overview: section states, open work
 POST  /documents/{id}/intake              paste text (images later) → job
 GET   /documents/{id}/intake/panel        where the material landed
@@ -741,6 +753,33 @@ GET   /evidence/{case}/export.json|.md    the accepted findings, with provenance
 # Jobs
 GET   /jobs/{id}/card                     one poll (see the jobs section)
 ```
+
+### The guided flow
+
+A document is written as a sequence of steps: the author's material, then each section in
+dependency order — its questions one at a time, the writing, the section's checks — and last the
+full check, then the export. The rail lists the same steps and any of them can be jumped to. Where the
+author is is not stored; `web/guide.py` derives it from the document, so leaving and coming back
+lands on the first question nobody has settled. Skipping an optional question stores an empty
+answer, which is what marks it as seen; a required one is not let past empty.
+
+The guided pages and the section workspace are two views over the same routes. An action they
+share — saving a block, accepting a proposal, a drafting job finishing — answers with whichever
+view it was made from, read from the `HX-Current-URL` header HTMX sends, so no route exists twice.
+A step that moves the author on answers with the next step and pushes its URL.
+
+The writing step is one form. Each block's fields carry the block's key as a prefix, so one post
+saves the whole step: a block that changed gets a revision, one that did not gets none, and a draft
+still showing is accepted as its fields now hold it — the button that sends this says *Accept
+draft and continue*, and an edit made first is recorded as accepted-edited. A draft is shown in the
+block's own fields rather than as a separate card, so it is read where it will stand and can be
+corrected before it is accepted. The assistant's questions about a block are shown under that block
+until it holds content with no draft pending.
+
+What the author needs to decide is on the steps. What explains how the assistant got there —
+where each passage was filed and why, the decision log, every check by name — is on
+`/documents/{id}/record`, and the gate on the finish step speaks in reasons and sections rather
+than check names.
 
 `GET /documents/{id}` is deliberately rich — one request renders everything the flow needs, so the
 page never assembles truth from five endpoints.

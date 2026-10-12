@@ -6,13 +6,13 @@ authority on what the document is.
 """
 
 from typing import Any
+from urllib.parse import urlsplit
 from uuid import UUID
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from lcf.core.db import session
-from lcf.engine.state import Status, document_state
 from lcf.services import (
     assessment,
     discussion,
@@ -25,7 +25,7 @@ from lcf.services import (
 )
 from lcf.web.forms import parse_block_value, parse_pasted_table
 from lcf.web.pages import page
-from lcf.web.presenters import document_nav, progress_of, section_panel_context
+from lcf.web.presenters import section_panel_context
 
 router = APIRouter()
 
@@ -49,47 +49,13 @@ async def create_document(doc_type: str = Form(...), title: str = Form("")):
     """
     async with session() as s:
         document = await documents.create(s, doc_type, title.strip() or "Untitled")
-    return RedirectResponse(f"/documents/{document.id}", status_code=303)
+    return RedirectResponse(f"/documents/{document.id}/guide", status_code=303)
 
 
-@router.get("/documents/{document_id}", response_class=HTMLResponse)
-async def document_overview(request: Request, document_id: UUID):
-    async with session() as s:
-        document, spec = await documents.load(s, document_id)
-        view = await documents.view(s, document_id)
-        # Reads the last full assessment; never starts one. Opening a document
-        # must not cost a dozen model calls.
-        report = await assessment.report_for(s, document_id)
-        past_exports = await exports.history(s, document_id)
-        pasted = await intake.digests(s, document_id)
-    running = await jobs.latest_for(document_id, "assess")
-    running_intake = await jobs.latest_for(document_id, "intake")
-    nav = document_nav(spec, view)
-    # The first section that is neither finished nor waiting on one that is. It
-    # is the only question this page has to answer on arrival: where do I go now.
-    next_up = next(
-        (s for s in nav if s.status not in (Status.COMPLETE, Status.BLOCKED)),
-        None,
-    )
-    return page(
-        request,
-        "document.html",
-        document=document,
-        spec=spec,
-        states=document_state(view),
-        nav=nav,
-        progress=progress_of(nav, view.completed),
-        next_up=next_up,
-        report=report,
-        history=past_exports,
-        items=pasted,
-        running_job=running if running is not None and not running.done else None,
-        running_intake=running_intake if _unfinished(running_intake) else None,
-    )
-
-
-def _unfinished(job) -> bool:
-    return job is not None and not job.done
+@router.get("/documents/{document_id}")
+async def document_overview(document_id: UUID):
+    """A document opens in the guided flow, wherever the author left off."""
+    return RedirectResponse(f"/documents/{document_id}/guide", status_code=303)
 
 
 @router.post("/documents/{document_id}/intake", response_class=HTMLResponse)
@@ -166,6 +132,7 @@ async def document_gate(request: Request, document_id: UUID):
     """What an assessment returns when it finishes: the gate card, plus the export
     card out of band — a finished check changes what export may do."""
     async with session() as s:
+        _, spec = await documents.load(s, document_id)
         report = await assessment.report_for(s, document_id)
         past = await exports.history(s, document_id)
     return page(
@@ -174,6 +141,7 @@ async def document_gate(request: Request, document_id: UUID):
         report=report,
         history=past,
         document_id=document_id,
+        spec=spec,
     )
 
 
@@ -513,8 +481,16 @@ async def section_panel(request: Request, document_id: UUID, key: str, job: UUID
 async def accept_proposal(
     request: Request, proposal_id: UUID, document_id: str = Form(...), section: str = Form(...)
 ):
+    """Accept a draft as proposed, or — when the form carries the block's fields,
+    as a draft shown in place does — as the author left it after editing."""
+    form = await request.form()
     async with session() as s:
-        await proposals.accept(s, proposal_id)
+        edited = None
+        if form.get("block"):
+            _, spec = await documents.load(s, UUID(document_id))
+            block = spec.section(section).block(str(form["block"]))
+            edited = parse_block_value(block, dict(form))
+        await proposals.accept(s, proposal_id, edited_value=edited)
     return await _panel(request, UUID(document_id), section)
 
 
@@ -594,8 +570,26 @@ async def _panel_context(
 async def _panel(
     request: Request, document_id: UUID, key: str, dependents=None, gaps=None, errors=None
 ) -> HTMLResponse:
+    step = _guided_step(request, document_id, key)
+    if step is not None:
+        from lcf.web.routes.guide import section_workspace
+
+        return await section_workspace(request, document_id, key, step, dependents=dependents)
     ctx = await _panel_context(document_id, key, dependents, gaps, errors)
     return page(request, "partials/panel.html", **ctx)
+
+
+def _guided_step(request: Request, document_id: UUID, key: str) -> str | None:
+    """The guided step this request was made from, if it was made from one.
+
+    An action shared with the section workspace answers with whichever of the
+    two the author is looking at, and HTMX names the page in every request.
+    """
+    current = urlsplit(request.headers.get("hx-current-url", "")).path
+    prefix = f"/documents/{document_id}/guide/s/{key}/"
+    if not current.startswith(prefix):
+        return None
+    return current[len(prefix) :].strip("/") or None
 
 
 async def _lane(

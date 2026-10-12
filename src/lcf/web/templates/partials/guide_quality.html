@@ -1,0 +1,41 @@
+{# The quality check: the full check over the whole document. #}
+<div class="card step-head">
+  <div class="block-head"><span class="step-of">Quality check</span></div>
+  <h2>Check the whole document</h2>
+  <p class="lead">
+    The full check reads the document as a whole, including the rules only the
+    assistant can judge. Fix what it finds in the sections, then export.
+  </p>
+</div>
+
+{% if open_sections %}
+<div class="notice">
+  <h3>{{ count(open_sections|length, 'section') }} not complete yet</h3>
+  <ul class="plain">
+    {% for s in open_sections %}
+    <li><span class="ref">{{ ref(spec, s.key) }}</span>
+      <a href="{{ guide.url(document.id, s.key) }}">{{ s.display_title }}</a>
+      <span class="muted">· {{ s.status|replace('_', ' ') }}</span></li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% include "partials/gate_card.html" %}
+
+{% if running_job %}
+<div id="gate-running">
+  {% with job = running_job,
+          done_url = "/documents/" ~ document.id ~ "/gate",
+          done_target = "#gate",
+          working_title = "Checking the document" %}
+    {% include "partials/job.html" %}
+  {% endwith %}
+</div>
+{% endif %}
+
+<div class="actions guide-actions guide-foot">
+  <a href="{{ guide.url(document.id, nav[-1].key, guide.CHECK) if nav else guide.url(document.id, step=guide.MATERIAL) }}" class="back">← Back</a>
+  <span class="spacer"></span>
+  <a class="button primary" href="{{ guide.url(document.id, step=guide.EXPORT) }}">Next: export →</a>
+</div>

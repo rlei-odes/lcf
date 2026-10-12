@@ -37,7 +37,7 @@
       <ul class="plain rows">
         {% for d in documents %}
         <li>
-          <a class="row-link" href="/documents/{{ d.id }}">
+          <a class="row-link" href="/documents/{{ d.id }}/guide">
             <span class="dot {{ 's-complete' if d.done else 's-empty' }}"
                   title="{{ 'every section complete' if d.done else 'in progress' }}">
               {{ '✓' if d.done else '·' }}</span>

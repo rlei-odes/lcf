@@ -1,0 +1,20 @@
+{# The last step: the deliverable. Refused while the quality check has blocking
+   problems, unless the author says why it goes out anyway. #}
+<div class="card step-head">
+  <div class="block-head"><span class="step-of">Export</span></div>
+  <h2>Export the document</h2>
+  <p class="lead">
+    {%- if report.passed -%}
+      The quality check passes. Choose a format.
+    {%- else -%}
+      The quality check has not passed. You can still export, and the reason you
+      give is kept with the export.
+    {%- endif -%}
+  </p>
+</div>
+
+{% include "partials/export_card.html" %}
+
+<div class="actions guide-actions guide-foot">
+  <a href="{{ guide.url(document.id, step=guide.QUALITY) }}" class="back">← Quality check</a>
+</div>

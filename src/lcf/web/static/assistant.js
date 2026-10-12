@@ -166,7 +166,7 @@
   // Ctrl/Cmd+Enter sends. Plain Enter is a new line: remarks are often several.
   document.addEventListener("keydown", function (event) {
     if (event.key !== "Enter" || !(event.ctrlKey || event.metaKey)) return;
-    var form = event.target.closest && event.target.closest("form[data-compose]");
+    var form = event.target.closest && event.target.closest("form[data-compose], form[data-ctrl-enter]");
     if (form && !form.querySelector("button[type=submit]").disabled) {
       event.preventDefault();
       form.requestSubmit();
@@ -288,6 +288,12 @@
     apply(saved(lane() || { dataset: {} }));
     restoreDrafts();
     if (following) toBottom();
+  });
+
+  // Settling puts the server's attributes back on a swapped element that kept
+  // its id, which undoes the open or closed state set just after the swap.
+  document.addEventListener("htmx:afterSettle", function () {
+    apply(saved(lane() || { dataset: {} }));
   });
 
   function boot() {

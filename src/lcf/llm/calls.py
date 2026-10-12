@@ -108,7 +108,7 @@ async def draft_block(view: DocumentView, section: Section, block: Block, style:
     data = completion.data
     return BlockDraft(
         block_key=block.key,
-        value=_without_heading(data.get("value"), section, block),
+        value=_tidy(data.get("value"), section, block),
         gaps=[Gap(g.get("question", ""), g.get("why", "")) for g in data.get("gaps", [])],
         confidence=_fraction(data.get("confidence")),
         based_on=[str(b) for b in data.get("based_on", [])],
@@ -195,7 +195,7 @@ async def revise_block(
             optional=("rationale",),  # the rewrite is the answer; the note is not
         )
         data = completion.data
-        value = _without_heading(data.get("value"), section, block)
+        value = _tidy(data.get("value"), section, block)
         moved = [p for p in pins if not quoted_from(p, _render(value))]
         written = BlockRevision(
             value=value,
@@ -239,7 +239,8 @@ def _revision_data(
     """
     parts = _material(view, section)
 
-    current = view.block_value(section.key, block.key)
+    current = _in_spec_order(view.block_value(section.key, block.key), block)
+    previous = _in_spec_order(previous, block)
     if current and _render(current).strip():
         parts.append(
             "## What this block says now\n\n"
@@ -302,13 +303,14 @@ def discuss_messages(
     """The whole chat for one discussion turn: context in the system message,
     then the conversation as alternating turns, the author's newest last."""
     context = _material(view, section)
-    current = view.block_value(section.key, block.key)
+    current = _in_spec_order(view.block_value(section.key, block.key), block)
     context.append(
         "## What this block says now\n\n"
         + (_render(current) if current and _render(current).strip() else "(empty)")
     )
     if previous is not None and _render(previous).strip():
-        context.append("## A rewrite the author has not decided on yet\n\n" + _render(previous))
+        pending = _render(_in_spec_order(previous, block))
+        context.append("## A rewrite the author has not decided on yet\n\n" + pending)
     if pins:
         context.append("## Passages the author has settled\n\n" + "\n".join(f"- {p}" for p in pins))
     context += _upstream(view, section)
@@ -387,7 +389,7 @@ async def map_evidence_to_sections(spec: DocTypeSpec, material: str) -> Mapping:
     )
     user = f"## The author's material\n\n{material}"
 
-    schema = mapping_schema(keys, titles)
+    schema = mapping_schema(keys, titles, len(material))
     completion = await complete_json(
         system,
         user,
@@ -997,7 +999,7 @@ def _upstream(view: DocumentView, section: Section) -> list[str]:
 def _runtime_data(view: DocumentView, section: Section, block: Block) -> str:
     parts = _material(view, section)
 
-    current = view.block_value(section.key, block.key)
+    current = _in_spec_order(view.block_value(section.key, block.key), block)
     if current:
         parts.append(
             "## What this block currently contains\n\n"
@@ -1015,6 +1017,22 @@ def _runtime_data(view: DocumentView, section: Section, block: Block) -> str:
     return "\n\n".join(parts)
 
 
+_MARKER = re.compile(r"^[\s\-*•·>–—.:;]+")
+
+
+def _tidy(value: Any, section: Section, block: Block) -> Any:
+    """A block's value without what a model adds around the content.
+
+    Prose loses a first line that only repeats a title. A list loses the bullet,
+    quote mark or stray punctuation a model sometimes puts in front of each item:
+    the list is already a list, and the marker would be printed as text.
+    """
+    if block.kind == "list" and isinstance(value, list):
+        items = [_MARKER.sub("", str(v)).strip() if isinstance(v, str) else v for v in value]
+        return [v for v in items if v not in ("", None)]
+    return _without_heading(value, section, block)
+
+
 def _without_heading(value: Any, section: Section, block: Block) -> Any:
     """Prose without a first line that only repeats the section or block title.
 
@@ -1029,6 +1047,30 @@ def _without_heading(value: Any, section: Section, block: Block) -> Any:
     if " ".join(first.strip("#*_: \t").split()).casefold() in titles:
         return rest.lstrip()
     return value
+
+
+def _in_spec_order(value: Any, block: Block) -> Any:
+    """Fields and columns in the order the block declares them.
+
+    Stored values keep whatever order they were written in. The answer schema
+    asks for the declared order, and a model shown one order and asked for the
+    other reports having "fixed" it.
+    """
+    if isinstance(value, dict) and block.fields:
+        order = [f.key for f in block.fields]
+        return {k: value[k] for k in order if k in value} | {
+            k: v for k, v in value.items() if k not in order
+        }
+    if isinstance(value, list) and block.columns:
+        return [_in_spec_order_row(row, block) for row in value]
+    return value
+
+
+def _in_spec_order_row(row: Any, block: Block) -> Any:
+    if not isinstance(row, dict):
+        return row
+    order = [c.key for c in block.columns]
+    return {k: row[k] for k in order if k in row} | {k: v for k, v in row.items() if k not in order}
 
 
 def _render(value: Any) -> str:

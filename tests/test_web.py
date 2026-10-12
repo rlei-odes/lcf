@@ -51,7 +51,7 @@ def _new_document(client, spec, title="Web test") -> str:
         "/documents", data={"doc_type": spec.id, "title": title}, follow_redirects=False
     )
     assert response.status_code == 303
-    return response.headers["location"]
+    return response.headers["location"].removesuffix("/guide")
 
 
 async def test_index_lists_the_type(published_4d, client):
@@ -365,7 +365,7 @@ async def test_the_override_field_is_offered_before_the_attempt(published_4d, cl
     """Downloads must be plain form posts, so a refusal would navigate the browser
     to a bare fragment. The card asks for the reason up front instead."""
     location = _new_document(client, published_4d)
-    page_html = client.get(location).text
+    page_html = client.get(f"{location}/guide/export").text
 
     assert 'name="override_reason"' in page_html
     assert "Exporting anyway? Say why." in page_html
@@ -400,7 +400,7 @@ async def test_the_export_record_distinguishes_unrun_from_failing(published_4d, 
     _fill_from_sample(client, location, sample_4d)
 
     client.post(f"{location}/export/json", data={"override_reason": "deadline"})
-    history_html = client.get(location).text
+    history_html = client.get(f"{location}/guide/export").text
 
     assert "before the checks were run" in history_html
     assert "past 0 blocking problems" not in history_html, "nonsense wording"

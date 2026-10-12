@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Behind the scenes · {{ document.title }}{% endblock %}
+{% block subtitle %}{{ spec.title }} v{{ spec.version }}{% endblock %}
+
+{# What happened to the author's material and to the assistant's proposals, and
+   every check by name. Nothing here is needed to write the document. #}
+{% block content %}
+{% import "partials/quote_macros.html" as qm %}
+<div class="layout guide">
+  {% include "partials/guide_rail.html" %}
+
+  <div class="guide-main">
+    <div class="card step-head">
+      <div class="block-head"><span class="step-of">On request</span></div>
+      <h2>Behind the scenes</h2>
+      <p class="lead">
+        Where each passage of your material was filed and why, which answers were
+        read from it, what you accepted and declined, and every check by name.
+      </p>
+    </div>
+
+    <div class="card">
+      <h3>Your material</h3>
+      {% if items %}
+        {% include "partials/paste_digests.html" %}
+      {% else %}
+        <p class="lead">Nothing pasted.</p>
+      {% endif %}
+    </div>
+
+    {% if report.judged_at %}
+    <div class="card">
+      <details class="disclose">
+        <summary>Last full check <span class="count">{{ report.judged_at|localtime }}</span></summary>
+        {% with document_id = document.id %}{% include "partials/gate.html" %}{% endwith %}
+      </details>
+    </div>
+    {% endif %}
+
+    {% for r in record %}
+    {% set section = r.section %}
+    <div class="card record-section">
+      <div class="block-head">
+        <h3 style="margin:0"><span class="ref">{{ ref(spec, section.key) }}</span> {{ section.title }}</h3>
+        <a href="/documents/{{ document.id }}/sections/{{ section.key }}" style="margin-left:auto;font-size:13px"
+           title="Everything about this section on one page, including correcting where passages were filed">
+          All on one page →</a>
+      </div>
+
+      {% if r.filed %}
+      <details class="disclose">
+        <summary>Filed here <span class="count">{{ r.filed|length }}</span></summary>
+        {% for e in r.filed %}
+        <div class="filed-here">
+          {{ qm.filed_quote(e.link) }}
+          <div class="filed-meta">
+            {% if e.link.why %}<p class="filed-why"><span>Why here</span> {{ e.link.why }}</p>{% endif %}
+            {% for key, prompt in e.answered %}
+            <p class="filed-why"><span>Answered</span>
+              <span class="ref">{{ ref(spec, section.key, question=key) }}</span> {{ prompt }}</p>
+            {% endfor %}
+            <p class="filed-source">From your paste of {{ e.pasted_at|localtime }}</p>
+          </div>
+        </div>
+        {% endfor %}
+      </details>
+      {% endif %}
+
+      {% if r.decided %}
+      <details class="disclose">
+        <summary>Decisions <span class="count">{{ r.decided|length }}</span></summary>
+        <ul class="plain" style="margin-top:12px">
+          {% for block_key, p in r.decided %}
+          <li>
+            <span class="dot {{ 's-needs_input' if p.status == 'rejected' else 's-complete' }}">
+              {{ '✗' if p.status == 'rejected' else '✓' }}</span>
+            <span>
+              <strong>{{ p.status|replace('_', ' ') }}</strong> · {{ ref(spec, section.key, block=block_key) or block_key }}
+              {% if p.remark %}<span class="where">asked: {{ p.remark }}</span>{% endif %}
+              <span class="where">{{ p.proposed_value['v']|string|truncate(160) }}</span>
+            </span>
+            <span class="meta">{{ p.decided_by or 'local' }} · {{ p.decided_at|localtime }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endif %}
+
+      {% if r.state.results %}
+      <details class="disclose">
+        <summary>Checks <span class="count">{{ r.state.results|length }}</span></summary>
+        {% for c in r.state.results %}
+        <div class="check {{ c.severity if c.failed else 'pass' }}">
+          <span class="mark">{{ '✗' if c.failed else ('·' if c.outcome == 'not_applicable' else '✓') }}</span>
+          <span>{{ c.check_id }}{% if c.reason %} - {{ c.reason }}{% endif %}</span>
+        </div>
+        {% endfor %}
+      </details>
+      {% endif %}
+
+      {% if not r.filed and not r.decided and not r.state.results %}
+      <p class="hint">Nothing recorded yet.</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

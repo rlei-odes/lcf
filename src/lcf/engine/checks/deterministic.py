@@ -69,25 +69,32 @@ def _text_of(block: Block, value: Any) -> str:
 # --------------------------------------------------------------------------- #
 
 
+def _listed(names: list[str]) -> str:
+    """Names as a sentence lists them: "A", "A and B", "A, B and C"."""
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+
+
 def _present(view, section, block, value, req) -> CheckResult:
     """Non-empty. For a keyvalue block this means every spec-required field is filled —
     which is what the example specs mean by it."""
     where = f"{section.key}.{block.key}"
     if block.kind is BlockKind.KEYVALUE and not _blank(value):
-        missing = [f.key for f in block.fields if f.required and _blank(value.get(f.key))]
+        missing = [f for f in block.fields if f.required and _blank(value.get(f.key))]
         if missing:
             return failed(
                 req.id,
                 req.severity,
-                f"{block.label}: missing {', '.join(missing)}",
-                evidence=[f"{where}.{m}" for m in missing],
+                f"{block.label}: {_listed([f.label for f in missing])} not filled in",
+                evidence=[f"{where}.{f.key}" for f in missing],
                 section_key=section.key,
             )
     if _blank(value):
+        required = [f.label for f in block.fields if f.required]
         return failed(
             req.id,
             req.severity,
-            f"{block.label} is empty",
+            f"{block.label} is empty"
+            + (f": {_listed(required)} must be filled in" if required else ""),
             evidence=[where],
             section_key=section.key,
         )
@@ -158,7 +165,8 @@ def _fields_filled(view, section, block, value, req) -> CheckResult:
     for i, row in enumerate(value):
         missing = [f for f in (req.fields or []) if _blank(row.get(f))]
         if missing:
-            gaps.append(f"row {i + 1} missing {', '.join(missing)}")
+            labels = {c.key: c.label for c in block.columns}
+            gaps.append(f"row {i + 1} has no {_listed([labels.get(m, m) for m in missing])}")
             evidence += [f"{where}[{i}].{m}" for m in missing]
     if gaps:
         return failed(

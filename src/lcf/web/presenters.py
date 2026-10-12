@@ -6,7 +6,7 @@ so a change to how status is derived touches one place, not a dozen `{% if %}`s.
 
 import difflib
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from markdown_it import MarkdownIt
@@ -199,18 +199,36 @@ class BlockView:
 
     def preview(self, proposal) -> str:
         """A proposal rendered for reading, whatever the block's kind."""
-        value = proposal.proposed_value.get("v")
+        return self.readable(proposal.proposed_value.get("v"))
+
+    def readable(self, value: Any) -> str:
+        """A value as text a person reads: fields and columns by their labels.
+
+        What the block holds now and what a proposal would make it are both read
+        through this, so comparing the two compares like with like.
+        """
         if isinstance(value, str):
             return value
+        if value is None:
+            return ""
         if isinstance(value, list) and value and isinstance(value[0], dict):
+            labels = {c.key: c.label for c in self.block.columns}
             return "\n".join(
-                " · ".join(f"{k}: {v}" for k, v in row.items() if str(v).strip()) for row in value
+                " · ".join(f"{labels.get(k, k)}: {v}" for k, v in row.items() if str(v).strip())
+                for row in value
             )
         if isinstance(value, list):
             return "\n".join(f"– {v}" for v in value)
         if isinstance(value, dict):
-            return "\n".join(f"{k}: {v}" for k, v in value.items() if str(v).strip())
+            labels = {f.key: f.label for f in self.block.fields}
+            return "\n".join(f"{labels.get(k, k)}: {v}" for k, v in value.items() if str(v).strip())
         return str(value)
+
+    def showing(self, proposal) -> "BlockView":
+        """This block with the draft's value in it, for rendering in its own editor."""
+        value = proposal.proposed_value.get("v")
+        rows = value if isinstance(value, list) and self.block.kind == "table" else []
+        return replace(self, value=value, rows=rows, failures=[])
 
     def marked_preview(self, proposal) -> Markup:
         """A proposal with the author's settled passages shown as such."""
@@ -219,12 +237,14 @@ class BlockView:
     def changes(self, proposal) -> Markup | None:
         """The proposal as a change to what the block says now, or None when
         there is nothing to compare it with."""
-        if not str(self.text).strip():
+        now = self.readable(self.value)
+        if not now.strip():
             return None
-        return changes(str(self.text), self.preview(proposal))
+        return changes(now, self.preview(proposal))
 
     def unchanged(self, proposal) -> bool:
-        return " ".join(str(self.text).split()) == " ".join(self.preview(proposal).split())
+        now = self.readable(self.value)
+        return " ".join(now.split()) == " ".join(self.preview(proposal).split())
 
     @property
     def timeline(self) -> list[Any]:
@@ -257,9 +277,9 @@ class BlockView:
         for the draft button, and an input offering to rewrite nothing reads as a
         broken one.
         """
-        if self.block.kind != "prose":
+        if not self.assisted:
             return False
-        return bool(str(self.text).strip()) or any(
+        return bool(self.readable(self.value).strip()) or any(
             p.proposed_value.get("v") for p in self.proposals
         )
 
@@ -270,9 +290,14 @@ class BlockView:
         The author edited it away by hand. Saying so beats a pin that silently
         constrains a rewrite against text nobody can see any more.
         """
-        texts = [str(self.text)] + [self.preview(p) for p in self.proposals]
+        texts = [self.readable(self.value)] + [self.preview(p) for p in self.proposals]
         haystack = " ".join(" ".join(t.split()) for t in texts).casefold()
         return [p for p in self.pins if " ".join(p.quote.split()).casefold() not in haystack]
+
+    @property
+    def assisted(self) -> bool:
+        """Can the assistant work on this block with the author? Not on images."""
+        return self.block.kind != "image_ref"
 
     @property
     def text(self) -> str:
@@ -294,10 +319,23 @@ class QuestionView:
     # The author's words this answer was drawn from, when intake proposed it and
     # nobody has confirmed it yet. `None` means a person put it there.
     proposed_from: str | None = None
+    # Whether there is an answer row at all; an empty one is a skipped question.
+    given: bool = False
 
     @property
     def proposed(self) -> bool:
         return self.proposed_from is not None
+
+    @property
+    def settled(self) -> bool:
+        """Confirmed by a person, or skipped when it was optional."""
+        if not self.given or self.proposed:
+            return False
+        return self.answered or not self.question.required
+
+    @property
+    def skipped(self) -> bool:
+        return self.settled and not self.answered
 
     @property
     def text(self) -> str:
@@ -359,6 +397,7 @@ def section_panel_context(
             answers.get(q.key),
             answers.get(q.key) not in ("", None),
             view.proposed_from(key, q.key),
+            q.key in answers,
         )
         for q in section.questions
     ]
@@ -379,16 +418,18 @@ def section_panel_context(
         "gaps": gaps or [],
         "llm_errors": llm_errors or [],
         "pending_count": sum(len(v) for v in proposals.values()),
-        "prose": [b for b in blocks if b.block.kind == "prose"],
+        # Every block the assistant can work on with the author: all that hold
+        # content of their own, which is all but image references.
+        "assisted": [b for b in blocks if b.assisted],
         # Where the assistant lane opens: wherever something is going on.
         "lane_focus": next(
             (
                 b.block.key
                 for b in blocks
-                if b.block.kind == "prose"
+                if b.assisted
                 and (b.rewrites or b.discussing or any(t.status == "requested" for t in b.turns))
             ),
-            next((b.block.key for b in blocks if b.block.kind == "prose"), None),
+            next((b.block.key for b in blocks if b.assisted), None),
         ),
         # Whether asking for a draft would do anything at all. Drafting only
         # touches empty blocks and never touches image references, so a section

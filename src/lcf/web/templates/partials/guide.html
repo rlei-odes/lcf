@@ -1,0 +1,25 @@
+{# The guided workspace: the rail, and the one step being worked on.
+
+   `#workspace` is the same region the section workspace swaps, so every action
+   the two share can answer either. The assistant lane belongs to the writing
+   step only. #}
+{% set writing = step == guide.WRITE and assisted is defined and assisted %}
+<div class="layout guide{{ ' three lane-closed' if writing }}" id="workspace">
+  {% include "partials/guide_rail.html" %}
+
+  <div class="guide-main">
+    {% if step == guide.MATERIAL %}
+      {% include "partials/guide_material.html" %}
+    {% elif step == guide.QUALITY %}
+      {% include "partials/guide_quality.html" %}
+    {% elif step == guide.EXPORT %}
+      {% include "partials/guide_export.html" %}
+    {% else %}
+      {% include "partials/guide_section.html" %}
+    {% endif %}
+  </div>
+
+  {% if writing %}
+    {% include "partials/assistant.html" %}
+  {% endif %}
+</div>

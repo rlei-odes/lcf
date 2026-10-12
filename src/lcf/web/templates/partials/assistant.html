@@ -1,4 +1,4 @@
-{# The assistant lane: one conversation per prose block, in two modes.
+{# The assistant lane: one conversation per block, in two modes.
 
    Rewrite answers a remark with a new version of the block, to accept or
    decline. Discuss is an open conversation whose replies never reach the block.
@@ -26,9 +26,9 @@
     <button type="button" class="lane-close" data-lane-close
             title="Close the assistant. ✦ Assistant on a block opens it again">✕</button>
 
-    {% if prose|length > 1 %}
+    {% if assisted|length > 1 %}
     <div class="block-tabs" role="tablist" aria-label="Which block">
-      {% for b in prose %}
+      {% for b in assisted %}
       <button type="button" class="block-tab" data-focus-to="{{ b.block.key }}">
         <span class="ref">{{ ref(spec, section.key, block=b.block.key)|replace(ref(spec, section.key) ~ '-', '') }}</span>
         {{ b.block.label }}
@@ -43,7 +43,7 @@
   <div class="lane-note blocker">{{ refused }}</div>
   {% endif %}
 
-  {% for b in prose %}
+  {% for b in assisted %}
   {% set key = b.block.key %}
   {% set busy_rewrite = revise_job and revise_in == key %}
   <section class="conv" data-conv data-block="{{ key }}" {{ 'hidden' if key != lane_focus }}>

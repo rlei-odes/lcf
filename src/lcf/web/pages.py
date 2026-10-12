@@ -20,7 +20,7 @@ from lcf.engine.state import Status
 from lcf.ingest import commands as ingest_commands
 from lcf.services import drafts, events
 from lcf.spec.describe import describe_criterion, describe_requirement, scope_of
-from lcf.web import builder
+from lcf.web import builder, guide
 from lcf.web.presenters import (
     CONTENT,
     QUESTION,
@@ -119,6 +119,7 @@ templates.env.filters["scope"] = scope_of
 # the templates offer choices rather than free text.
 templates.env.globals["builder"] = builder
 templates.env.globals["drafts"] = drafts
+templates.env.globals["guide"] = guide
 
 # The evidence desk stores a question's commands as JSONB and validates them on
 # read, the same way a spec is read back. The panel needs the validated form to

@@ -1,0 +1,113 @@
+{# The first step: whatever the author already has, sorted into the sections.
+   What went where in detail is behind the scenes; here only what it means for
+   the next steps. #}
+<div class="card step-head">
+  <div class="block-head"><span class="step-of">Start</span></div>
+  <h2>Your material</h2>
+  <p class="lead">
+    Paste the email, the notes, the measurements: whatever you already have about
+    this case. It is sorted into the sections it belongs to, and the questions it
+    answers are filled in for you. You confirm each one as you go.
+  </p>
+</div>
+
+{% if running_intake %}
+  {% with job = running_intake,
+          done_url = guide.url(document.id, step=guide.MATERIAL) ~ "?job=" ~ running_intake.id,
+          done_target = "#workspace",
+          working_title = "Sorting what you pasted" %}
+    {% include "partials/job.html" %}
+  {% endwith %}
+
+{% elif outcome %}
+<div class="card guide-outcome">
+  {% set read = outcome.sections|sum(attribute='prefilled', start=[])|length %}
+  {% if outcome.errors and not outcome.sections %}
+  <h3>Not sorted</h3>
+  <p class="lead">
+    The assistant could not sort it. Your paste is kept: sort it again later, or
+    go through the questions yourself.
+  </p>
+  {% elif outcome.sections %}
+  <h3>Sorted</h3>
+  <p class="lead">
+    {{ count(outcome.placed, 'passage') }} filed under {{ count(outcome.sections|length, 'section') }}
+    {%- if read %}, and {{ count(read, 'answer') }} read from them for you to confirm{% endif %}.
+  </p>
+  <ul class="plain sorted-into">
+    {% for s in outcome.sections %}
+    <li>
+      <span class="ref">{{ ref(spec, s.key) }}</span>
+      <span class="row-title">{{ s.title }}</span>
+      <span class="meta">
+        {{ count(s.passages|length, 'passage') }}
+        {%- if s.prefilled %} · {{ count(s.prefilled|length, 'answer') }}{% endif %}
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <h3>Sorted</h3>
+  <p class="lead">Nothing in that text matched a section of this document.</p>
+  {% endif %}
+
+  {% if outcome.unread %}
+  <div class="notice">
+    <strong>The end of your paste was not read.</strong>
+    <div class="hint">
+      {{ '{:,}'.format(outcome.unread) }} characters at the end were past the most
+      one paste is sorted in. Paste the rest on its own below.
+    </div>
+  </div>
+  {% endif %}
+  {% if outcome.full_parts %}
+  <div class="notice">
+    <strong>Some passages may not have been filed.</strong>
+    <div class="hint">
+      Your paste held more than the assistant files in one go, so it stopped at
+      {{ outcome.ceiling }} passages in {{ 'a part' if outcome.full_parts == 1 else outcome.full_parts ~ ' parts' }}
+      of it. Your text is kept as you pasted it. If a question below comes up
+      empty that your notes do answer, type the answer in.
+    </div>
+  </div>
+  {% endif %}
+
+  {% for e in outcome.errors or [] %}
+  <div class="check blocker"><span class="mark">✗</span><span>{{ e }}</span></div>
+  {% endfor %}
+
+  <div class="actions guide-actions">
+    <span class="spacer"></span>
+    {% if first_section %}
+    <a class="button primary" href="{{ first_section }}">Go through the questions →</a>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  {% if items and not outcome and not running_intake %}
+  <p class="lead">
+    You have pasted material {{ count(items|length, 'time') }} already.
+    Add more below, or carry on.
+  </p>
+  {% endif %}
+  <form hx-post="{{ guide.url(document.id, step=guide.MATERIAL) }}"
+        hx-target="#workspace" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <div class="field">
+      <textarea name="text" rows="{{ 6 if items else 12 }}" required
+                {{ 'autofocus' if not items }}
+                placeholder="Paste anything you have about this case."></textarea>
+    </div>
+    {% if material_error %}<p class="field-problem">{{ material_error }}</p>{% endif %}
+    <div class="actions guide-actions">
+      <button class="primary" type="submit" {{ 'disabled' if running_intake }}>
+        {{ 'Sort this in too' if items else 'Sort it into the sections' }}</button>
+      <span class="htmx-indicator working">Starting…</span>
+      <span class="spacer"></span>
+      {% if first_section and not outcome %}
+      <a href="{{ first_section }}">{{ 'Continue' if items else 'I have nothing to paste' }} →</a>
+      {% endif %}
+    </div>
+  </form>
+</div>

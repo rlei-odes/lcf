@@ -208,3 +208,42 @@ Not forgotten — decided against for now, with the condition that would change 
   "try again") is worse than either.
 - New type of Quality criteria: Typ "Have you thought about this?" - Just as input, maybe as a bubble type on the right?
 - Repeateable blocks or even sections
+## 13. Questions and the fields they feed
+
+A section asks questions, and its content is written from the answers and the author's pasted
+material. The two are not tied together, which leaves three things open.
+
+**What wins.** Drafting reads answers and passages side by side, with nothing saying which counts
+when they disagree. An answer is the author's own statement and should win over anything read from
+a paste; the drafting prompt does not say so yet.
+
+**An answer the fields cannot hold.** A table whose rows each need a requirement ID cannot take
+"used 200 times, SOP updated" as written. The assistant leaves it out and asks how to map it. The
+answer was used correctly and still reads as ignored. A question has to be asked in the shape of
+what it feeds, or the draft has to say where the answer went.
+
+**Why ask at all.** Where a question maps onto one field (*who accepts this* onto the sign-off
+role), it is that field asked twice. Questions earn their place where an answer feeds several
+fields, or prose, or a judgement the fields do not capture. Options:
+
+| | What changes |
+|---|---|
+| A question names the fields it feeds | The rule builder links them. Drafting puts the answer there first, and the review step shows where each answer went |
+| A one-field question becomes the field | The author fills the field directly in the questions step; drafting only writes what no question covered |
+| Keep both, rank them | The prompt states that answers override pasted material, and a draft that drops an answer says why next to the field |
+
+The third is a prompt change and could go first; the first two are spec and builder changes.
+
+## 14. Refining lists, tables and field sets
+
+The assistant lane works on every block that holds content, but it was built for prose and the
+other kinds show it.
+
+| | State |
+|---|---|
+| The rewrite itself | Works: the answer comes back in the block's own shape and is accepted as a whole |
+| Showing what changed | A table is compared as one line per row, so a changed cell marks the whole row. A per-cell diff would read better |
+| The quick remarks | *Shorter*, *Plainer*, *More formal*, *Fix language* are prose remarks. A list or table wants others: *split this item*, *add a row for …*, *sort by …* |
+| Settling a passage | Selecting text works on the readable form, which for a table includes the column labels — a pin taken from it is not found in the stored value and reads as moved |
+| Accepting part of it | All or nothing. Accepting some rows or some fields of a rewrite needs the same answer as accepting part of a first draft |
+| A remark about another block | Answered from the section's context, which includes the answers and filed material — so the model knows a name from a sibling block and explains why it cannot apply it here, instead of the lane pointing at the right block |

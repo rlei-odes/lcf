@@ -1,0 +1,150 @@
+{# The writing step: have the assistant draft what is empty, decide on each
+   draft, then refine with the assistant beside it or by hand. #}
+{% set waiting_q = questions|rejectattr('settled')|list %}
+{% set pending = blocks|map(attribute='drafts')|map('length')|sum %}
+
+{% if state.blocked_by %}
+<div class="notice">
+  <h3>Waiting on another section</h3>
+  <p>The draft is written on top of
+    {% for key in state.blocked_by %}<a href="{{ guide.url(document.id, key) }}">{{ spec.section(key).title }}</a>
+    {%- if not loop.last %}, {% endif %}{% endfor %}, so that has to be complete first.
+    You can still write here yourself.</p>
+</div>
+{% elif waiting_q %}
+<div class="notice">
+  <h3>{{ count(waiting_q|length, 'question') }} still open</h3>
+  <p>The draft is written from your answers.
+    <a href="{{ guide.url(document.id, section.key, guide.question_step(waiting_q[0].question.key)) }}">
+      Go to {{ REF.question }}{{ questions.index(waiting_q[0]) + 1 }}</a>
+    {%- if state.missing_answers %}; drafting waits for the required ones{% endif %}.</p>
+</div>
+{% endif %}
+
+{% if llm_errors %}
+<div class="notice blocker">
+  <h3>The assistant could not be reached</h3>
+  {% for e in llm_errors %}<p>{{ e }}</p>{% endfor %}
+</div>
+{% endif %}
+
+{# Questions the assistant raised are shown at the block they are about; only
+   one that names no block of this section is listed up here. #}
+{% set block_keys = blocks|map(attribute='block.key')|list %}
+{% set loose_gaps = (gaps or [])|rejectattr('block_key', 'in', block_keys)|list %}
+{% if loose_gaps and state.status != Status.COMPLETE %}
+<div class="notice">
+  <h3>The assistant needs {{ count(loose_gaps|length, 'thing') }} from you</h3>
+  {% for g in loose_gaps %}
+  <div class="check"><span class="mark">?</span>
+    <span>{{ g.question }}<span class="note">{{ g.why }}</span></span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div id="drafting-slot">
+  {% if running_job %}
+    {% with job = running_job,
+            done_url = "/documents/" ~ document.id ~ "/sections/" ~ section.key ~ "/panel?job=" ~ running_job.id,
+            done_target = "#workspace",
+            working_title = "Writing a draft" %}
+      {% include "partials/job.html" %}
+    {% endwith %}
+  {% endif %}
+</div>
+
+{# The whole step is one form: what the fields hold is saved together, and a
+   draft still showing is accepted as the fields hold it. Each block's fields
+   carry its own prefix so they cannot collide. #}
+{% set url = guide.url(document.id, section.key, guide.WRITE) %}
+<form id="writing" hx-post="{{ url }}" hx-target="#workspace" hx-swap="outerHTML"
+      hx-disabled-elt="find button[type=submit]" data-dirty="your changes">
+<div class="card guide-write" id="blocks">
+  <div class="block-head">
+    <h3 style="margin:0">Write</h3>
+    {% if blocks and draftable and not running_job %}
+    <button type="button" style="margin-left:auto"
+            class="{{ 'primary' if state.can_draft and not pending }}"
+            hx-post="/documents/{{ document.id }}/sections/{{ section.key }}/draft"
+            hx-target="#drafting-slot" hx-swap="innerHTML"
+            {{ 'disabled' if not state.can_draft }}>✦ Write a draft for me</button>
+    {% endif %}
+  </div>
+  {% if section.guidance %}<p class="hint">{{ section.guidance }}</p>{% endif %}
+  <p class="lead">
+    {%- if not blocks %}
+      This section has nothing to write in it. That is a fault in the document
+      type, not in anything you did.
+    {%- elif pending %}
+      The assistant's draft is in the fields marked <span class="pill drafted">draft</span>.
+      Change anything you like. What the fields hold when you continue is what is
+      written; decline a draft to start that part over yourself.
+    {%- elif draftable and state.can_draft %}
+      The assistant writes from your answers and your material. Or write it
+      yourself below.
+    {%- else %}
+      Edit anything below. <strong>✦ Refine</strong> asks the assistant for a
+      change you describe.
+    {%- endif -%}
+  </p>
+
+  {% for b in blocks %}
+  {% set draft = b.drafts[0] if b.drafts else none %}
+  {# The assistant's questions about a block stand until the block is dealt
+     with: once it holds text and no draft, the author has answered them. #}
+  {% set asked = (gaps or [])|selectattr('block_key', 'equalto', b.block.key)|list
+                 if (draft or b.empty) and state.status != Status.COMPLETE else [] %}
+  <div class="block{{ ' drafted' if draft }}" data-block="{{ b.block.key }}">
+    <div class="block-head">
+      <label>{{ b.block.label }}</label>
+      {% if draft %}<span class="pill drafted" title="Written by the assistant. It is written into the document when you continue.">
+        draft{% if draft.confidence %} · {{ '%.0f'|format(draft.confidence * 100) }}%{% endif %}</span>{% endif %}
+      {% if draft %}
+      <button type="button" class="tool" style="margin-left:auto"
+              hx-post="/proposals/{{ draft.id }}/reject"
+              hx-vals='{"document_id": "{{ document.id }}", "section": "{{ section.key }}"}'
+              hx-target="#workspace" hx-swap="outerHTML"
+              title="Discard the draft and write this part yourself">Decline draft</button>
+      {% endif %}
+      {% if b.assisted %}
+      <button type="button" class="tool ask{{ ' waiting' if b.rewrites }}" data-focus-to="{{ b.block.key }}"
+              {% if not draft %}style="margin-left:auto"{% endif %}
+              title="Ask the assistant for a change to this part">
+        {{- '✦ A new version is waiting' if b.rewrites else '✦ Refine' -}}
+      </button>
+      {% endif %}
+    </div>
+    {% if b.block.hint %}<div class="hint">{{ b.block.hint }}</div>{% endif %}
+    {% with b = b.showing(draft) if draft else b, prefix = "b." ~ b.block.key ~ "." %}
+      {% include "partials/block_" + b.block.kind|string + ".html" ignore missing %}
+    {% endwith %}
+
+    {% if draft and draft.rationale %}
+    <div class="check"><span class="mark">?</span><span>{{ draft.rationale }}</span></div>
+    {% endif %}
+    {% for g in asked %}
+    <div class="check"><span class="mark">?</span>
+      <span>{{ g.question }}<span class="note">{{ g.why }}</span></span>
+    </div>
+    {% endfor %}
+    {% for f in (b.failures if not b.empty and not draft else []) %}
+    <div class="check {{ f.severity }}">
+      <span class="mark">✗</span><span>{{ f.reason }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+
+<div class="actions guide-actions guide-foot">
+  <a href="{{ previous_url }}" class="back">← Back</a>
+  <a href="/documents/{{ document.id }}/sections/{{ section.key }}" class="muted"
+     title="Everything about this section on one page">All on one page</a>
+  <span class="spacer"></span>
+  <span class="htmx-indicator working">Saving…</span>
+  <button type="submit" name="go" value="stay">Save</button>
+  <button type="submit" name="go" value="next" class="primary">
+    {{ 'Accept draft and continue →' if pending == 1 else ('Accept drafts and continue →' if pending else 'Save and continue →') }}</button>
+</div>
+</form>

@@ -4,26 +4,43 @@
    passed is folded away but reachable: a bare "20 checks pass" is a claim with
    no way to see what was actually claimed, and a document going to a customer
    is exactly where someone wants to read the list. #}
+{# In the guided flow the findings are said plainly, by section; check names and
+   the fields they read are behind the scenes. Decided from the page the request
+   came from, because the gate is also redrawn by a route of its own. #}
+{% set plain = '/guide' in request.url.path or '/guide/' in request.headers.get('hx-current-url', '') %}
+
 
 {% for r in report.blockers %}
 <div class="check blocker">
   <span class="mark">✗</span>
+  {% if plain %}
+  <span>{% if r.section_key %}<a href="{{ guide.url(document_id, r.section_key, guide.CHECK) }}" class="ref">{{ ref(spec, r.section_key) }}</a> {% endif %}{{ r.reason }}
+    <span class="note">must fix</span></span>
+  {% else %}
   <span><strong>blocker</strong> · {{ r.check_id }} - {{ r.reason }}
     {% if r.evidence %}<span class="where">{{ r.evidence|join(' · ') }}</span>{% endif %}
   </span>
+  {% endif %}
 </div>
 {% endfor %}
 
 {% for r in report.warnings %}
 <div class="check warning">
   <span class="mark">✗</span>
+  {% if plain %}
+  <span>{% if r.section_key %}<a href="{{ guide.url(document_id, r.section_key, guide.CHECK) }}" class="ref">{{ ref(spec, r.section_key) }}</a> {% endif %}{{ r.reason }}
+    <span class="note">worth fixing</span></span>
+  {% else %}
   <span><strong>warning</strong> · {{ r.check_id }} - {{ r.reason }}
     {% if r.evidence %}<span class="where">{{ r.evidence|join(' · ') }}</span>{% endif %}
   </span>
+  {% endif %}
 </div>
 {% endfor %}
 
-{% if report.passes %}
+{% if report.passes and plain %}
+<div class="check pass"><span class="mark">✓</span><span>{{ count(report.passes|length, 'check') }} pass</span></div>
+{% elif report.passes %}
 <details class="check-group pass">
   <summary>
     <span class="mark">✓</span>
@@ -42,7 +59,9 @@
 </details>
 {% endif %}
 
-{% if report.not_evaluated %}
+{% if report.not_evaluated and plain %}
+<div class="check"><span class="mark">·</span><span>{{ count(report.not_evaluated|length, 'check') }} need the assistant and have not run yet</span></div>
+{% elif report.not_evaluated %}
 <details class="check-group">
   <summary>
     <span class="mark">·</span>

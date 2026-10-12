@@ -8,7 +8,7 @@
 {% set unconfirmed = questions|selectattr('proposed')|list %}
 
 {% import "partials/quote_macros.html" as qm %}
-<div class="layout{{ ' three lane-closed' if prose }}" id="workspace">
+<div class="layout{{ ' three lane-closed' if assisted }}" id="workspace">
 
   {# The orientation lane. It answers three questions without being read closely:
      which document is this, how far through am I, and what is the next thing
@@ -47,7 +47,7 @@
     {% endfor %}
 
     <div class="actions" style="margin-top:var(--s4)">
-      <a href="/documents/{{ document.id }}" style="font-size:13px">document overview →</a>
+      <a href="{{ guide.url(document.id) }}" style="font-size:13px">guided steps →</a>
     </div>
   </nav>
 
@@ -97,6 +97,7 @@
         <span class="pill {{ state.status }}">{{ state.status|replace('_', ' ') }}</span>
       </div>
       <h2><span class="ref ref-lg" title="Section {{ step.n }}">{{ ref(spec, section.key) }}</span> {{ section.title }}</h2>
+      <p class="hint"><a href="{{ guide.url(document.id, section.key) }}">← Back to the guided steps</a></p>
       {% if section.description %}<p class="lead">{{ section.description }}</p>{% endif %}
       {% if section.guidance %}<p class="hint">{{ section.guidance }}</p>{% endif %}
 
@@ -114,8 +115,8 @@
         <a href="/documents/{{ document.id }}/sections/{{ next.key }}" class="step-next">
           <span class="ref">{{ ref(spec, next.key) }}</span> {{ next.display_title }} →</a>
         {% else %}
-        <a href="/documents/{{ document.id }}#gate" class="step-next">
-          Quality gate and export →</a>
+        <a href="{{ guide.url(document.id, step=guide.QUALITY) }}" class="step-next">
+          Quality check →</a>
         {% endif %}
       </nav>
     </div>
@@ -302,7 +303,7 @@
             <span class="ref" title="{{ ref(spec, section.key, block=b.block.key) }}">{{ REF.content }}{{ loop.index }}</span>
             <label>{{ b.block.label }}</label>
             <span class="kind">{{ b.block.kind }}</span>
-            {% if b.block.kind == 'prose' %}
+            {% if b.assisted %}
             <button type="button" class="tool ask{{ ' waiting' if b.rewrites }}" data-focus-to="{{ b.block.key }}"
                     title="Work on this block with the assistant">
               {{- '✦ A new version is waiting' if b.rewrites else '✦ Assistant' -}}
@@ -398,18 +399,18 @@
         {% endif %}
         {# The way onward. Completing a section is the moment the next one
            unblocks, so the next step belongs here rather than in a menu. #}
+        <span style="margin-left:auto"></span>
+        <a href="{{ guide.url(document.id, section.key) }}" class="muted" style="font-size:13px">Guided steps</a>
         {% if next %}
-        <a href="/documents/{{ document.id }}/sections/{{ next.key }}"
-           style="margin-left:auto;font-size:13px">next: {{ next.display_title }} →</a>
+        <a class="button primary" href="{{ guide.url(document.id, next.key) }}">Next: {{ next.display_title }} →</a>
         {% else %}
-        <a href="/documents/{{ document.id }}#gate"
-           style="margin-left:auto;font-size:13px">next: quality gate and export →</a>
+        <a class="button primary" href="{{ guide.url(document.id, step=guide.QUALITY) }}">Next: quality check →</a>
         {% endif %}
       </div>
     </div>
   </div>
 
-  {% if prose %}
+  {% if assisted %}
     {% include "partials/assistant.html" %}
   {% endif %}
 </div>
