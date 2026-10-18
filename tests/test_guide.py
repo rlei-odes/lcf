@@ -193,7 +193,7 @@ async def test_behind_the_scenes_names_every_check(published_4d, client):
 
 
 async def _draft(location: str, section_key: str, block_key: str, value) -> str:
-    document_id = location.rsplit("/", 1)[-1]
+    document_id = uuid.UUID(location.rsplit("/", 1)[-1])
     async with session() as s:
         block = await s.scalar(
             select(Block)
