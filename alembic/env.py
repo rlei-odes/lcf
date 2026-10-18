@@ -2,9 +2,9 @@ import asyncio
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy.ext.asyncio import create_async_engine
 
 from lcf.core.config import settings
+from lcf.core.db import create
 from lcf.models.tables import Base
 
 config = context.config
@@ -34,7 +34,7 @@ def _run(connection) -> None:
 
 
 async def run_migrations_online() -> None:
-    engine = create_async_engine(_url())
+    engine = create(_url())
     async with engine.connect() as connection:
         await connection.run_sync(_run)
     await engine.dispose()

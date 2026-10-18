@@ -114,13 +114,12 @@ async def distribute(
 
     Both halves write, and both are committed together by the caller — but the
     rows are only *issued* at the end, after the last model call has returned.
-    Holding a write open across a call that takes a minute is free on PostgreSQL
-    and fatal on SQLite, which locks the whole file for one writer: the job's own
-    progress updates run in their own transaction, so they would queue behind a
-    lock that cannot be released until they are done. `extraction.run` and
-    `caption_job` already keep their writes out of the model's way for the same
-    reason. Nothing here needs the rows back, so deferring them costs nothing and
-    the transaction is unchanged on either backend.
+    A write held open across a call that takes a minute holds its rows for that
+    minute, and on Turso any other transaction that writes one of them in the
+    meantime fails rather than waits. `extraction.run` and `caption_job` keep
+    their writes out of the model's way for the same reason. Nothing here needs
+    the rows back, so deferring them costs nothing and the transaction is
+    unchanged on either backend.
     """
     document, spec = await load(session, document_id)
     item = await session.get(EvidenceItem, item_id)

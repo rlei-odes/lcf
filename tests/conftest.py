@@ -136,9 +136,9 @@ async def _drain_jobs() -> None:
 
     A test that posts to a route which queues work and then asserts on the
     response leaves the task running. Abandoned when the test's event loop
-    closes, it keeps its connection — and with it SQLite's one write lock — until
-    the garbage collector gets to it, which fails an unrelated insert in a later
-    test. PostgreSQL locks per row and never notices.
+    closes, it keeps its connection — and any uncommitted write on it — until
+    the garbage collector gets to it, and on Turso a later test that writes the
+    same row fails with a write-write conflict rather than waiting.
     """
     import asyncio
 

@@ -1,15 +1,6 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.13"
-
-[[package]]
-name = "aiosqlite"
-version = "0.22.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/4e/8a/64761f4005f17809769d23e518d915db74e6310474e733e3593cfc854ef1/aiosqlite-0.22.1.tar.gz", hash = "sha256:043e0bd78d32888c0a9ca90fc788b38796843360c855a7262a532813133a0650", size = 14821, upload-time = "2025-12-23T19:25:43.997Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/00/b7/e3bf5133d697a08128598c8d0abc5e16377b51465a33756de24fa7dee953/aiosqlite-0.22.1-py3-none-any.whl", hash = "sha256:21c002eb13823fad740196c5a2e9d8e62f6243bd9e7e4a1f87fb5e44ecb4fceb", size = 17405, upload-time = "2025-12-23T19:25:42.139Z" },
-]
 
 [[package]]
 name = "alembic"
@@ -588,7 +579,6 @@ name = "lcf"
 version = "0.2.3"
 source = { editable = "." }
 dependencies = [
-    { name = "aiosqlite" },
     { name = "alembic" },
     { name = "asyncpg" },
     { name = "bm25s" },
@@ -608,6 +598,7 @@ dependencies = [
     { name = "pystemmer" },
     { name = "python-docx" },
     { name = "python-multipart" },
+    { name = "pyturso" },
     { name = "regex" },
     { name = "ruamel-yaml" },
     { name = "sqlalchemy", extra = ["asyncio"] },
@@ -623,7 +614,6 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiosqlite", specifier = ">=0.20" },
     { name = "alembic", specifier = ">=1.14" },
     { name = "asyncpg", specifier = ">=0.30" },
     { name = "bm25s", specifier = ">=0.2" },
@@ -645,6 +635,7 @@ requires-dist = [
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24" },
     { name = "python-docx", specifier = ">=1.1" },
     { name = "python-multipart", specifier = ">=0.0.12" },
+    { name = "pyturso", specifier = ">=0.8.3" },
     { name = "regex", specifier = ">=2024.11" },
     { name = "ruamel-yaml", specifier = ">=0.18" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8" },
@@ -1287,6 +1278,21 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/5b/42/55c32bb9b12693c092ad250a0e82edb5b31ddeda6eb772de5f308b3804ad/python_multipart-0.0.32.tar.gz", hash = "sha256:be54b7f3fa167bb83e4fcd936b887b708f4e57fe75911c02aebf53efaf8d938e", size = 46881, upload-time = "2026-06-04T16:18:58.647Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e1/04/e8135ebd1ad02c56ec633277529b2602ff99ff634be76cdba5744cf554fd/python_multipart-0.0.32-py3-none-any.whl", hash = "sha256:ff6d3f776f16878c894e52e107296ffc890e913c611b1a4ec6c44e2821fe2e23", size = 30042, upload-time = "2026-06-04T16:18:57.319Z" },
+]
+
+[[package]]
+name = "pyturso"
+version = "0.8.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f3/26/da3ff5e767ff1d8018fe635d6a703ff1c89ede60d21b225ce93d5f925bea/pyturso-0.8.3.tar.gz", hash = "sha256:4a30e0441dff270e2f28cf06c09cbcff958fa9c0f156547f0b0f9a6601be6622", size = 3327117, upload-time = "2026-10-12T14:53:23.983Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8a/09/8bdeb9683455222fdcb0de798cfe9cb6f23372b8fdbcd368785ed25ca107/pyturso-0.8.3-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:7464f9aa3a2a69fc1848b00f5950cf37e05624b8bb1d5bbe2b7a62e14fce3483", size = 9422599, upload-time = "2026-10-12T14:53:11.352Z" },
+    { url = "https://files.pythonhosted.org/packages/2f/ad/e29c81ba2795d0d6dff497a17d485206ed3c73a1d0b0ecfb6a40531b9a05/pyturso-0.8.3-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:1038aeeaa788e1633c437e3076de90ea6753a3fccb93f2f2ff93e4dbc4075db1", size = 8262096, upload-time = "2026-10-12T14:53:14.632Z" },
+    { url = "https://files.pythonhosted.org/packages/a8/5a/4f59f9ff84237f49f66f1e4eee337cbf446b438e80e3d53076d040b757a0/pyturso-0.8.3-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:e7c9382df866dac2abf90bad6f5d8da14c309c525f349aeb6dce66e37e3be449", size = 27661232, upload-time = "2026-10-12T14:53:17.355Z" },
+    { url = "https://files.pythonhosted.org/packages/47/f5/8d5515d382350be43bbaf0319ff74aa12ccce3a07d636f6c799b12968b07/pyturso-0.8.3-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:8ad417fb991351daf9fd6fbd984f16504da3f398137653a2b89cefed03d18616", size = 28137972, upload-time = "2026-10-12T14:53:20.862Z" },
 ]
 
 [[package]]

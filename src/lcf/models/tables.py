@@ -29,7 +29,7 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql.functions import FunctionElement
 
-# JSONB on PostgreSQL, plain JSON on SQLite. Serialised identically either way.
+# JSONB on PostgreSQL, plain JSON on Turso. Serialised identically either way.
 Json = JSON().with_variant(JSONB(), "postgresql")
 
 

@@ -26,7 +26,7 @@
    │  LLM host      │  │  data host               │
    │                │  │                          │
    │  vLLM          │  │  PostgreSQL   versitygw  │
-   │  multimodal    │  │  or SQLite    (S3 API)   │
+   │  multimodal    │  │  or Turso     (S3 API)   │
    │  (image budget │  │                          │
    │   per call)    │  │                          │
    └────────────────┘  └──────────────────────────┘
@@ -67,7 +67,7 @@ an HTTP-first mandate did.
 | CSS | Tailwind CLI (standalone binary) | No Node project required |
 | Validation | Pydantic v2 | Also the source of every LLM output schema |
 | Settings | pydantic-settings | `.env` driven |
-| ORM | SQLAlchemy 2 (async) + asyncpg or aiosqlite | |
+| ORM | SQLAlchemy 2 (async) + asyncpg or pyturso | |
 | Migrations | Alembic | From commit 1 |
 | LLM client | `openai` SDK → vLLM | OpenAI-compatible, guided decoding |
 | Markdown | markdown-it-py | Parse, restrict, normalise (DESIGN §9) |
@@ -185,16 +185,33 @@ question_set         key, title, questions JSONB   (unpinned, mutable, copied on
 validated and published as a unit. Shredding it across a dozen tables would buy query flexibility
 we don't need while making versioning and diffing painful.
 
-**Two backends, no abstraction over them.** PostgreSQL or SQLite, chosen on the setup page; there is
-no default, so an installation that has not chosen is not configured. Nothing was built to make this
-work: SQLAlchemy's dialect layer *is* the abstraction, the service layer already speaks only ORM, and
-the only place that branches on the backend is `core/db.py:engine`, which SQLite needs for three
-pragmas — `foreign_keys` above all, because it is off by default and every `ondelete="CASCADE"` in
-the schema is silent without it.
+**Two backends, no abstraction over them.** PostgreSQL or Turso, chosen on the setup page; there is
+no default, so an installation that has not chosen is not configured. Turso is an in-process
+database that opens SQLite files and speaks SQLite's SQL, so SQLAlchemy drives it through its
+SQLite dialect and the schema treats it as SQLite. Nothing was built to make this work:
+SQLAlchemy's dialect layer *is* the abstraction, the service layer already speaks only ORM, and the
+only place that branches on the backend is `core/db.py:create`. For Turso it does three things:
+
+- **`foreign_keys`**, per connection, because it is off by default and every `ondelete="CASCADE"`
+  in the schema is silent without it.
+- **MVCC**, once per file (`journal_mode='experimental_mvcc'`, recorded in the file), and
+  **`BEGIN CONCURRENT`** for every transaction the app opens. Together they let two units of work
+  write at once as long as they write different rows, which is the reason for Turso over SQLite:
+  SQLite takes one lock for the whole file, so overlapping background jobs queue behind it. Turso refuses DDL
+  in a concurrent transaction, so migrations use an ordinary `BEGIN` and take the file to
+  themselves.
+- **A small dialect shim** (`core/db.py:_Turso`): pyturso's async dialect predates SQLAlchemy 2.1,
+  and its reflection lists Turso's internal bookkeeping tables, which autogenerate would otherwise
+  offer to drop.
+
+A Turso file in MVCC mode keeps a `-log` beside the `-wal`, and the stock `sqlite3` tools cannot
+open it. A backup is all three files copied with the app stopped, or `VACUUM INTO` from a Turso
+connection while it runs. An existing SQLite file opens as it is and switches to MVCC on first
+connect; a configured `sqlite+aiosqlite://` URL is read as `sqlite+aioturso://`.
 
 PostgreSQL is what this is deployed on and keeps the better of anything the two do differently;
-SQLite takes the lesser. Today that is one column, `house_style.uploaded_at`: `clock_timestamp()`
-on PostgreSQL, `strftime` to the millisecond on SQLite. It decides which upload is in force and
+Turso takes the lesser. Today that is one column, `house_style.uploaded_at`: `clock_timestamp()`
+on PostgreSQL, `strftime` to the millisecond on Turso. It decides which upload is in force and
 which three are kept, so it must not tie — which rules out `CURRENT_TIMESTAMP`, the obvious SQLite
 spelling, because it resolves only to the second. Milliseconds can still tie in principle; they
 cannot through the only path that writes this column, where each upload carries a .docx to storage
@@ -207,17 +224,25 @@ There are two standing rules, and they are the whole ongoing cost.
 `sa.func.now()` rather than `sa.text('now()')`, and `op.batch_alter_table` for anything SQLite
 cannot do in place — altering a column, dropping a default. Writing it is mechanical; forgetting it
 breaks one backend silently until someone installs it. `tests/test_migrations.py` is the guard: it
-walks every revision on a scratch SQLite file and compares the result against `Base.metadata`.
+walks every revision on a scratch Turso file and compares the result against `Base.metadata`.
 
-**A unit of work opens one session.** SQLite has a single write lock for the whole file, so a second
-session opened while the first holds an uncommitted write is a request waiting on itself — it stalls
-for `busy_timeout` and then fails. On PostgreSQL the same code is two harmless transactions, so
-nothing there will catch a breach of this. The service layer holds the same discipline for a second
-reason — a session must not be held across a model call
-([§7](#7-jobs-and-streaming)) — and SQLite turns it from a good habit into a correctness rule.
-Something that needs to write inside a caller's transaction takes the caller's session
-(`events.record(..., session=s)`); something that must happen after it commits is returned for the
-caller to do, which is how `remove_source` hands back the source it promoted.
+**A unit of work opens one session.** A second session opened while the first holds an uncommitted
+write cannot see that write, and if it writes the same row Turso fails it on the spot with a
+write-write conflict. It does not wait for the first to finish, as PostgreSQL would. The service
+layer holds the same discipline for a second reason — a session must not be held across a model
+call ([§7](#7-jobs-and-streaming)). Something that needs to write inside a caller's transaction
+takes the caller's session (`events.record(..., session=s)`); something that must happen after it
+commits is returned for the caller to do, which is how `remove_source` hands back the source it
+promoted.
+
+**A row that many units of work write is written after they commit.** On Turso, two transactions
+that write the same row cannot both commit, and the loser has done its work for nothing. Most rows
+belong to one unit of work at a time. The exception is a case's `updated_at`, which every change to
+the case's contents moves, and the parses of a multi-file upload run while the upload is still
+adding files. `evidence.touch` therefore registers the write with `db.after_commit`, which runs it in
+a short transaction of its own once the caller has committed, retried if it meets another. A
+timestamp that orders a list can afford not to be atomic with the work it marks. Anything that
+cannot afford that belongs inside the work, and of two writers of it at once, one fails.
 
 **Content stored as rows.** The opposite choice for the opposite reason: blocks are written
 constantly and individually, and each needs its own history.
@@ -945,13 +970,13 @@ requires of a service on a network with no egress.
 | Chunking | Property tests: nothing lost, `source.text[char_from:char_to]` is exactly the chunk, the budget holds |
 | Extraction | Monkeypatched `answer_from_chunk`; tier order, dedupe, re-run semantics, and a funnel whose numbers reconcile |
 | Boundaries | Assert `spec/`, `engine/` and `ingest/` import no database, storage or service, and that `render/` and `engine/` do not import each other |
-| Activity log | Its **own scratch SQLite file**, not the configured database — see below |
+| Activity log | Its **own scratch Turso file**, not the configured database — see below |
 
 "A real database" means the one from `.env`, which is also a real installation's. Almost every test
 owns rows and cleans up the rows it made, which is safe. The event log is the exception, because
 rotation is a claim about the *whole table* — keep the newest N — so a test for it has to own the
 table rather than some rows in it, and pointed at the configured database it deletes the
-installation's activity. `tests/test_events_log.py` therefore builds its own SQLite file per test,
+installation's activity. `tests/test_events_log.py` therefore builds its own Turso file per test,
 and asserts that isolation rather than trusting it. Anything else that acquires a table-wide
 operation belongs on the same footing.
 

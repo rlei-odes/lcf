@@ -31,7 +31,7 @@ uv sync --extra dev     # exact versions from uv.lock
 .venv/bin/lcf serve     # open http://localhost:8090 — a setup page walks you through the rest
 ```
 
-You need Python 3.13, a database (PostgreSQL, or SQLite for a single file) and a model endpoint.
+You need Python 3.13, a database (PostgreSQL, or Turso for a single file) and a model endpoint.
 Details are under [Setup](#setup).
 
 ---
@@ -139,7 +139,7 @@ The longer list is in [BACKLOG.md](docs/BACKLOG.md); how the pieces fit is in
 
 ## Setup
 
-Requires Python 3.13, a database, and an LLM endpoint. The database is PostgreSQL, or SQLite if you
+Requires Python 3.13, a database, and an LLM endpoint. The database is PostgreSQL, or Turso if you
 would rather have one file and no server — the setup page makes you pick, and an installation that
 has not picked is not configured. Files are kept on the local disk unless you point it at an
 S3-compatible store. All local; nothing leaves the network.
@@ -156,7 +156,7 @@ served that morning. Without [uv](https://docs.astral.sh/uv/), `python3.13 -m ve
 That is the whole of it. An installation with no configuration serves a **setup page** instead of
 the app: it asks which database you want and where it is, tests the connection before saving
 anything, and for PostgreSQL hands you the `psql` or `docker run` command to create it — generated
-from the values you typed, so the command and the configuration cannot disagree. SQLite needs none
+from the values you typed, so the command and the configuration cannot disagree. Turso needs none
 of that; it creates the file. Then it runs the migrations, checks storage, and tests the model
 endpoint.
 
@@ -165,10 +165,16 @@ endpoint.
 *The setup page. Guides the administrator through the setup flow.*
 
 PostgreSQL is the deployment this is built for and keeps the better of anything the two dialects do
-differently; SQLite takes the lesser. The whole of that difference today is the resolution of one
-timestamp — milliseconds rather than microseconds — and the same test suite passes on both. What
-SQLite gives up in exchange for having no server is concurrent writers: it takes one lock for the
-whole file, so background jobs that would overlap on PostgreSQL queue instead.
+differently; Turso takes the lesser. The whole of that difference today is the resolution of one
+timestamp — milliseconds rather than microseconds — and the same test suite passes on both. Turso is
+an in-process database that opens SQLite files and speaks SQLite's SQL, with concurrent writers:
+two background jobs write at once as long as they write different rows. Where PostgreSQL would make
+the second writer of the same row wait, Turso fails it instead.
+
+A Turso file keeps a `-wal` and a `-log` beside it. Back it up by copying all three with the app
+stopped. An installation configured for SQLite opens the same file with Turso; the file is switched
+to Turso's concurrent mode on first connect, and the stock `sqlite3` tools cannot open it after
+that.
 
 Setup is reachable from anywhere the app is, because this normally runs on a headless server and the
 administrator is always remote. It has **no login**: what it may write is bounded by an allowlist of
@@ -361,8 +367,8 @@ PDF, so what each test asserts against is known content rather than a binary nob
 diff.
 
 Service tests use the real database from `.env` and skip if it is unreachable. Pointing `LCF_DB_URL`
-at a scratch SQLite file runs them with nothing to set up, and is also how the SQLite backend is
-tested: the suite is the same either way. A boundary test asserts that `spec/`, `engine/` and
+at a scratch Turso file (`sqlite+aioturso:///…`) runs them with nothing to set up, and is also how
+the Turso backend is tested: the suite is the same either way. A boundary test asserts that `spec/`, `engine/` and
 `ingest/` never import a database, because that purity is what keeps the rest testable.
 
 ## Licence

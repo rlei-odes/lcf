@@ -18,11 +18,13 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from loguru import logger
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
+from sqlalchemy.exc import DatabaseError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import lcf.storage as storage
 from lcf.core.config import settings
+from lcf.core.db import after_commit
 from lcf.core.db import session as db_session
 from lcf.ingest import chunk as chunking
 from lcf.ingest import images as image_tools
@@ -144,10 +146,30 @@ async def recent_cases(session: AsyncSession, limit: int = 40) -> list[CaseRow]:
 
 
 async def touch(session: AsyncSession, case_id: UUID) -> None:
-    """Mark a case as worked on, so the list orders by what is live."""
-    case = await session.get(EvidenceCase, case_id)
-    if case is not None:
-        case.updated_at = datetime.now(UTC)
+    """Mark a case as worked on, so the list orders by what is live.
+
+    After the caller commits rather than inside its transaction: every change to
+    a case writes this one row, and the parses of a multi-file upload run while
+    the upload is still adding files. Inside the work, those would fail each
+    other on Turso over a timestamp.
+    """
+    after_commit(session, lambda: _touch(case_id))
+
+
+async def _touch(case_id: UUID) -> None:
+    for attempt in range(5):
+        try:
+            async with db_session() as s:
+                await s.execute(
+                    update(EvidenceCase)
+                    .where(EvidenceCase.id == case_id)
+                    .values(updated_at=datetime.now(UTC))
+                )
+            return
+        except DatabaseError as exc:
+            last = exc
+            await asyncio.sleep(0.02 * (attempt + 1))
+    logger.warning("case {}: not marked as worked on ({})", case_id, last)
 
 
 # ──────────────────────────────────────────────────────────────── sources
@@ -527,9 +549,8 @@ async def remove_source(session: AsyncSession, source_id: UUID) -> Removed:
     # case that holds a document twice loses it entirely when the first is
     # dropped, while still listing the second as a repeat of nothing.
     #
-    # Parsing it is the caller's to queue: enqueueing here opens a second
-    # session while this one still holds an uncommitted write, which SQLite
-    # resolves by making the request wait on itself.
+    # Parsing it is the caller's to queue: enqueueing here starts a job that
+    # reads the source before this session has committed its promotion.
     promoted: UUID | None = None
     if was_real and digest:
         heir = await session.scalar(

@@ -406,15 +406,13 @@ async def test_a_prefill_failure_does_not_lose_the_mapping(published, monkeypatc
 
 
 async def test_no_write_is_held_open_across_the_model_calls(published, monkeypatch):
-    """What made "Sort it into the sections" fail on SQLite.
+    """A progress tick lands while intake is between model calls.
 
     A job reports progress in a transaction of its own, because a bar nobody can
-    read until the work finishes is no bar at all. SQLite locks the whole file
-    for one writer, so a tick that arrives while intake's own transaction is
-    holding that lock waits for a lock that cannot be released until the call the
-    tick is reporting on has returned — it waits out `busy_timeout` and the job
-    dies with `database is locked`. PostgreSQL locks per row and never notices,
-    which is why this is asserted rather than left to be noticed.
+    read until the work finishes is no bar at all. A tick that arrives while
+    intake's own transaction holds a write to the job row fails on Turso with a
+    write-write conflict and is dropped; neither backend waits it out, which is
+    why this is asserted rather than left to be noticed.
 
     `dropped` rather than `step` is the witness: a dropped tick is added to the
     next one that lands, so the final count is right either way.

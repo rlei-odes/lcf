@@ -39,7 +39,7 @@ async def setup_page(request: Request):
     state = await setup.state()
     backend = setup.backend_of(s.db_url)
     db = setup.parse_url(s.db_url) if backend == "postgres" else setup.Database()
-    sqlite = setup.parse_sqlite(s.db_url) if backend == "sqlite" else setup.SqliteFile()
+    turso = setup.parse_turso(s.db_url) if backend == "turso" else setup.TursoFile()
     # The stored password is never sent back to the browser: it would sit in a
     # form field and, worse, inside a command block built for copying. Only a
     # password typed into this page appears in the commands it generates.
@@ -53,8 +53,8 @@ async def setup_page(request: Request):
         db=db,
         backend=backend,
         backends=setup.BACKENDS,
-        sqlite=sqlite,
-        sqlite_default=setup.default_sqlite_path(),
+        turso=turso,
+        turso_default=setup.default_turso_path(),
         stored_password=stored_password,
         suggested=setup.SUGGESTED,
         s3_endpoint=s.s3_endpoint,
@@ -103,12 +103,12 @@ async def setup_database(request: Request):
         user=str(form.get("user") or "").strip() or "lcf",
         password=typed or stored,
     )
-    sqlite = setup.SqliteFile(path=str(form.get("path") or "").strip())
+    turso = setup.TursoFile(path=str(form.get("path") or "").strip())
     try:
-        if backend not in ("postgres", "sqlite"):
-            raise setup.Refused("Choose PostgreSQL or SQLite first.")
+        if backend not in ("postgres", "turso"):
+            raise setup.Refused("Choose PostgreSQL or Turso first.")
         await setup.guard(changes_database=True, writes=("LCF_DB_URL",))
-        url = sqlite.url() if backend == "sqlite" else db.url()
+        url = turso.url() if backend == "turso" else db.url()
         ok, detail = await setup.test_database(url)
         if ok:
             setup.write({"LCF_DB_URL": url})

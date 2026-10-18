@@ -8,19 +8,19 @@ leaving an orphan nothing will ever trim.
 table — keep the newest N, drop the rest — so a test for it has to own that
 table, and the event log is installation-wide. Pointed at the configured
 database these tests delete real activity, and did exactly that once before this
-fixture existed. A throwaway SQLite file costs milliseconds and makes it
+fixture existed. A throwaway Turso file costs milliseconds and makes it
 impossible; the cascade under test needs `foreign_keys`, which `core/db` already
-turns on for SQLite.
+turns on for Turso.
 """
 
 from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import delete, func, select
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.pool import NullPool
 
-from lcf.core.db import _pragmas
+from lcf.core.db import create
 from lcf.llm.provider import CallRecord
 from lcf.models.tables import Base, Event, LLMExchange
 from lcf.services import events
@@ -29,8 +29,7 @@ from lcf.services import events
 @pytest.fixture
 async def log(tmp_path, monkeypatch):
     """A scratch event log, with `events` pointed at it for the test's duration."""
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'log.db'}", poolclass=NullPool)
-    _pragmas(engine)
+    engine = create(f"sqlite+aioturso:///{tmp_path / 'log.db'}", poolclass=NullPool)
     async with engine.begin() as conn:
         await conn.run_sync(
             Base.metadata.create_all, tables=[Event.__table__, LLMExchange.__table__]

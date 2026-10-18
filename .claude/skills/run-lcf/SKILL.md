@@ -19,7 +19,7 @@ An installation is identified by two environment variables, and nothing else:
 | Variable | What it decides |
 |---|---|
 | `LCF_ENV_FILE` | the config file read *and written* — the wizard saves here |
-| `LCF_DATA_DIR` | where the SQLite file, uploads, exports and templates live |
+| `LCF_DATA_DIR` | where the Turso file, uploads, exports and templates live |
 
 Point both at a temp directory and you have an installation that cannot touch
 the developer's own. Leave them unset and you are running *their* install,
@@ -55,14 +55,14 @@ they are already looking at.
 
 There is no "empty app" state to debug. A middleware in `web/app.py` sends every
 route to `/setup` until a database is configured, so a fresh launch lands on the
-wizard. That is the front door: it asks for PostgreSQL or SQLite, tests the
+wizard. That is the front door: it asks for PostgreSQL or Turso, tests the
 connection before saving, runs the migrations, checks storage, tests the model
 endpoint, and offers the two example document types at the end.
 
 Walk it. It is quick, and it is what a real deployer sees — which makes it the
 best way to find out that a step is broken.
 
-- **SQLite** is the right choice for a throwaway: one file, nothing to install,
+- **Turso** is the right choice for a throwaway: one file, nothing to install,
   and the path field defaults sensibly under `LCF_DATA_DIR`.
 - **PostgreSQL** is what the product is built for. Choose it when the point is to
   reproduce something dialect-specific. The wizard generates the `psql` and
@@ -90,7 +90,7 @@ $S --port 8099 --stop    # just stop it
 ```
 
 The script stops the previous server before wiping, which matters: a server left
-running recreates the SQLite file as soon as anything touches it, and the
+running recreates the Turso file as soon as anything touches it, and the
 installation is configured again before anyone has looked at it.
 
 ## Driving it
@@ -104,7 +104,7 @@ from fastapi.testclient import TestClient
 from lcf.web.app import app
 c = TestClient(app)
 c.get("/setup")
-c.post("/setup/database", data={"backend": "sqlite", "path": f"{D}/lcf.db"})
+c.post("/setup/database", data={"backend": "turso", "path": f"{D}/lcf.db"})
 c.post("/setup/migrate")
 ```
 

@@ -10,7 +10,7 @@ from uuid import UUID
 
 from loguru import logger
 from sqlalchemy import delete, select
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import DatabaseError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lcf.core.db import session as db_session
@@ -158,14 +158,14 @@ async def discuss_block_job(document_id: UUID, scope: str | None, progress) -> d
 
 
 async def _write(message_id: UUID, content: str, status: str) -> None:
-    """A streaming write may lose a race for the SQLite lock; the next one lands."""
+    """A streaming write may lose a write-write conflict on Turso; the next one lands."""
     try:
         async with db_session() as s:
             row = await s.get(BlockMessage, message_id)
             if row is not None:
                 row.content = content
                 row.status = status
-    except OperationalError as exc:
+    except DatabaseError as exc:
         if status != State.WRITING:
             raise
         logger.warning("discussion {}: partial write dropped ({})", message_id, exc)

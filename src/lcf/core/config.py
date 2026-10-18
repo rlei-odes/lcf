@@ -11,6 +11,7 @@ import os
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -58,10 +59,16 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     debug: bool = False
 
-    # PostgreSQL or SQLite, and no default either way: an installation that has
+    # PostgreSQL or Turso, and no default either way: an installation that has
     # not chosen is not configured, and the setup wizard exists to say so rather
     # than let a guess through.
     db_url: str = ""
+
+    @field_validator("db_url")
+    @classmethod
+    def _turso(cls, url: str) -> str:
+        """A file configured for SQLite is opened by Turso, which reads it as is."""
+        return url.replace("sqlite+aiosqlite://", "sqlite+aioturso://", 1)
 
     llm_base_url: str = ""
     llm_api_key: str = "not-needed"

@@ -1,10 +1,8 @@
 """The event log, and the one rule `record` has to obey.
 
 A service that already holds a session passes it, so the row joins the caller's
-transaction. Opening a second session is two harmless transactions on PostgreSQL
-and a request waiting on its own uncommitted write on SQLite, where the whole
-file has one write lock — so PostgreSQL alone will never catch a breach. These
-assert that the events recorded from inside a transaction arrive.
+transaction. These assert that the events recorded from inside a transaction
+arrive.
 """
 
 import uuid

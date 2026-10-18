@@ -18,7 +18,7 @@ from uuid import UUID
 
 from loguru import logger
 from sqlalchemy import select, update
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import DatabaseError
 
 from lcf.core.db import session
 from lcf.models.tables import BlockMessage, EvidenceSource, Job, Proposal
@@ -46,9 +46,10 @@ class Progress:
     These writes commit on their own, separately from the work they describe —
     a progress bar nobody can read until the job finishes is not a progress bar.
     That makes them the one write in a job that must never be able to fail the
-    work: on SQLite the whole file takes a single writer lock, so a job that is
-    holding one cannot be told to wait for its own progress tick. Dropping the
-    tick is the right trade — the work survives and the bar moves late.
+    work: on Turso a tick that meets another uncommitted write to the job row
+    fails at once with a write-write conflict rather than waiting for it.
+    Dropping the tick is the right trade — the work survives and the bar moves
+    late.
 
     The count is kept rather than lost, so a bar that stalls under contention
     catches up on the next tick that lands instead of finishing short. That makes
@@ -66,7 +67,7 @@ class Progress:
         self.dropped = 0
         try:
             await _update(self.job_id, status="running", step=0, total=total, message=message)
-        except OperationalError as exc:
+        except DatabaseError as exc:
             self.dropped += 1
             logger.warning("job {}: could not record the start ({})", self.job_id, exc)
 
@@ -78,7 +79,7 @@ class Progress:
                     job.step += 1 + self.dropped
                     job.message = message or job.message
             self.dropped = 0
-        except OperationalError as exc:
+        except DatabaseError as exc:
             self.dropped += 1
             logger.warning("job {}: progress tick dropped ({})", self.job_id, exc)
 

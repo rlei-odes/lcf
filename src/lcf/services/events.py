@@ -81,11 +81,10 @@ async def record(
 ) -> Event | None:
     """Pass `session` whenever the caller holds one.
 
-    Opening a second one to write this row is two independent transactions on
-    PostgreSQL, where an `Event` conflicts with nothing — it has no foreign
-    keys by design. On SQLite there is one write lock for the whole file, so the
-    second connection waits on the first's uncommitted write, which is the
-    caller waiting on itself until `busy_timeout` gives up and the row is lost.
+    Opening a second one to write this row is two independent transactions,
+    and an `Event` conflicts with nothing — it has no foreign keys by design.
+    Passing the session keeps the row in the caller's transaction, so it
+    commits or rolls back with the work it describes.
     """
     try:
         event = Event(

@@ -188,17 +188,17 @@ def write(values: dict[str, str]) -> Path:
 
 # Two backends, and the deployer picks one — there is no default, so an
 # installation that has not chosen is not configured. PostgreSQL is what this is
-# built for; SQLite is one file and no server, for a single machine.
+# built for; Turso is one file and no server, for a single machine.
 BACKENDS = (
     ("postgres", "PostgreSQL", "A server, shared by whoever needs it. What this is built for."),
-    ("sqlite", "SQLite", "One file on this machine. Nothing to install or run."),
+    ("turso", "Turso", "One file on this machine. Nothing to install or run."),
 )
 
 
 def backend_of(url: str) -> str:
     """Which backend a stored URL names, or `""` when nothing is stored."""
     if url.startswith("sqlite"):
-        return "sqlite"
+        return "turso"
     return "postgres" if url.strip() else ""
 
 
@@ -244,17 +244,17 @@ class Database:
 
 
 @dataclass
-class SqliteFile:
+class TursoFile:
     path: str = ""
 
     def resolved(self) -> Path:
-        return Path(self.path).expanduser() if self.path.strip() else default_sqlite_path()
+        return Path(self.path).expanduser() if self.path.strip() else default_turso_path()
 
     def url(self) -> str:
-        return f"sqlite+aiosqlite:///{self.resolved()}"
+        return f"sqlite+aioturso:///{self.resolved()}"
 
 
-def default_sqlite_path() -> Path:
+def default_turso_path() -> Path:
     return data_dir() / "lcf.db"
 
 
@@ -270,23 +270,23 @@ def parse_url(url: str) -> Database:
     )
 
 
-def parse_sqlite(url: str) -> SqliteFile:
+def parse_turso(url: str) -> TursoFile:
     from sqlalchemy.engine import make_url
 
-    return SqliteFile(path=make_url(url).database or "")
+    return TursoFile(path=make_url(url).database or "")
 
 
 # How each backend says what it is, for the one line the step reports on success.
 VERSION_SQL = {
     "postgres": "version()",
-    "sqlite": "'SQLite ' || sqlite_version()",
+    "turso": "'Turso, compatible with SQLite ' || sqlite_version()",
 }
 
 
 async def test_database(url: str) -> tuple[bool, str]:
     """Open one connection and let go of it. Never creates anything.
 
-    Except for SQLite, where connecting *is* creating: the file appears on first
+    Except for Turso, where connecting *is* creating: the file appears on first
     open, and its directory has to exist before that works.
     """
     from sqlalchemy import select, text
@@ -329,7 +329,7 @@ def _explain(exc: Exception) -> str:
     if "readonly database" in low:
         return f"{text}\nThe file is there but not writable by this user."
     if "not a database" in low:
-        return f"{text}\nThat file exists and is not a SQLite database."
+        return f"{text}\nThat file exists and is not a database Turso can open."
     return text
 
 
@@ -347,10 +347,11 @@ async def snapshot() -> tuple[str | None, list[str]]:
     Alembic's ledger, not part of the schema it keeps.
     """
     from sqlalchemy import inspect, text
-    from sqlalchemy.ext.asyncio import create_async_engine
     from sqlalchemy.pool import NullPool
 
-    engine = create_async_engine(settings().db_url, poolclass=NullPool)
+    from lcf.core.db import create
+
+    engine = create(settings().db_url, poolclass=NullPool)
     try:
         async with engine.connect() as conn:
             names = sorted(await conn.run_sync(lambda c: inspect(c).get_table_names()))

@@ -126,14 +126,15 @@
           </div>
         </div>
 
-        <div class="pane pane-sqlite">
+        <div class="pane pane-turso">
           <div class="field">
             <label for="db-path">File</label>
-            <input type="text" id="db-path" name="path" value="{{ sqlite.path }}"
-                   placeholder="{{ sqlite_default }}">
+            <input type="text" id="db-path" name="path" value="{{ turso.path }}"
+                   placeholder="{{ turso_default }}">
             <div class="hint">
               Created if it is not there. Left empty it is
-              <code>{{ sqlite_default }}</code>. Back it up by copying the file.
+              <code>{{ turso_default }}</code>. Back it up with the app stopped, by copying
+              the file together with the <code>-wal</code> and <code>-log</code> beside it.
             </div>
           </div>
         </div>
@@ -159,7 +160,7 @@
 
       {% if not live %}
       {# Re-rendered out of band by the database step, so the commands always
-         carry the values that were last tested rather than the page's. SQLite
+         carry the values that were last tested rather than the page's. Turso
          needs none of this, so the block is empty for it. #}
       <div id="db-commands">
         {% with commands_open = not state.steps[0].done %}
