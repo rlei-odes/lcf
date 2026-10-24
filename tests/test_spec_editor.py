@@ -13,7 +13,7 @@ from sqlalchemy import delete, select
 
 from lcf.core.db import session
 from lcf.models.tables import DocType, DocTypeVersion, Document
-from lcf.services import doc_types, documents
+from lcf.services import doc_types, documents, setup
 from lcf.spec import loader
 from lcf.web.app import app
 
@@ -102,7 +102,9 @@ def test_check_reports_without_publishing(published, client):
     assert "Nothing is published until you press Publish" in response.text
 
 
-def test_check_lists_the_problems(client):
+def test_check_lists_the_problems(client, monkeypatch):
+    # Check needs no database; without this an install with no .env diverts to /setup.
+    monkeypatch.setattr(setup, "needed", lambda: False)
     response = client.post("/doc-types/check", data={"yaml": "id: x\nversion: 1\n"})
 
     assert response.status_code == 200
