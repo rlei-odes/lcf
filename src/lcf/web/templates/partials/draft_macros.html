@@ -18,11 +18,38 @@
   {%- if found %}<span class="problem-count" title="{{ found|join('; ') }}">✗ {{ found|length }}</span>{% endif %}
 {% endmacro %}
 
+{# Every problem as a link to where it is. #}
+{% macro problem_links(review, spec, url) %}
+  {% for p in review.problems %}
+  {% set spot = builder.locate(spec, p) %}
+  <a class="problem-link"
+     href="{{ url }}?focus={{ spot.focus }}{% if spot.phase %}&phase={{ spot.phase }}{% endif %}&opened={{ spot.opened }}">
+    <span class="mark">✗</span>
+    <span>
+      {{ p.message }}
+      <span class="where">{{ spot.where }}</span>
+    </span>
+  </a>
+  {% endfor %}
+{% endmacro %}
+
+{# The way on, the same at the foot of every step: back on the left, onward on
+   the right, as in the document flow. #}
+{% macro stepfoot(before, after, url) %}
+<div class="actions guide-actions guide-foot">
+  {% if before %}<a href="{{ url }}{{ before.query }}" class="back">← {{ before.label }}</a>{% endif %}
+  <span class="spacer"></span>
+  {% if after %}<a class="button primary" href="{{ url }}{{ after.query }}">Next: {{ after.label }} →</a>{% endif %}
+</div>
+{% endmacro %}
+
 {# The fields every edit carries: which draft revision it was rendered from, and
-   where the editor should be looking afterwards. #}
+   where the editor should be looking afterwards. The phase is the page's own,
+   read from the context, so no form can forget to stay on its step. #}
 {% macro state(token, focus, opened) %}
   <input type="hidden" name="token" value="{{ token }}">
   <input type="hidden" name="focus" value="{{ focus }}">
+  <input type="hidden" name="phase" value="{{ phase or '' }}">
   <input type="hidden" name="opened" value="{{ opened }}">
 {% endmacro %}
 
@@ -99,7 +126,7 @@
    neither word says it (ARCHITECTURE §15.4). #}
 {% macro severity(current) %}
 <fieldset class="choices">
-  <legend>If this is not met</legend>
+  <legend>If it fails</legend>
   {% for value, explanation in builder.SEVERITIES %}
   <label class="option">
     <input type="radio" name="severity" value="{{ value }}"

@@ -1097,6 +1097,28 @@ discriminated union whose parameters must be chosen from what exists elsewhere i
 The payoff is not prettiness. It is that **most linter errors become unreachable instead of
 reported**: you cannot name a block that does not exist if you are choosing from a list.
 
+**It is laid out as steps, like the document flow.** A rail lists the type, each section, the
+quality criteria that span sections, and publishing. A section is worked through four phases —
+*About* (what it is, what it waits on), *Questions*, *Content* (its blocks) and *Checks* — one at a
+time, with the way back and on at the foot of every step. Where the builder is lives in the URL
+(`focus`, `phase`), and every form carries both, so an edit lands back on the step it was made from.
+The problem list is folded above every step and open on the publish step, and each problem links to
+the step and row it belongs to.
+
+**A section's checks include its own quality criteria.** A criterion scoped to exactly one section is
+shown and edited in that section's *Checks* phase, with its scope fixed. The quality step still lists
+every criterion and is where ones spanning sections or the whole document are edited. The section's
+questions are listed there too, each with a suggestion button: `propose_criterion` with one
+`question_key` builds a criterion for whether the finished section answers that question, with the
+other questions as context. A suggestion is added only when accepted, as a warning.
+
+**Agreement between sections is offered only where more than one section is read.** `consistency`
+is judged exactly like `rubric`, over whatever content the check is given, so on a block check or a
+one-section criterion it could only read the place it is supposed to compare against the rest. The
+builder offers it on the quality step only, as *Must not contradict the rest of the document*, prefilled with `NO_CONTRADICTION` so
+it needs no text to be useful. The linter still accepts it anywhere, and a spec that already has it
+elsewhere keeps it.
+
 ### 15.2 The three things that make it harder than it looks
 
 **A draft must be allowed to be invalid.** Today `doc_types.review()` is all-or-nothing, because a

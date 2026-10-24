@@ -11,6 +11,12 @@ decided these were the facts an author has to supply, so the finished section is
 weak if those facts have gone missing from it on the way to the page. A good
 criterion catches exactly that.
 
+When you are given one question the criterion is for, the criterion checks
+that the finished section answers that question: the fact it asks for is
+there, stated plainly enough that a reader would find it. Build it from that
+question alone. The other questions are there so you do not ask for what they
+cover.
+
 Choose one of two kinds:
 
 - **mentions**: the section has to mention specific things. Use this when the
@@ -36,4 +42,5 @@ What makes a criterion worth having:
 - It does not repeat a check the section already has. Those are listed.
 
 Write the title and the criterion in the language the document type is written
-in. The title is a few words, like a heading.
+in. The title is a few words, like a heading, and names what is checked:
+"Each cause has its verification", not the section's own name.

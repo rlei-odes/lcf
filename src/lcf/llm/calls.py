@@ -36,7 +36,7 @@ from lcf.llm.schemas import (
     prefill_schema,
     revise_response_schema,
 )
-from lcf.spec.describe import describe_requirement
+from lcf.spec.describe import UNTOLD_KINDS, describe_requirement
 from lcf.spec.models import Block, DocTypeSpec, Section
 
 
@@ -728,8 +728,13 @@ class ProposedCriterion:
     rubric: str
 
 
-async def propose_criterion(spec: dict, section_key: str) -> ProposedCriterion | None:
+async def propose_criterion(
+    spec: dict, section_key: str, question_key: str | None = None
+) -> ProposedCriterion | None:
     """Suggest a quality criterion for one section, from the questions it asks.
+
+    With `question_key`, the criterion is for that one question — does the
+    finished section answer it — and the section's other questions are context.
 
     An authoring call, like `propose_keywords`: what comes back is added to a
     draft the person reads and edits before anything is published. `spec` is the
@@ -745,14 +750,19 @@ async def propose_criterion(spec: dict, section_key: str) -> ProposedCriterion |
     def lines(items: list[str]) -> str:
         return "\n".join(f"- {i}" for i in items if i) or "(none)"
 
-    questions = []
-    for q in sec.get("questions") or []:
+    def asked(q: dict) -> str:
         line = q.get("prompt") or q.get("key", "")
         if q.get("hint"):
             line += f" ({q['hint']})"
         if q.get("options"):
             line += " Options: " + ", ".join(str(o) for o in q["options"])
-        questions.append(line)
+        return line
+
+    every = sec.get("questions") or []
+    target = next((q for q in every if q.get("key") == question_key), None)
+    if question_key and target is None:
+        return None
+    questions = [asked(q) for q in every if q is not target]
     blocks = [
         b.get("label", "") + (f": {b['hint']}" if b.get("hint") else "")
         for b in sec.get("blocks") or []
@@ -770,7 +780,14 @@ async def propose_criterion(spec: dict, section_key: str) -> ProposedCriterion |
             f"## Written in\n\n{_language_name(spec.get('language', 'en'))}",
             f"## The section\n\n{sec.get('title', '')}\n\n{sec.get('description', '')}".strip(),
             f"## Guidance for writing it\n\n{sec.get('guidance') or '(none)'}",
-            f"## Questions the author answers first\n\n{lines(questions)}",
+            *(
+                [
+                    f"## The question this criterion is for\n\n{asked(target)}",
+                    f"## The section's other questions, for context\n\n{lines(questions)}",
+                ]
+                if target
+                else [f"## Questions the author answers first\n\n{lines(questions)}"]
+            ),
             f"## What gets written in it\n\n{lines(blocks)}",
             f"## Checks it already has\n\n{lines(checks)}",
         ]
@@ -789,8 +806,13 @@ async def propose_criterion(spec: dict, section_key: str) -> ProposedCriterion |
     rubric = " ".join(str(data.get("rubric") or "").split())
     if (kind == "mentions" and not points) or (kind == "rubric" and not rubric):
         return None
+    title = " ".join(str(data.get("title") or "").split())[:80]
+    # A section's name is not a criterion's: with several in one section they
+    # would all read alike. The question it came from at least says what it checks.
+    if not title or title.casefold() == str(sec.get("title", "")).casefold():
+        title = ((target or {}).get("prompt") or sec.get("title", ""))[:80]
     return ProposedCriterion(
-        title=" ".join(str(data.get("title") or "").split())[:80] or sec.get("title", ""),
+        title=title,
         kind=kind,
         must_mention=points if kind == "mentions" else [],
         rubric=rubric if kind == "rubric" else "",
@@ -920,8 +942,16 @@ def _requirement_targets(section: Section, block: Block) -> str:
 
     The same rule is the instruction and the grade, so the two cannot drift apart
     and neither has to be written twice (DESIGN §5.8).
+
+    Except `present`: "must not be empty" tells a model nothing about what to
+    write, and pushes it to fill a block the evidence leaves empty — where the
+    honest draft is a gap.
     """
-    targets = [describe_requirement(r) for r in section.requirements if r.block == block.key]
+    targets = [
+        describe_requirement(r)
+        for r in section.requirements
+        if r.block == block.key and r.kind not in UNTOLD_KINDS
+    ]
     targets = [t for t in targets if t]
     if not targets:
         return ""

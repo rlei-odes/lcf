@@ -130,6 +130,20 @@ From [ARCHITECTURE §15.5](ARCHITECTURE.md#155-what-it-cost-and-what-it-bought):
   should collapse to a single line, with questions and checks folded behind "add rules to this
   section". Presentational; do this before considering a separate simple mode, which would be two
   things to keep true over one model.
+- **Each phase filled from the one before.** A section's phases ask for the same thing three
+  times: *About* says what it has to establish, *Questions* asks for those facts again as
+  questions, and *Content* names the blocks that hold them. At least one of these should be
+  proposed from the step before, for the rule builder to keep or edit rather than write — questions
+  from the description and guidance, or blocks from the questions. Either is an authoring call
+  like `propose_criterion`: a proposal shown in the phase, added only when kept. Open: which link
+  in the chain is worth it first, and whether a proposal runs on entering the phase or on a button.
+- **No questions for a one-block section.** A section that is one paragraph block gains little
+  from questions: drafting already works without them, from the author's pasted material
+  ([ARCHITECTURE §5.3](ARCHITECTURE.md#53-context-budget)). For such a section the *Questions*
+  phase could be skipped, or folded behind "add questions", in the builder and in the document
+  flow alike. Open: whether the rule is the block count, the block kind, or the rule builder's
+  choice, and what the section criteria suggested from questions are drawn from instead —
+  `propose_criterion` already reads the description and guidance, so from those.
 - **Reordering.** `move_*` operations exist and are tested; no UI. Per-row arrows were built and
   removed as clutter. Drag, or a reorder mode showing the whole list, is the real answer.
 - **A scratch document from a draft.** The only real test of a type is walking it. Needs a document
@@ -247,3 +261,65 @@ other kinds show it.
 | Settling a passage | Selecting text works on the readable form, which for a table includes the column labels — a pin taken from it is not found in the stored value and reads as moved |
 | Accepting part of it | All or nothing. Accepting some rows or some fields of a rewrite needs the same answer as accepting part of a first draft |
 | A remark about another block | Answered from the section's context, which includes the answers and filed material — so the model knows a name from a sibling block and explains why it cannot apply it here, instead of the lane pointing at the right block |
+
+## 15. A quality check for every question
+
+A question in a section is almost always something the finished section has to answer. That makes
+each question a check waiting to be written: *does the section, as written, answer this?* The rule
+builder should not have to write it. Adding a question has the assistant suggest the check, and the
+rule builder keeps it or removes it where they review the section's checks.
+
+What exists, and what does not ([FLOWS §3](FLOWS.md#3-spec-objects-and-what-reads-them)):
+
+| Piece | State |
+|---|---|
+| Asking the model for a criterion from a section's questions | **Built**: `propose_criterion`, from all the section's questions or from one, on buttons in the section's *Checks* phase (all of them also on the quality step). Accepting adds a `warning` scoped to that section, edited in the section |
+| A suggestion per question, made when the question is added | Not built. Today it is asked for, per question, by a button |
+| A check that knows which question it came from | Not built. A criterion keeps no reference to a question, and `rename_question` says so: nothing in a spec references a question key |
+| Keeping or removing a suggestion that is already in the draft | Not built. Today nothing is added until the person accepts |
+
+**One check per question, linked to it.** A criterion gains `from_question` (the question's key, in
+its section's scope), so the pair stays one thing to the builder:
+
+- Renaming the question rewrites the link; `rename_question` stops being the one rename with
+  nothing to rewrite.
+- Deleting the question offers to delete its check with it.
+- Rewording the question marks its check as possibly out of date, and offers a new suggestion.
+- The linter refuses a link to a question that does not exist, so a YAML-authored spec is held to
+  the same rule.
+
+**Added as suggested, kept or removed by a person.** The check goes into the draft marked
+`suggested` and appears beside its question and in the quality step's list. *Keep* clears the mark;
+*Remove* deletes it. A draft still holding unreviewed suggestions should not publish quietly, so
+publish either refuses or lists them for one last decision. Which is the open question: refusing is
+stricter, but it turns a type with twenty questions into twenty clicks before anything can be tried.
+The mark is never published either way. A published version holds only checks somebody kept.
+
+**The call.** `propose_criterion` narrowed from a section to one question, with the section's other
+questions and checks as context so it does not repeat them. The prompt's rule still holds: the check
+must be judgeable from the section's text alone. A question whose answer only feeds other fields and
+never shows in the text gets no check, and saying so is a correct answer, not a failure.
+
+It is an authoring call ([ARCHITECTURE §5.2](ARCHITECTURE.md#52-call-taxonomy)): its output is a
+parameter a person reviews before it is used, not a finding. It cannot run inside the builder's edit
+request, because adding a question has to answer at once. It runs as a job and the suggestion
+arrives beside the question when it is ready.
+
+**What it costs at run time.** Each kept check is one judged call per full assessment, per document.
+A type with twenty questions adds twenty calls to every quality check. That is the reason for
+*remove* being one click, and a reason to judge a section's question checks in one call rather than
+twenty if the number turns out to matter.
+
+**What makes it pay.** Three gaps in how criteria reach a document today
+([FLOWS §1](FLOWS.md#1-the-document-flow)) decide how much these checks are worth:
+
+| Gap | Effect on these checks |
+|---|---|
+| Drafting is told a block's own requirements, not the section's criteria | The model is not told the section has to answer the question, so it learns that only by failing the check |
+| Criteria run only at the final quality check, not the section's check step | A section is marked complete and fails at the end, far from where it can be fixed |
+| A judged check reads the content only, never the answers | It can say the section answers the question, not that the answer agrees with what the author said |
+
+The first is a prompt change, the second reuses the existing check functions, and both belong with
+this feature rather than after it. The third is a deliberate scope: checking the text alone keeps the
+check honest about what a reader of the exported document sees. Comparing against the answers would
+be a second kind of check, and it overlaps with [§13](#13-questions-and-the-fields-they-feed).

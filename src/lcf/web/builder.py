@@ -21,6 +21,7 @@ from typing import Any
 from starlette.datastructures import FormData
 
 from lcf.services import drafts
+from lcf.spec.describe import UNTOLD_KINDS
 
 # --- what the rule builder reads ---------------------------------------------
 
@@ -53,30 +54,29 @@ SEVERITIES: list[tuple[str, str]] = [
     ("warning", "Flagged to the author, but not blocking"),
 ]
 
-# Requirement kinds as a question about the content, because that is what someone
-# defining a document type is actually thinking. The blurb says who checks it —
-# the app or the assistant — since that is the difference people ask about.
+# Requirement kinds by a short name, with what it does and who checks it — the
+# app or the assistant, and when — as the line under the choice.
 CHECK_KINDS: list[tuple[str, str, str]] = [
-    ("present", "It has to be filled in", "Checked by the app."),
-    ("length", "It has to be long enough, or short enough", "Counted by the app."),
-    ("rows", "It has to have enough rows", "Counted by the app."),
+    ("present", "Filled in", "The app checks the block is not empty."),
+    ("length", "Length", "The app counts words or characters."),
+    ("rows", "Number of rows", "The app counts the table's rows."),
+    ("fields_filled", "Required columns", "The app checks these columns on every row."),
     (
-        "fields_filled",
-        "Certain columns must be filled in on every row",
-        "Checked by the app, row by row.",
+        "format",
+        "Value format",
+        "The app checks a column or field is a date, a number, or one of a list.",
     ),
-    ("format", "A column has to be a date, a number, or one of a list", "Checked by the app."),
     (
         "cross_ref",
-        "Every value must match something in another table",
-        "Checked by the app, against the other table.",
+        "Matches another table",
+        "The app checks every value appears in a column of another table.",
     ),
-    ("mentions", "It has to mention specific things", "Read and judged by the assistant."),
-    ("rubric", "It has to meet a standard you describe", "Read and judged by the assistant."),
+    ("mentions", "Must mention", "The assistant judges it at the final quality check."),
+    ("rubric", "Meets a standard", "The assistant judges it at the final quality check."),
     (
         "consistency",
-        "It must not contradict the rest of the document",
-        "Read and judged by the assistant.",
+        "Must not contradict the rest of the document",
+        "The assistant reads the chosen sections together at the final quality check.",
     ),
 ]
 
@@ -91,8 +91,16 @@ BLOCK_LABELS = {key: label for key, label, _ in BLOCK_KINDS}
 _NEEDS_TABLE = {"rows", "fields_filled", "cross_ref"}
 _NEEDS_COLUMNS = {"format"}
 
+# Agreement between sections is judged over what it reads, and a block check or a
+# one-section criterion reads one place. The linter allows it there; the builder
+# does not offer it, and keeps it only where a spec already has it.
+_ACROSS_SECTIONS = {"consistency"}
 
-def kinds_for(block_kind: str) -> list[tuple[str, str, str]]:
+
+__all__ = ["UNTOLD_KINDS"]
+
+
+def kinds_for(block_kind: str, keep: str = "") -> list[tuple[str, str, str]]:
     """The checks that can actually apply to a block of this kind."""
     out = []
     for key, label, blurb in CHECK_KINDS:
@@ -100,8 +108,17 @@ def kinds_for(block_kind: str) -> list[tuple[str, str, str]]:
             continue
         if key in _NEEDS_COLUMNS and block_kind not in ("table", "keyvalue"):
             continue
+        if key in _ACROSS_SECTIONS and key != keep:
+            continue
         out.append((key, label, blurb))
     return out
+
+
+def criterion_kinds(in_section: bool, keep: str = "") -> list[tuple[str, str, str]]:
+    """The kinds a criterion can be: all of them across sections, two within one."""
+    if not in_section:
+        return CRITERION_KINDS
+    return [k for k in CRITERION_KINDS if k[0] not in _ACROSS_SECTIONS or k[0] == keep]
 
 
 def params_for(kind: str) -> tuple[str, ...]:
@@ -147,6 +164,93 @@ def many(form: FormData, name: str) -> list[str]:
     return [v for v in form.getlist(name) if isinstance(v, str) and v]
 
 
+# --- the steps ----------------------------------------------------------------
+#
+# The builder walks like the document flow: the type, then each section through
+# its phases, then what spans sections, then publishing. Where someone is lives
+# in the URL (`focus`, `phase`), never in the draft.
+
+PHASES: list[tuple[str, str]] = [
+    ("about", "About"),
+    ("questions", "Questions"),
+    ("content", "Content"),
+    ("checks", "Checks"),
+]
+PHASE_LABELS = dict(PHASES)
+TYPE, QUALITY, PUBLISH = "type", "quality", "publish"
+STEP_LABELS = {
+    TYPE: "Doctype settings",
+    QUALITY: "Quality across sections",
+    PUBLISH: "Publish",
+}
+
+_OPENED_PHASE = {
+    "section": "about",
+    "question": "questions",
+    "block": "content",
+    "check": "checks",
+    "add-check": "checks",
+    "criterion": "checks",
+}
+
+
+def phase_of(opened: str) -> str:
+    """The phase an opened row belongs to, so an edit lands back where it was made."""
+    return _OPENED_PHASE.get((opened or "").split(":", 1)[0], "")
+
+
+def section_criteria(spec: dict, key: str) -> list[dict]:
+    """Criteria read over this section alone: they belong to it, and are edited there."""
+    return [c for c in spec.get("quality_criteria") or [] if c.get("scope") == [key]]
+
+
+def shared_criteria(spec: dict, key: str) -> list[dict]:
+    """Criteria that read this section among others, edited on the quality step."""
+    return [
+        c
+        for c in spec.get("quality_criteria") or []
+        if c.get("scope") == "document" or (key in (c.get("scope") or []) and c["scope"] != [key])
+    ]
+
+
+def _walk(spec: dict) -> list[tuple[str, str]]:
+    steps = [(TYPE, "")]
+    for sec in spec.get("sections") or []:
+        steps += [(sec.get("key", ""), phase) for phase, _ in PHASES]
+    return steps + [(QUALITY, ""), (PUBLISH, "")]
+
+
+def neighbours(spec: dict, focus: str, phase: str) -> tuple[dict | None, dict | None]:
+    """The step before and after this one, each with what to call it."""
+    steps = _walk(spec)
+    here = (focus, phase if phase in PHASE_LABELS else "")
+    if here not in steps:
+        return None, None
+    at = steps.index(here)
+    titles = {
+        s.get("key", ""): (i + 1, s.get("title") or s.get("key", ""))
+        for i, s in enumerate(spec.get("sections") or [])
+    }
+
+    def describe(step: tuple[str, str] | None) -> dict | None:
+        if step is None:
+            return None
+        key, ph = step
+        if key in titles and key == focus:
+            label = PHASE_LABELS[ph]
+        elif key in titles:
+            n, title = titles[key]
+            label = f"S{n} {title}"
+        else:
+            label = STEP_LABELS[key]
+        query = f"?focus={key}" + (f"&phase={ph}" if ph else "")
+        return {"focus": key, "phase": ph, "label": label, "query": query}
+
+    before = steps[at - 1] if at > 0 else None
+    after = steps[at + 1] if at + 1 < len(steps) else None
+    return describe(before), describe(after)
+
+
 def locate(spec: dict, problem) -> dict[str, str]:
     """Where in the editor a problem lives, and what to call that place.
 
@@ -156,7 +260,7 @@ def locate(spec: dict, problem) -> dict[str, str]:
     return on anchoring errors in the first place (ARCHITECTURE §15.2).
     """
     path = tuple(problem.path)
-    here = {"focus": "type", "opened": "", "where": "The document type"}
+    here = {"focus": "type", "phase": "", "opened": "", "where": "Doctype settings"}
     if not path:
         return here
 
@@ -167,6 +271,9 @@ def locate(spec: dict, problem) -> dict[str, str]:
         if crit:
             here["opened"] = f"criterion:{crit.get('id', '')}"
             here["where"] = crit.get("title") or "Quality criteria"
+            scope = crit.get("scope")
+            if isinstance(scope, list) and len(scope) == 1:
+                here["focus"], here["phase"] = scope[0], "checks"
         return here
 
     if path[0] != "sections":
@@ -192,6 +299,7 @@ def locate(spec: dict, problem) -> dict[str, str]:
     elif part == "blocks":
         # The section has no blocks at all, so there is no child to open.
         here["where"] += " → what gets written"
+    here["phase"] = phase_of(here["opened"]) or ("content" if part == "blocks" else "about")
     return here
 
 

@@ -277,6 +277,10 @@ def test_a_check_is_only_offered_where_it_could_apply():
     assert "format" not in on_prose, "a paragraph has no column to be a date"
     assert "format" in [k for k, _, _ in builder.kinds_for("keyvalue")]
     assert "rubric" in on_prose, "a judged check applies to anything"
+    assert "consistency" not in on_prose, "one block cannot be read against the rest"
+    assert "consistency" in [k for k, _, _ in builder.kinds_for("prose", keep="consistency")]
+    assert "consistency" not in [k for k, _, _ in builder.criterion_kinds(in_section=True)]
+    assert "consistency" in [k for k, _, _ in builder.criterion_kinds(in_section=False)]
 
 
 def test_changing_a_check_s_kind_drops_the_old_kind_s_parameters():
@@ -826,13 +830,51 @@ async def test_has_to_be_filled_in_is_the_check_not_a_second_rule(draft_id, clie
     assert (await current(draft_id))["sections"][0]["blocks"][0]["required"] is False
 
 
-async def test_a_new_section_opens_with_its_content_expanded(draft_id, client):
+async def test_a_new_section_opens_at_its_first_phase(draft_id, client):
     response = client.post(
         f"/doc-types/drafts/{draft_id}/section",
         data={"op": "add", "title": "Findings"},
         headers={"HX-Request": "true"},
     )
-    assert '<details class="item" open>' in response.text
+    assert 'id="s-title"' in response.text, "what the section is, first"
+    assert "Next: Questions" in response.text
+
+
+async def test_an_edit_lands_back_on_the_phase_it_was_made_from(draft_id, client):
+    async with session() as s:
+        await drafts.edit(s, draft_id, None, lambda spec: drafts.add_section(spec, "Findings"))
+
+    response = client.post(
+        f"/doc-types/drafts/{draft_id}/question",
+        data={"op": "add", "section": "findings", "prompt": "What was found?"},
+        headers={"HX-Request": "true"},
+    )
+    assert "Next: Content" in response.text, "on the questions phase"
+
+    response = client.post(
+        f"/doc-types/drafts/{draft_id}/question",
+        data={
+            "op": "delete",
+            "section": "findings",
+            "key": "what_was_found",
+            "focus": "findings",
+            "phase": "questions",
+        },
+        headers={"HX-Request": "true"},
+    )
+    assert "Next: Content" in response.text, "a delete opens nothing, and stays put"
+
+
+def test_the_steps_run_from_the_type_through_each_section_to_publish():
+    spec = {"sections": [{"key": "a", "title": "Alpha"}, {"key": "b", "title": "Beta"}]}
+
+    before, after = builder.neighbours(spec, "a", "checks")
+    assert (before["label"], after["label"]) == ("Content", "S2 Beta")
+    before, after = builder.neighbours(spec, "type", "")
+    assert before is None and after["query"] == "?focus=a&phase=about"
+    before, after = builder.neighbours(spec, "b", "checks")
+    assert after["label"] == "Quality across sections"
+    assert builder.neighbours(spec, "publish", "")[1] is None
 
 
 def test_the_favicon_is_served_at_the_root(client):
@@ -985,6 +1027,78 @@ async def test_a_criterion_is_suggested_from_a_section_s_questions(asking, clien
     assert "rubric" not in crit
 
 
+async def test_a_criterion_is_suggested_from_one_question_inside_the_section(
+    asking, client, monkeypatch
+):
+    asked = _criterion_reply(
+        monkeypatch,
+        {"title": "Stock is accounted for", "kind": "rubric", "must_mention": [], "rubric": "R."},
+    )
+    async with session() as s:
+        await drafts.edit(
+            s, asking, None, lambda spec: drafts.add_question(spec, "containment", "Who was told?")
+        )
+
+    page = client.get(f"/doc-types/drafts/{asking}?focus=containment&phase=checks")
+    assert "Suggest from this question" in page.text
+
+    response = client.post(
+        f"/doc-types/drafts/{asking}/criterion/suggest",
+        data={
+            "section": "containment",
+            "question": "who_was_told",
+            "focus": "containment",
+            "phase": "checks",
+        },
+        headers={"HX-Request": "true"},
+    )
+
+    assert "## The question this criterion is for\n\nWho was told?" in asked[0]
+    assert "What happened to stock at the customer?" in asked[0], "the others are context"
+    assert "Suggested from Q2" in response.text
+    assert "<strong>Stock is accounted for</strong>" in response.text
+
+    response = client.post(
+        f"/doc-types/drafts/{asking}/criterion/suggest",
+        data={
+            "op": "accept",
+            "section": "containment",
+            "title": "Stock is accounted for",
+            "kind": "rubric",
+            "rubric": "R.",
+            "focus": "containment",
+            "phase": "checks",
+        },
+        headers={"HX-Request": "true"},
+    )
+    assert "<h3>Section criteria</h3>" in response.text, "back in the section"
+    [crit] = (await current(asking))["quality_criteria"]
+    assert crit["scope"] == ["containment"]
+
+
+async def test_a_criterion_added_in_a_section_belongs_to_it(asking, client):
+    response = client.post(
+        f"/doc-types/drafts/{asking}/criterion",
+        data={
+            "op": "add",
+            "section": "containment",
+            "title": "Reads as settled",
+            "kind": "rubric",
+            "focus": "containment",
+            "phase": "checks",
+        },
+        headers={"HX-Request": "true"},
+    )
+
+    [crit] = (await current(asking))["quality_criteria"]
+    assert crit["scope"] == ["containment"]
+    assert "<h3>Section criteria</h3>" in response.text
+    assert 'name="scope" value="containment"' in response.text, "the scope is the section"
+
+    page = client.get(f"/doc-types/drafts/{asking}?focus=quality")
+    assert "Reads as settled" in page.text, "and the quality step still lists it"
+
+
 async def test_an_unavailable_assistant_suggests_nothing_and_says_so(asking, client, monkeypatch):
     from lcf.llm.provider import LLMUnavailable
 
@@ -1008,7 +1122,16 @@ async def test_the_quality_page_lists_what_the_sections_already_check(asking, cl
 
     page = client.get(f"/doc-types/drafts/{asking}?focus=quality")
 
-    assert "Already checked in the sections" in page.text
+    assert "Block checks in the sections" in page.text
     assert "Must not be empty." in page.text
     assert 'data-for-kind="mentions"' in page.text, "both fields are there to switch between"
     assert 'data-for-kind="rubric consistency"' in page.text
+
+
+def test_must_not_contradict_needs_no_text_of_its_own():
+    spec = {**drafts.NEW_SPEC, "id": "t", "title": "T", "sections": [], "quality_criteria": []}
+    check_id = drafts.add_criterion(spec, "Agrees", "consistency")
+    assert spec["quality_criteria"][0]["rubric"] == drafts.NO_CONTRADICTION
+
+    drafts.update_criterion(spec, check_id, rubric="")
+    assert spec["quality_criteria"][0]["rubric"] == drafts.NO_CONTRADICTION, "emptied, falls back"

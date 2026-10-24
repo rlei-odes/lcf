@@ -160,6 +160,7 @@ def test_a_blocks_own_checks_reach_its_prompt(spec_4d):
     assert "at least 40 words" in rendered
     # A `mentions` check is simultaneously an instruction and the grade for it.
     assert "quantity or rate of affected parts" in rendered
+    assert "Must not be empty." not in rendered, "checked, but says nothing about what to write"
 
 
 def test_style_composes_in_order(spec_4d):

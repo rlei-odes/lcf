@@ -746,6 +746,31 @@ table.config .v { font-family: var(--mono); font-size: 12.5px; word-break: break
    a list at the bottom of the page.
    --------------------------------------------------------------------------- */
 
+/* Laid out as steps, like the document flow: whether it can be published is
+   the builder's progress, so it sits where the flow's meter does. */
+.rail-status {
+  display: block; margin-top: var(--s2); font-size: 12px; font-weight: 600;
+  text-decoration: none;
+}
+nav.sections a.rail-status { padding: 0; background: none; box-shadow: none; }
+.rail-status.ok { color: var(--ok); }
+.rail-status.blocker { color: var(--blocker); }
+nav.builder-nav .rail-foot { display: flex; flex-direction: column; }
+nav.builder-nav .rail-sub code { font-size: 11px; }
+
+details.problems-fold > summary { cursor: pointer; font-weight: 600; }
+details.problems-fold[open] > summary { margin-bottom: var(--s2); }
+ol.phases .problem-count { margin-left: var(--s1); }
+
+ul.suggest-from { list-style: none; padding: 0; margin: 0 0 var(--s3); }
+ul.suggest-from li {
+  display: flex; gap: var(--s2); align-items: baseline;
+  padding: var(--s2) 0; border-bottom: 1px solid var(--line-2);
+}
+ul.suggest-from li .item-name { flex: 1; min-width: 0; }
+ul.suggest-from li form { flex: none; }
+.guide-actions .spacer, .actions .spacer { margin-left: auto; }
+
 nav.builder-nav .nav-heading {
   font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em;
   color: var(--faint); margin: var(--s4) 0 var(--s1); padding: 0 var(--s2); font-weight: 650;
@@ -780,8 +805,9 @@ details.item > summary::before {
 }
 details.item[open] > summary::before { content: "▾"; }
 details.item[open] > summary { font-weight: 600; }
-details.item .item-name { flex: none; }
+details.item .item-name { flex: 0 1 auto; min-width: 0; }
 details.item .item-meta {
+  flex: 1 1 8em; min-width: 0;
   color: var(--muted); font-size: 12.5px; font-weight: 400;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }

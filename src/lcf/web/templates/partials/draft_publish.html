@@ -1,0 +1,59 @@
+{% import "partials/draft_macros.html" as m with context %}
+{# The last step: what is still wrong, and the one move that makes a version. #}
+{% set url = '/doc-types/drafts/' ~ draft.id %}
+
+<div class="card step-head">
+  <div class="block-head">
+    <span class="step-of">Publish</span>
+    {% if review.ok %}<span class="pill complete">ready to publish</span>{% endif %}
+  </div>
+  <h2>{{ spec.title or "Untitled document type" }}</h2>
+  <p class="lead">
+    {% if draft.based_on %}
+      Publishes as v{{ spec.version }}. v{{ draft.based_on }} stays exactly as it is.
+    {% else %}
+      A new document type. Nothing is published until you say so.
+    {% endif %}
+    Saved {{ draft.updated_at|localtime }}.
+  </p>
+</div>
+
+{% if not review.ok %}
+<div class="card">
+  <h3>{{ count(review.problems|length, 'thing') }} to fix first</h3>
+  <p class="lead">
+    A draft is allowed to be unfinished. It just cannot be published yet. Each
+    one takes you to where it is.
+  </p>
+  {{ m.problem_links(review, spec, url) }}
+</div>
+{% endif %}
+
+<div class="card">
+  <h3>What happens when you publish</h3>
+  <p class="lead">
+    A version is added. Documents already under way keep the version they started
+    on, wording and checks included, so publishing can never change a report
+    someone is halfway through writing.
+  </p>
+  <p class="hint">
+    That is also why a published version cannot be edited: opening one for editing
+    opens the <em>next</em> one. Before publishing, it is worth reading the type
+    back as a whole, and reading what the assistant will be told.
+  </p>
+  <div class="actions">
+    <form hx-post="{{ url }}/publish" hx-target="#draft-body" hx-swap="outerHTML"
+          hx-disabled-elt="find button">
+      <button class="primary" type="submit" {% if not review.ok %}disabled{% endif %}>
+        {% if draft.based_on %}Publish as v{{ spec.version }}{% else %}Publish it{% endif %}
+      </button>
+    </form>
+    <a href="{{ url }}/preview"><button type="button">Read it back</button></a>
+    <a href="{{ url }}/prompt"><button type="button">What the assistant is told</button></a>
+    <span class="spacer"></span>
+    <form hx-post="{{ url }}/discard"
+          hx-confirm="Discard this draft? Everything unpublished in it is lost.">
+      <button type="submit" class="quiet">Discard the draft</button>
+    </form>
+  </div>
+</div>

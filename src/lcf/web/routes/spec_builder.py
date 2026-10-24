@@ -27,6 +27,7 @@ def draft_view(
     loaded: drafts.Loaded,
     *,
     focus: str | None = None,
+    phase: str = "",
     opened: str = "",
     conflict: str | None = None,
     saved: bool = False,
@@ -36,14 +37,22 @@ def draft_view(
     if not drafts.is_navigable(loaded.spec):
         return page(request, "draft_unnavigable.html", draft=loaded.row, review=loaded.review)
     keys = [s.get("key", "") for s in loaded.spec.get("sections") or []]
-    if focus not in {*keys, "type", "quality"}:
-        focus = keys[0] if keys else "type"
+    if focus not in {*keys, builder.TYPE, builder.QUALITY, builder.PUBLISH}:
+        focus = keys[0] if keys else builder.TYPE
+    if focus in keys:
+        phase = phase if phase in builder.PHASE_LABELS else builder.phase_of(opened) or "about"
+    else:
+        phase = ""
+    before, after = builder.neighbours(loaded.spec, focus, phase)
     context = {
         "draft": loaded.row,
         "spec": loaded.spec,
         "review": loaded.review,
         "token": loaded.token,
         "focus": focus,
+        "phase": phase,
+        "before": before,
+        "after": after,
         "focus_index": keys.index(focus) if focus in keys else None,
         "opened": opened,
         "conflict": conflict,
@@ -71,17 +80,23 @@ async def _apply(
     what the form thought it was — the point of refusing it is that those two had
     diverged.
     """
+    phase = builder.text(form, "phase")
     async with session() as s:
         try:
             loaded = await drafts.edit(s, draft_id, builder.text(form, "token"), mutate)
         except (drafts.Conflict, drafts.Missing) as exc:
             loaded = await drafts.load(s, draft_id)
-            return draft_view(request, loaded, focus=focus, opened=opened, conflict=str(exc))
+            return draft_view(
+                request, loaded, focus=focus, phase=phase, opened=opened, conflict=str(exc)
+            )
     after = moved or {}
+    # Where the edit moved things decides the phase; otherwise stay where it was made.
+    phase = after.get("phase") or builder.phase_of(after.get("opened", "")) or phase
     return draft_view(
         request,
         loaded,
         focus=after.get("focus", focus),
+        phase=phase,
         opened=after.get("opened", opened),
         saved=saved,
     )
@@ -96,10 +111,12 @@ async def start_draft(title: str = Form(""), description: str = Form("")):
 
 
 @router.get("/{draft_id}", response_class=HTMLResponse)
-async def draft_editor(request: Request, draft_id: UUID, focus: str = "", opened: str = ""):
+async def draft_editor(
+    request: Request, draft_id: UUID, focus: str = "", phase: str = "", opened: str = ""
+):
     async with session() as s:
         loaded = await drafts.load(s, draft_id)
-    return draft_view(request, loaded, focus=focus or None, opened=opened)
+    return draft_view(request, loaded, focus=focus or None, phase=phase, opened=opened)
 
 
 @router.post("/{draft_id}/discard")
@@ -147,10 +164,7 @@ async def draft_section_op(request: Request, draft_id: UUID):
 
         def mutate(spec):
             moved["focus"] = drafts.add_section(spec, title)
-            # The block every section starts with, open, so it reads as the
-            # section's content rather than an example of it.
-            first = drafts.section(spec, moved["focus"])[1]["blocks"][0]
-            moved["opened"] = "block:" + first["key"]
+            moved["phase"] = "about"
 
     elif op == "delete":
 
@@ -423,14 +437,20 @@ async def draft_criterion(request: Request, draft_id: UUID):
     form = await request.form()
     op = builder.text(form, "op", "save")
     check_id = builder.text(form, "id")
+    # Edited on the quality step, or inside the one section it belongs to.
+    focus = builder.text(form, "focus") or builder.QUALITY
     moved: dict = {}
 
     if op == "add":
         title = builder.text(form, "title")
         kind = builder.text(form, "kind", "rubric") or "rubric"
+        section_key = builder.text(form, "section")
 
         def mutate(spec):
-            moved["opened"] = "criterion:" + drafts.add_criterion(spec, title, kind)
+            check_id = drafts.add_criterion(spec, title, kind)
+            if section_key:
+                drafts.update_criterion(spec, check_id, scope=[section_key])
+            moved["opened"] = "criterion:" + check_id
 
     elif op == "delete":
 
@@ -463,7 +483,7 @@ async def draft_criterion(request: Request, draft_id: UUID):
         draft_id,
         form,
         mutate,
-        focus="quality",
+        focus=focus,
         opened=builder.text(form, "opened"),
         moved=moved,
     )
@@ -473,8 +493,9 @@ async def draft_criterion(request: Request, draft_id: UUID):
 async def suggest_criterion(request: Request, draft_id: UUID):
     """Ask the assistant for a criterion over one section, and offer it.
 
-    Nothing is added until the person accepts: the suggestion comes back as a
-    proposal beside the button they pressed, and `op=accept` is what writes it,
+    From all the section's questions, or from one of them when `question` is
+    given. Nothing is added until the person accepts: the suggestion comes back as
+    a proposal beside the button they pressed, and `op=accept` is what writes it,
     through the token like any other edit.
     """
     from lcf.llm.calls import propose_criterion
@@ -482,6 +503,9 @@ async def suggest_criterion(request: Request, draft_id: UUID):
 
     form = await request.form()
     section_key = builder.text(form, "section")
+    question_key = builder.text(form, "question")
+    focus = builder.text(form, "focus") or builder.QUALITY
+    phase = builder.text(form, "phase")
 
     if builder.text(form, "op") == "accept":
         kind = "mentions" if builder.text(form, "kind") == "mentions" else "rubric"
@@ -495,22 +519,34 @@ async def suggest_criterion(request: Request, draft_id: UUID):
                 spec, section_key, title, kind, points, rubric
             )
 
-        return await _apply(request, draft_id, form, mutate, focus="quality", moved=moved)
+        return await _apply(request, draft_id, form, mutate, focus=focus, moved=moved)
 
     async with session() as s:
         loaded = await drafts.load(s, draft_id)
     try:
-        proposed = await propose_criterion(loaded.spec, section_key)
+        proposed = await propose_criterion(loaded.spec, section_key, question_key or None)
     except (LLMUnavailable, LLMMalformed) as exc:
         return draft_view(
-            request, loaded, focus="quality", conflict=f"The assistant could not suggest one: {exc}"
+            request,
+            loaded,
+            focus=focus,
+            phase=phase,
+            conflict=f"The assistant could not suggest one: {exc}",
         )
     if proposed is None:
         return draft_view(
-            request, loaded, focus="quality", conflict="The assistant had nothing to suggest."
+            request,
+            loaded,
+            focus=focus,
+            phase=phase,
+            conflict="The assistant had nothing to suggest.",
         )
     return draft_view(
-        request, loaded, focus="quality", suggestion={"section": section_key, **vars(proposed)}
+        request,
+        loaded,
+        focus=focus,
+        phase=phase,
+        suggestion={"section": section_key, "question": question_key, **vars(proposed)},
     )
 
 
@@ -718,7 +754,7 @@ async def publish_draft(request: Request, draft_id: UUID):
             return draft_view(
                 request,
                 loaded,
-                focus=builder.text(await request.form(), "focus") or None,
+                focus=builder.PUBLISH,
                 conflict="This cannot be published yet: the problems below say why.",
             )
         try:

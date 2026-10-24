@@ -610,6 +610,15 @@ def is_judged(req: Spec) -> bool:
 # --- quality criteria ---------------------------------------------------------
 
 
+# What "must not contradict" means when nobody has said more. It is judged
+# against written text like any criterion, so it needs some; this is the text
+# that covers the usual case, and the rule builder can narrow it.
+NO_CONTRADICTION = (
+    "The sections do not contradict each other: names, dates, quantities, parts and "
+    "causes that appear in more than one of them are the same everywhere they appear."
+)
+
+
 def add_criterion(spec: Spec, title: str, kind: str) -> str:
     taken = [r.get("id", "") for s in sections(spec) for r in s.get("requirements", [])]
     taken += [c.get("id", "") for c in criteria(spec)]
@@ -621,6 +630,7 @@ def add_criterion(spec: Spec, title: str, kind: str) -> str:
             "kind": kind,
             "scope": "document",
             "severity": "blocker",
+            **({"rubric": NO_CONTRADICTION} if kind == "consistency" else {}),
         }
     )
     return check_id
@@ -653,6 +663,8 @@ def update_criterion(spec: Spec, check_id: str, **fields) -> Spec:
         crit.pop("rubric", None)
     else:
         crit.pop("must_mention", None)
+    if crit.get("kind") == "consistency" and not crit.get("rubric"):
+        crit["rubric"] = NO_CONTRADICTION
     return crit
 
 

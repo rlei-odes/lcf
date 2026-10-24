@@ -1,4 +1,4 @@
-{% import "partials/draft_macros.html" as m %}
+{% import "partials/draft_macros.html" as m with context %}
 {# The type itself. Everything here is flat — the hard part of this editor is the
    checks, not this. #}
 
@@ -20,8 +20,12 @@
 </div>
 {% endif %}
 
+<div class="card step-head">
+  <div class="block-head"><span class="step-of">Doctype settings</span></div>
+  <h2>{{ spec.title or "Untitled document type" }}</h2>
+</div>
+
 <div class="card">
-  <h3>The document type</h3>
   <form hx-post="/doc-types/drafts/{{ draft.id }}/meta" hx-target="#draft-body"
         hx-swap="outerHTML" data-dirty="the document type">
     {{ m.state(token, 'type', opened) }}
@@ -96,22 +100,5 @@
   {% for p in stray %}
   <div class="check blocker"><span class="mark">✗</span><span>{{ p }}</span></div>
   {% endfor %}
-</div>
-{% endif %}
-
-{# Only once there is something to publish; before that it answers a question
-   nobody is asking yet. #}
-{% if review.ok and spec.sections %}
-<div class="card">
-  <h3>What happens when you publish</h3>
-  <p class="lead">
-    A version is added. Documents already under way keep the version they started
-    on, wording and checks included, so publishing can never change a report
-    someone is halfway through writing.
-  </p>
-  <p class="hint">
-    That is also why a published version cannot be edited: opening one for editing
-    opens the <em>next</em> one.
-  </p>
 </div>
 {% endif %}

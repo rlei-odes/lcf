@@ -1,22 +1,44 @@
-{% import "partials/draft_macros.html" as m %}
+{% import "partials/draft_macros.html" as m with context %}
 {% set sec = spec.sections[focus_index] %}
 {% set at = ['sections', focus_index] %}
 {% set url = '/doc-types/drafts/' ~ draft.id %}
 
-<div class="card">
+{% set own_criteria = builder.section_criteria(spec, sec.key) %}
+{% set phase_counts = {
+  'questions': (sec.questions or [])|length,
+  'content': (sec.blocks or [])|length,
+  'checks': (sec.requirements or [])|length + own_criteria|length,
+} %}
+{% set phase_paths = {
+  'about': [at + ['title'], at + ['depends_on']],
+  'questions': [at + ['questions']],
+  'content': [at + ['blocks']],
+  'checks': [at + ['requirements']],
+} %}
+
+{# One section, one phase at a time — the way a section is written in the
+   document flow: what it is, what the author is asked, what gets written, and
+   what it is checked against. #}
+<div class="card step-head">
   <div class="block-head">
-    <h2><span class="ref ref-lg">{{ REF.section }}{{ at[1] + 1 }}</span> {{ sec.title or sec.key }}</h2>
+    <span class="step-of">Section {{ at[1] + 1 }} of {{ spec.sections|length }}</span>
     {% if not sec.get('required', true) %}<span class="pill">optional</span>{% endif %}
-    <span class="rowtools-right">
-      {{ m.rowtools(url ~ '/section', token, focus, opened, {'key': sec.key}, 'the section “' ~ (sec.title or sec.key) ~ '” and everything in it') }}
-    </span>
   </div>
-  <div class="under-form">
-    {{ m.rename(url ~ '/section', token, focus, opened, sec.key, 'section', true,
-                {'key': sec.key}) }}
-  </div>
+  <h2><span class="ref ref-lg">{{ REF.section }}{{ at[1] + 1 }}</span> {{ sec.title or sec.key }}</h2>
+  {% if sec.description %}<p class="lead">{{ sec.description }}</p>{% endif %}
+
+  <ol class="phases">
+    {% for key, label in builder.PHASES %}
+    <li class="{{ 'on' if phase == key }}">
+      <a href="{{ url }}?focus={{ sec.key }}&phase={{ key }}">{{ label }}</a>
+      {% if key in phase_counts %}<span class="phase-count">{{ phase_counts[key] }}</span>{% endif %}
+      {% for p in phase_paths[key] %}{{ m.count(review, p) }}{% endfor %}
+    </li>
+    {% endfor %}
+  </ol>
 </div>
 
+{% if phase == 'about' %}
 {# --- what the section is ---------------------------------------------------- #}
 <div class="card">
   <h3>What this section is</h3>
@@ -104,8 +126,16 @@
 
     {{ m.save() }}
   </form>
+  <div class="actions">
+    {{ m.rowtools(url ~ '/section', token, focus, 'section', {'key': sec.key}, 'the section “' ~ (sec.title or sec.key) ~ '” and everything in it') }}
+  </div>
+  <div class="under-form">
+    {{ m.rename(url ~ '/section', token, focus, 'section', sec.key, 'section', true,
+                {'key': sec.key}) }}
+  </div>
 </div>
 
+{% elif phase == 'questions' %}
 {# --- questions -------------------------------------------------------------- #}
 <div class="card">
   <h3>Asked before anything is written</h3>
@@ -209,8 +239,15 @@
            aria-label="The new question">
     <button type="submit">Add</button>
   </form>
+  {% if sec.questions %}
+  <p class="hint">
+    Each question can become a section criterion: suggest one from it in this
+    section's <a href="{{ url }}?focus={{ sec.key }}&phase=checks">checks</a>.
+  </p>
+  {% endif %}
 </div>
 
+{% elif phase == 'content' %}
 {# --- blocks ----------------------------------------------------------------- #}
 <div class="card">
   <h3>What gets written here</h3>
@@ -333,13 +370,14 @@
   </p>
 </div>
 
+{% else %}
 {# --- checks ----------------------------------------------------------------- #}
 <div class="card">
-  <h3>What it is checked against</h3>
+  <h3>Block checks</h3>
   <p class="lead">
-    These are the instructions. Each one is given to the assistant as a target
-    before it writes, and used to grade the result afterwards. So there is
-    nothing else to write down, and the two can never disagree.
+    Rules for one block of this section. The assistant is given them as targets
+    when it drafts that block, except “Filled in”. App checks run when the author
+    reviews the section; assistant checks run at the final quality check.
   </p>
 
   {% if not sec.blocks %}
@@ -356,7 +394,7 @@
       <span class="item-name">{{ sentence or builder.CHECK_LABELS.get(r.get('kind'), 'Unfinished check') }}</span>
       <span class="item-meta">
         {{ (drafts.blocks_of(spec, sec.key) | selectattr('key', 'equalto', r.get('block')) | map(attribute='label') | first) or r.get('block') }}
-        · {{ 'judged by the assistant' if drafts.is_judged(r) else 'checked by the app' }}
+        · {{ 'assistant' if drafts.is_judged(r) else 'app' }}
       </span>
       {{ m.count(review, rat) }}
     </summary>
@@ -368,7 +406,7 @@
         <input type="hidden" name="id" value="{{ r.id }}">
 
         <div class="field">
-          <label>Which part of this section?</label>
+          <label>Block</label>
           <select name="block"
                   hx-get="{{ url }}/check-form" hx-target="#params-{{ r.id }}"
                   hx-swap="outerHTML" hx-include="#check-{{ r.id }}">
@@ -412,7 +450,7 @@
         <input type="hidden" name="section" value="{{ sec.key }}">
 
         <div class="field">
-          <label>Which part of this section?</label>
+          <label>Block</label>
           <select name="block"
                   hx-get="{{ url }}/check-form" hx-target="#params-new"
                   hx-swap="outerHTML" hx-include="#check-new">
@@ -437,3 +475,124 @@
   </details>
   {% endif %}
 </div>
+
+{# --- the section's quality criteria ------------------------------------------ #}
+{% set shared = builder.shared_criteria(spec, sec.key) %}
+<div class="card">
+  <h3>Section criteria</h3>
+  <p class="lead">
+    Judged by the assistant over the whole written section, at the final quality
+    check. Use them for what the section as a whole has to answer, typically one
+    per question. They are not given to the assistant when it drafts.
+  </p>
+
+  {% for c in own_criteria %}
+  {% set index = (spec.quality_criteria or []).index(c) %}
+  {% with cat = ['quality_criteria', index], crit_focus = sec.key, in_section = sec.key %}
+    {% include "partials/draft_criterion.html" %}
+  {% endwith %}
+  {% else %}
+  <p class="hint">None yet.</p>
+  {% endfor %}
+
+  {% if suggestion and suggestion.section == sec.key %}
+  {% set qkeys = (sec.questions or []) | map(attribute='key') | list %}
+  {% set qn = qkeys.index(suggestion.question) + 1 if suggestion.question in qkeys else none %}
+  <div class="notice proposal">
+    <h3>Suggested {% if qn %}from {{ REF.question }}{{ qn }}{% else %}from all its questions{% endif %}</h3>
+    <p><strong>{{ suggestion.title }}</strong></p>
+    {% if suggestion.kind == 'mentions' %}
+    <p>Must mention:</p>
+    <ul>{% for point in suggestion.must_mention %}<li>{{ point }}</li>{% endfor %}</ul>
+    {% else %}
+    <p>{{ suggestion.rubric }}</p>
+    {% endif %}
+    <p class="hint">Accept adds it as a warning, opened for editing.</p>
+    <div class="actions">
+      <form hx-post="{{ url }}/criterion/suggest" hx-target="#draft-body" hx-swap="outerHTML">
+        {{ m.state(token, sec.key, '') }}
+        <input type="hidden" name="op" value="accept">
+        <input type="hidden" name="section" value="{{ sec.key }}">
+        <input type="hidden" name="title" value="{{ suggestion.title }}">
+        <input type="hidden" name="kind" value="{{ suggestion.kind }}">
+        {% for point in suggestion.must_mention %}
+        <input type="hidden" name="must_mention" value="{{ point }}">
+        {% endfor %}
+        <input type="hidden" name="rubric" value="{{ suggestion.rubric }}">
+        <button class="primary" type="submit">Accept</button>
+      </form>
+      <button type="button" hx-get="{{ url }}?focus={{ sec.key }}&phase=checks"
+              hx-target="#draft-body" hx-swap="outerHTML">Discard</button>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if sec.questions %}
+  <div class="suggest">
+    <p class="hint">Suggest a criterion from a question. You review it before it is added.</p>
+    <ul class="suggest-from">
+      {% for q in sec.questions %}
+      <li>
+        <span class="ref">{{ REF.question }}{{ loop.index }}</span>
+        <span class="item-name">{{ q.prompt or q.key }}</span>
+        <form hx-post="{{ url }}/criterion/suggest" hx-target="#draft-body" hx-swap="outerHTML"
+              hx-indicator="#suggest-working" hx-disabled-elt=".suggest-from button, .suggest-all button">
+          {{ m.state(token, sec.key, '') }}
+          <input type="hidden" name="section" value="{{ sec.key }}">
+          <input type="hidden" name="question" value="{{ q.key }}">
+          <button type="submit" class="tool">✦ Suggest from this question</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    <div class="suggest-all actions">
+      {% if sec.questions|length > 1 %}
+      <form hx-post="{{ url }}/criterion/suggest" hx-target="#draft-body" hx-swap="outerHTML"
+            hx-indicator="#suggest-working" hx-disabled-elt=".suggest-from button, .suggest-all button">
+        {{ m.state(token, sec.key, '') }}
+        <input type="hidden" name="section" value="{{ sec.key }}">
+        <button type="submit">✦ Suggest one from all its questions</button>
+      </form>
+      {% endif %}
+      <span class="htmx-indicator working" id="suggest-working">Asking the assistant, this can take a while…</span>
+    </div>
+  </div>
+  {% else %}
+  <p class="hint">
+    Add <a href="{{ url }}?focus={{ sec.key }}&phase=questions">questions</a> and the
+    assistant can suggest criteria from them.
+  </p>
+  {% endif %}
+
+  <form class="add-row" hx-post="{{ url }}/criterion" hx-target="#draft-body" hx-swap="outerHTML">
+    {{ m.state(token, sec.key, '') }}
+    <input type="hidden" name="op" value="add">
+    <input type="hidden" name="section" value="{{ sec.key }}">
+    <input type="text" name="title" required placeholder="Name of a new criterion…"
+           aria-label="Name">
+    <select name="kind" aria-label="Type">
+      {% for value, label, blurb in builder.criterion_kinds(in_section=true) %}
+      <option value="{{ value }}">{{ label }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">Add</button>
+  </form>
+
+  {% if shared %}
+  <div class="check-summary">
+    <p class="hint">Criteria across sections that include this one, edited on the quality step:</p>
+    <ul>
+      {% for c in shared %}
+      <li class="{{ c.get('severity', 'blocker') }}">
+        <a href="{{ url }}?focus=quality&opened=criterion:{{ c.id }}">{{ c.title or c.id }}</a>
+        <span class="hint">
+          {%- if c.get('scope') == 'document' %}whole document
+          {%- else %}{% for k in c.get('scope') or [] %}{{ (spec.sections | selectattr('key', 'equalto', k) | map(attribute='title') | first) or k }}{{ ', ' if not loop.last }}{% endfor %}{% endif -%}
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+</div>
+{% endif %}

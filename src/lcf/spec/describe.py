@@ -21,6 +21,11 @@ _FORMATS = {
 }
 
 
+# Checked, but not given to the drafting model as a target: "must not be empty"
+# says nothing about what to write.
+UNTOLD_KINDS = frozenset({"present"})
+
+
 def describe_requirement(req: Requirement) -> str:
     kind = req.kind
     if kind == "present":
