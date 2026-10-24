@@ -47,8 +47,8 @@
           <input type="hidden" name="rubric" value="{{ suggestion.rubric }}">
           <button class="primary" type="submit">Accept</button>
         </form>
-        <button type="button" hx-get="{{ url }}?focus=quality" hx-target="#draft-body"
-                hx-swap="outerHTML">Discard</button>
+        <button type="button" hx-post="{{ url }}/criterion/suggest" hx-target="#draft-body" hx-swap="outerHTML"
+                hx-vals='{"op": "discard", "section": "{{ suggestion.section }}", "focus": "quality"}'>Discard</button>
       </div>
     </div>
     {% endif %}

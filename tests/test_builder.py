@@ -837,7 +837,7 @@ async def test_a_new_section_opens_at_its_first_phase(draft_id, client):
         headers={"HX-Request": "true"},
     )
     assert 'id="s-title"' in response.text, "what the section is, first"
-    assert "Next: Questions" in response.text
+    assert "Next:</span> Content" in response.text
 
 
 async def test_an_edit_lands_back_on_the_phase_it_was_made_from(draft_id, client):
@@ -849,7 +849,7 @@ async def test_an_edit_lands_back_on_the_phase_it_was_made_from(draft_id, client
         data={"op": "add", "section": "findings", "prompt": "What was found?"},
         headers={"HX-Request": "true"},
     )
-    assert "Next: Content" in response.text, "on the questions phase"
+    assert "Next:</span> Checks" in response.text, "on the questions phase"
 
     response = client.post(
         f"/doc-types/drafts/{draft_id}/question",
@@ -862,14 +862,14 @@ async def test_an_edit_lands_back_on_the_phase_it_was_made_from(draft_id, client
         },
         headers={"HX-Request": "true"},
     )
-    assert "Next: Content" in response.text, "a delete opens nothing, and stays put"
+    assert "Next:</span> Checks" in response.text, "a delete opens nothing, and stays put"
 
 
 def test_the_steps_run_from_the_type_through_each_section_to_publish():
     spec = {"sections": [{"key": "a", "title": "Alpha"}, {"key": "b", "title": "Beta"}]}
 
     before, after = builder.neighbours(spec, "a", "checks")
-    assert (before["label"], after["label"]) == ("Content", "S2 Beta")
+    assert (before["label"], after["label"]) == ("Questions", "S2 Beta")
     before, after = builder.neighbours(spec, "type", "")
     assert before is None and after["query"] == "?focus=a&phase=about"
     before, after = builder.neighbours(spec, "b", "checks")
@@ -1071,7 +1071,7 @@ async def test_a_criterion_is_suggested_from_one_question_inside_the_section(
         },
         headers={"HX-Request": "true"},
     )
-    assert "<h3>Section criteria</h3>" in response.text, "back in the section"
+    assert "<h3>Section criteria " in response.text, "back in the section"
     [crit] = (await current(asking))["quality_criteria"]
     assert crit["scope"] == ["containment"]
 
@@ -1092,7 +1092,7 @@ async def test_a_criterion_added_in_a_section_belongs_to_it(asking, client):
 
     [crit] = (await current(asking))["quality_criteria"]
     assert crit["scope"] == ["containment"]
-    assert "<h3>Section criteria</h3>" in response.text
+    assert "<h3>Section criteria " in response.text
     assert 'name="scope" value="containment"' in response.text, "the scope is the section"
 
     page = client.get(f"/doc-types/drafts/{asking}?focus=quality")
@@ -1135,3 +1135,133 @@ def test_must_not_contradict_needs_no_text_of_its_own():
 
     drafts.update_criterion(spec, check_id, rubric="")
     assert spec["quality_criteria"][0]["rubric"] == drafts.NO_CONTRADICTION, "emptied, falls back"
+
+
+def _questions_reply(monkeypatch, questions):
+    from lcf.llm import calls
+    from lcf.llm.provider import Completion
+
+    asked: list[str] = []
+
+    async def fake(system, user, schema, schema_name="response", purpose="", optional=()):
+        asked.append(user)
+        data = {"questions": questions}
+        return Completion(data=data, raw="", prompt="", model="stub", duration_ms=1, attempts=1)
+
+    monkeypatch.setattr(calls, "complete_json", fake)
+    return asked
+
+
+async def test_questions_are_suggested_from_the_content_and_added_when_ticked(
+    asking, client, monkeypatch
+):
+    asked = _questions_reply(
+        monkeypatch,
+        [
+            {
+                "prompt": "Was the customer's stock sorted?",
+                "type": "boolean",
+                "options": [],
+                "hint": "",
+                "why": "Containment",
+            },
+            {
+                "prompt": "What happened to stock at the customer?",
+                "type": "text",
+                "options": [],
+                "hint": "",
+                "why": "already asked",
+            },
+            {
+                "prompt": "Who sorted it?",
+                "type": "choice",
+                "options": ["Supplier", "Customer"],
+                "hint": "",
+                "why": "Containment",
+            },
+        ],
+    )
+
+    response = client.post(
+        f"/doc-types/drafts/{asking}/question/suggest",
+        data={"section": "containment", "focus": "containment", "phase": "questions"},
+        headers={"HX-Request": "true"},
+    )
+
+    assert "Containment (prose)" in asked[0], "the content is what it reads"
+    assert "Suggested from the content" in response.text
+    assert "Was the customer&#39;s stock sorted?" in response.text
+    assert response.text.count('name="pick"') == 2, "one already asked is not offered again"
+    assert len((await current(asking))["sections"][0]["questions"]) == 1, "offered, not added"
+
+    response = client.post(
+        f"/doc-types/drafts/{asking}/question/suggest",
+        data={
+            "op": "accept",
+            "section": "containment",
+            "focus": "containment",
+            "phase": "questions",
+            "pick": ["1"],
+            "prompt_0": "Was the customer's stock sorted?",
+            "type_0": "boolean",
+            "prompt_1": "Who sorted it?",
+            "type_1": "choice",
+            "options_1": "Supplier\nCustomer",
+        },
+        headers={"HX-Request": "true"},
+    )
+
+    assert "not applied" not in response.text
+    added = (await current(asking))["sections"][0]["questions"][1:]
+    assert [(q["prompt"], q["type"], q.get("options")) for q in added] == [
+        ("Who sorted it?", "choice", ["Supplier", "Customer"])
+    ], "only the ticked one"
+
+
+async def test_nothing_to_ask_is_an_answer(asking, client, monkeypatch):
+    _questions_reply(monkeypatch, [])
+    response = client.post(
+        f"/doc-types/drafts/{asking}/question/suggest",
+        data={"section": "containment", "focus": "containment", "phase": "questions"},
+        headers={"HX-Request": "true"},
+    )
+    assert "Nothing to ask" in response.text
+
+
+async def test_a_suggestion_outlives_leaving_the_step_and_does_not_stale_the_page(
+    asking, client, monkeypatch
+):
+    _questions_reply(
+        monkeypatch,
+        [{"prompt": "List each action.", "type": "text", "options": [], "hint": "", "why": "A"}],
+    )
+    async with session() as s:
+        before = (await drafts.load(s, asking)).token
+
+    client.post(
+        f"/doc-types/drafts/{asking}/question/suggest",
+        data={"section": "containment", "focus": "containment", "phase": "questions"},
+        headers={"HX-Request": "true"},
+    )
+    async with session() as s:
+        assert (await drafts.load(s, asking)).token == before, "a suggestion is not an edit"
+
+    back = client.get(f"/doc-types/drafts/{asking}?focus=containment&phase=questions")
+    assert "List each action." in back.text, "still there after leaving and coming back"
+
+    client.post(
+        f"/doc-types/drafts/{asking}/question/suggest",
+        data={"op": "discard", "section": "containment", "focus": "containment"},
+        headers={"HX-Request": "true"},
+    )
+    back = client.get(f"/doc-types/drafts/{asking}?focus=containment&phase=questions")
+    assert "List each action." not in back.text
+
+
+async def test_saving_a_changed_section_key_renames_it(asking, client):
+    client.post(
+        f"/doc-types/drafts/{asking}/section",
+        data={"key": "containment", "title": "Containment", "new_key": "Interim actions"},
+        headers={"HX-Request": "true"},
+    )
+    assert (await current(asking))["sections"][0]["key"] == "interim_actions"

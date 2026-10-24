@@ -37,9 +37,10 @@
    the right, as in the document flow. #}
 {% macro stepfoot(before, after, url) %}
 <div class="actions guide-actions guide-foot">
-  {% if before %}<a href="{{ url }}{{ before.query }}" class="back">← {{ before.label }}</a>{% endif %}
+  {% if before %}<a href="{{ url }}{{ before.query }}" class="back" data-save-first>← {{ before.label }}</a>{% endif %}
   <span class="spacer"></span>
-  {% if after %}<a class="button primary" href="{{ url }}{{ after.query }}">Next: {{ after.label }} →</a>{% endif %}
+  {% if after %}<a class="button primary" href="{{ url }}{{ after.query }}" data-save-first>
+    <span class="if-unsaved">Save and next:</span><span class="if-clean">Next:</span> {{ after.label }} →</a>{% endif %}
 </div>
 {% endmacro %}
 
@@ -114,11 +115,22 @@
 
 {# Save, and whether there is anything to save. The button disables itself when
    the form matches what was rendered — see static/dirty.js. #}
-{% macro save(word) %}
-<div class="actions">
-  <button class="primary" type="submit" data-save>{{ word or 'Save' }}</button>
+{# Delete on the left, Save on the right, at the foot of what they act on.
+   Delete posts the same form's fields with op=delete, which is all the routes
+   need to know what to delete. `form_id` places the row outside its form —
+   below a column editor, which cannot sit inside the block's form. #}
+{% macro save(word=none, delete_url=none, what=none, form_id=none) %}
+<div class="actions item-actions" {% if form_id %}data-for-form="{{ form_id }}"{% endif %}>
+  {% if delete_url %}
+  <button type="button" class="tool danger" hx-post="{{ delete_url }}"
+          hx-vals='{"op": "delete"}' hx-target="#draft-body" hx-swap="outerHTML"
+          {% if form_id %}hx-include="#{{ form_id }}"{% endif %}
+          hx-confirm="Delete {{ what }}? This cannot be undone.">✕ Delete</button>
+  {% endif %}
+  <span class="spacer"></span>
   <span class="saved-note">Saved</span>
   <span class="htmx-indicator working">Saving…</span>
+  <button class="primary" type="submit" data-save {% if form_id %}form="{{ form_id }}"{% endif %}>{{ word or 'Save' }}</button>
 </div>
 {% endmacro %}
 

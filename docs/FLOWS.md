@@ -5,19 +5,14 @@
 How material, answers, content and checks move through the application as it is built. Three
 charts: the document flow, the doctype factory, and the spec objects with what reads each of them.
 
-Every chart colours its steps the same way. Stored rows are cylinders and keep the default colour.
+Every chart colours its steps the same way:
 
-```mermaid
-flowchart LR
-    llm["A model call"]:::llm
-    logic["Program logic<br/>parsing, rules, gates"]:::logic
-    human["A person decides or types"]:::human
-    data[("Stored row")]
-    llm ~~~ logic ~~~ human ~~~ data
-    classDef llm fill:#fce7f3,stroke:#db2777,color:#500724
-    classDef logic fill:#e0f2fe,stroke:#0284c7,color:#082f49
-    classDef human fill:#fef3c7,stroke:#d97706,color:#451a03
-```
+| Colour | Step |
+|---|---|
+| Rose | A model call |
+| Blue | Program logic: parsing, rules, gates |
+| Amber | A person decides or types |
+| Cylinder, default colour | A stored row |
 
 ## 1. The document flow
 
@@ -32,7 +27,7 @@ flowchart TD
         desk["Evidence desk findings<br/>exported as Markdown"]
         item[("evidence_item<br/>verbatim, never edited")]
         split["split into parts<br/>LCF_INTAKE_CHUNK_CHARS"]
-        map["map_evidence_to_sections<br/>one call per part<br/>sees section titles, descriptions,<br/>question prompts"]
+        map["map_evidence_to_sections<br/>one call per part<br/>sees section titles, purposes,<br/>block names, question prompts"]
         link[("evidence_link<br/>section_key + quote<br/>quote verified against paste")]
         none["'none': unplaced, never filed"]
         prefill["prefill_answers<br/>one call per section with questions<br/>its passages + up to 3 source parts"]
@@ -134,7 +129,7 @@ flowchart TD
         draftrow[("doc_type_draft<br/>raw JSON, may be invalid<br/>errors anchored by path")]
 
         meta["Step: the type<br/>title, description, language, style"]
-        sec["Section · About<br/>title, description, guidance,<br/>depends_on from allowed_dependencies"]
+        sec["Section · About<br/>heading, purpose;<br/>more: guidance, tone, waits for"]
         ques["Section · Questions<br/>prompt, type, required, hint, options"]
         blk["Section · Content<br/>blocks: label, kind, columns or fields"]
         req["Section · Checks: on a block<br/>kind from kinds_for the block<br/>block, then field cascade<br/>severity in plain words"]
@@ -155,8 +150,11 @@ flowchart TD
         req --> draftrow
         crit --> draftrow
         xcrit --> draftrow
+        qsuggest["Suggest questions from the content<br/>propose_questions"]
+        qoffer["Suggestions ticked,<br/>the ticked ones added"]
+        blk --> qsuggest --> qoffer --> ques
         ques --> suggest --> offer --> crit
-        meta -. "next" .-> sec -.-> ques -.-> blk -.-> req -.-> xcrit
+        meta -. "next" .-> sec -.-> blk -.-> ques -.-> req -.-> xcrit
         draftrow --> preview
         draftrow --> promptview
         draftrow <--> yamlview
@@ -179,9 +177,9 @@ flowchart TD
     classDef llm fill:#fce7f3,stroke:#db2777,color:#500724
     classDef logic fill:#e0f2fe,stroke:#0284c7,color:#082f49
     classDef human fill:#fef3c7,stroke:#d97706,color:#451a03
-    class suggest llm
+    class suggest,qsuggest llm
     class review,preview,promptview,publish,vpage logic
-    class list,newyaml,importyaml,edityaml,textarea,start,meta,sec,ques,blk,req,crit,xcrit,offer,yamlview,docs human
+    class list,newyaml,importyaml,edityaml,textarea,start,meta,sec,ques,blk,req,crit,xcrit,offer,qoffer,yamlview,docs human
 ```
 
 ## 3. Spec objects and what reads them
@@ -201,7 +199,7 @@ flowchart LR
 
     subgraph USE["What reads them, in flow order"]
         direction TB
-        PROP["propose_criterion<br/>factory"]
+        PROP["propose_criterion<br/>propose_questions<br/>factory"]
         MAP["map_evidence_to_sections<br/>material"]
         PRE["prefill_answers<br/>material"]
         DRAFT["draft_block<br/>writing"]
@@ -233,7 +231,7 @@ What each consumer is given, in one place:
 
 | Consumer | Questions / answers | Block's requirements | Quality criteria | Content |
 |---|---|---|---|---|
-| `map_evidence_to_sections` | Question prompts | — | — | — |
+| `map_evidence_to_sections` | Question prompts | — | — | Block names, not content |
 | `prefill_answers` | The section's questions | — | — | — |
 | `draft_block` | Answered values | This block's, as targets | — | This block, upstream sections |
 | Section check step | — | Deterministic only | — | This section |

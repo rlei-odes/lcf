@@ -28,6 +28,7 @@ from lcf.llm.schemas import (
     CRITERION_SCHEMA,
     KEYWORDS_SCHEMA,
     PATTERN_SCHEMA,
+    QUESTIONS_SCHEMA,
     captions_schema,
     chunk_answer_schema,
     draft_response_schema,
@@ -819,6 +820,84 @@ async def propose_criterion(
     )
 
 
+@dataclass
+class ProposedQuestion:
+    prompt: str
+    type: str
+    options: list[str]
+    hint: str
+    why: str
+
+
+QUESTION_TYPES = ("text", "choice", "date", "number")
+
+
+async def propose_questions(spec: dict, section_key: str) -> list[ProposedQuestion]:
+    """Suggest the questions a section's content is written from.
+
+    An authoring call, like `propose_criterion`: read from the section's purpose
+    and its blocks, offered to the rule builder, and added only when kept. The
+    schema asks for at least one; what comes back empty is what duplicated a
+    question the section already asks.
+    """
+    sec = next((x for x in spec.get("sections") or [] if x.get("key") == section_key), None)
+    if sec is None:
+        return []
+
+    def block_line(b: dict) -> str:
+        line = f"{b.get('label', '')} ({b.get('kind', 'prose')})"
+        parts = b.get("columns") or b.get("fields") or []
+        if parts:
+            line += ": " + ", ".join(str(c.get("label", "")) for c in parts)
+        if b.get("hint"):
+            line += f". {b['hint']}"
+        return line
+
+    def lines(items: list[str]) -> str:
+        return "\n".join(f"- {i}" for i in items if i) or "(none)"
+
+    asked = [q.get("prompt") or q.get("key", "") for q in sec.get("questions") or []]
+    user = "\n\n".join(
+        [
+            f"## The document type\n\n{spec.get('title', '')}: {spec.get('description', '')}",
+            f"## Written in\n\n{_language_name(spec.get('language', 'en'))}",
+            f"## The section\n\n{sec.get('title', '')}\n\n{sec.get('description', '')}".strip(),
+            f"## Guidance for writing it\n\n{sec.get('guidance') or '(none)'}",
+            f"## What it is made of\n\n{lines([block_line(b) for b in sec.get('blocks') or []])}",
+            f"## Questions it already asks\n\n{lines(asked)}",
+        ]
+    )
+    completion = await complete_json(
+        prompt_text("propose_questions"),
+        user,
+        QUESTIONS_SCHEMA,
+        schema_name="questions",
+        purpose="propose_questions",
+    )
+    taken = {" ".join(a.split()).casefold() for a in asked}
+    out: list[ProposedQuestion] = []
+    for entry in completion.data.get("questions") or []:
+        text = " ".join(str(entry.get("prompt") or "").split())
+        if not text or text.casefold() in taken:
+            continue
+        taken.add(text.casefold())
+        kind = entry.get("type") if entry.get("type") in QUESTION_TYPES else "text"
+        options = [" ".join(str(o).split()) for o in entry.get("options") or []]
+        options = [o for o in options if o]
+        if kind == "choice" and len(options) < 2:
+            kind, options = "text", []
+        out.append(
+            ProposedQuestion(
+                prompt=text,
+                type=kind,
+                options=options if kind == "choice" else [],
+                hint=" ".join(str(entry.get("hint") or "").split()),
+                why=" ".join(str(entry.get("why") or "").split()),
+            )
+        )
+    return out
+
+
 _LANGUAGE_NAMES = {
     "de": "German",
     "en": "English",
@@ -912,6 +991,11 @@ def _sections_overview(spec: DocTypeSpec) -> str:
         parts = [f"### `{section.key}` — {section.title}"]
         if section.description:
             parts.append(section.description)
+        # What it is made of, as well as what it asks: a section with no
+        # questions would otherwise be placed by its title and description alone.
+        made_of = [b.label for b in section.blocks if b.label]
+        if made_of:
+            parts.append("It holds: " + "; ".join(made_of) + ".")
         asked = [q.prompt for q in section.questions]
         if asked:
             parts.append("It has to answer: " + " ".join(asked))

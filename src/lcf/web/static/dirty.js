@@ -34,9 +34,15 @@
     // edit, so it stays pressable with nothing typed. Without this the author
     // who wants to change none of them has no way past the gate at all.
     var savable = dirty || form.hasAttribute("data-unconfirmed");
-    form.querySelectorAll("[data-save]").forEach(function (button) {
-      button.disabled = !savable;
+    // `form.elements` includes a Save placed outside the form with form="…".
+    Array.prototype.forEach.call(form.elements, function (button) {
+      if (button.hasAttribute("data-save")) button.disabled = !savable;
     });
+    if (form.id) {
+      document.querySelectorAll('[data-for-form="' + form.id + '"]').forEach(function (row) {
+        row.classList.toggle("is-dirty", dirty);
+      });
+    }
     guards();
   }
 
@@ -48,6 +54,7 @@
       document.querySelectorAll("form.is-dirty[data-dirty]"),
       label
     );
+    document.body.classList.toggle("has-unsaved", dirty.length > 0);
     document.querySelectorAll("[data-needs-saved]").forEach(function (el) {
       el.disabled = dirty.length > 0 || el.hasAttribute("data-blocked");
     });
@@ -249,8 +256,15 @@
     if (justSaved) {
       var saved = find(justSaved);
       if (saved && !saved.classList.contains("is-dirty")) {
-        saved.classList.add("just-saved");
-        setTimeout(function () { saved.classList.remove("just-saved"); }, 2600);
+        var marked = [saved];
+        if (saved.id) {
+          marked = marked.concat(Array.prototype.slice.call(
+            document.querySelectorAll('[data-for-form="' + saved.id + '"]')));
+        }
+        marked.forEach(function (el) { el.classList.add("just-saved"); });
+        setTimeout(function () {
+          marked.forEach(function (el) { el.classList.remove("just-saved"); });
+        }, 2600);
       }
       justSaved = null;
     }

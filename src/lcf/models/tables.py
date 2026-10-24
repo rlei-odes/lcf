@@ -128,6 +128,12 @@ class DocTypeDraft(Base):
     doc_type_key: Mapped[str | None] = mapped_column(String(100), index=True)
     title: Mapped[str] = mapped_column(String(300), nullable=False, default="")
     spec: Mapped[dict] = mapped_column(Json, nullable=False)
+    # What the assistant suggested and nobody has kept or discarded yet, by slot
+    # ("questions:<section>", "criterion:<section>"). Beside the spec, never in
+    # it: a suggestion is not part of the type. Written without moving
+    # `updated_at`, because a suggestion is not an edit and must not make every
+    # open form stale.
+    suggestions: Mapped[dict | None] = mapped_column(Json)
     based_on: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = _created()
     updated_at: Mapped[datetime] = mapped_column(

@@ -28,7 +28,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lcf.models.tables import DocTypeDraft, DocTypeVersion
@@ -870,6 +870,7 @@ async def edit(
     draft_id: UUID,
     token: str | None,
     mutate: Callable[[Spec], Any],
+    forget: str | None = None,
 ) -> Loaded:
     """Apply one edit, refusing it if the draft moved since the form was rendered.
 
@@ -889,10 +890,36 @@ async def edit(
     # dict, and an in-place edit would be saved only by accident.
     row.spec = spec
     row.title = str(spec.get("title") or row.title)
+    if forget and row.suggestions and forget in row.suggestions:
+        row.suggestions = {k: v for k, v in row.suggestions.items() if k != forget} or None
     row.updated_at = datetime.now(UTC)
     await session.flush()
     await session.refresh(row)
     return Loaded(row, row.spec, doc_types.review_data(row.spec))
+
+
+def suggested(row: DocTypeDraft, slot: str) -> Any:
+    return (row.suggestions or {}).get(slot)
+
+
+async def keep_suggestion(session: AsyncSession, draft_id: UUID, slot: str, value: Any) -> None:
+    """Hold a suggestion until it is kept or discarded; `None` discards it.
+
+    An UPDATE that sets `updated_at` to itself, so its own `onupdate` does not
+    fire: the token stays what the open forms were rendered with.
+    """
+    row = await session.get(DocTypeDraft, draft_id)
+    if row is None:
+        raise NotFound(f"no draft {draft_id}")
+    held = {k: v for k, v in (row.suggestions or {}).items() if k != slot}
+    if value is not None:
+        held[slot] = value
+    await session.execute(
+        update(DocTypeDraft)
+        .where(DocTypeDraft.id == draft_id)
+        .values(suggestions=held or None, updated_at=DocTypeDraft.updated_at)
+    )
+    await session.refresh(row)
 
 
 def _deep_copy(data: Any) -> Any:

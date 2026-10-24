@@ -23,14 +23,14 @@
     </a>
   </div>
 
-  <a href="{{ url }}?focus=type" class="{{ 'active' if focus == 'type' }}">
+  <a href="{{ url }}?focus=type" data-save-first class="{{ 'active' if focus == 'type' }}">
     <span class="step-n">¶</span>
     <span class="step-name">Doctype settings</span>
     {{ m.count(review, ['id']) }}{{ m.count(review, ['title']) }}{{ m.count(review, ['version']) }}
   </a>
 
   {% for s in spec.sections or [] %}
-  <a href="{{ url }}?focus={{ s.key }}" class="{{ 'active' if focus == s.key }}"
+  <a href="{{ url }}?focus={{ s.key }}" data-save-first class="{{ 'active' if focus == s.key }}"
      title="{{ s.title or s.key }}">
     <span class="step-n">{{ loop.index }}</span>
     <span class="step-name">{{ s.title or s.key }}</span>
@@ -50,12 +50,12 @@
     <button type="submit" title="Add this section">Add</button>
   </form>
 
-  <a href="{{ url }}?focus=quality" class="{{ 'active' if focus == 'quality' }}">
+  <a href="{{ url }}?focus=quality" data-save-first class="{{ 'active' if focus == 'quality' }}">
     <span class="step-n">✓</span>
     <span class="step-name">Quality across sections</span>
     {{ m.count(review, ['quality_criteria']) }}
   </a>
-  <a href="{{ url }}?focus=publish" class="{{ 'active' if focus == 'publish' }}">
+  <a href="{{ url }}?focus=publish" data-save-first class="{{ 'active' if focus == 'publish' }}">
     <span class="step-n">↑</span>
     <span class="step-name">Publish</span>
   </a>
@@ -69,7 +69,7 @@
 
 <div class="guide-main">
   {% if conflict %}
-  <div class="notice blocker">
+  <div class="notice blocker" id="edit-refused">
     <h3>That edit was not applied</h3>
     <p>{{ conflict }}</p>
     <p class="hint">What you see below is the draft as it actually is now.</p>

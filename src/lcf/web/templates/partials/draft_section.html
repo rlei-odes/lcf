@@ -30,7 +30,7 @@
   <ol class="phases">
     {% for key, label in builder.PHASES %}
     <li class="{{ 'on' if phase == key }}">
-      <a href="{{ url }}?focus={{ sec.key }}&phase={{ key }}">{{ label }}</a>
+      <a href="{{ url }}?focus={{ sec.key }}&phase={{ key }}" data-save-first>{{ label }}</a>
       {% if key in phase_counts %}<span class="phase-count">{{ phase_counts[key] }}</span>{% endif %}
       {% for p in phase_paths[key] %}{{ m.count(review, p) }}{% endfor %}
     </li>
@@ -41,115 +41,133 @@
 {% if phase == 'about' %}
 {# --- what the section is ---------------------------------------------------- #}
 <div class="card">
-  <h3>What this section is</h3>
-  <p class="lead">
-    Everything in this box is read by the person writing the document <em>and</em>
-    given to the assistant. You are not writing instructions for a machine, you
-    are writing what a new colleague would need, and the assistant is given the
-    same thing.
-  </p>
+  <h3>About this section {{ m.info('Everything here is shown to the author and given to the assistant. Write it for a new colleague, not for a machine.') }}</h3>
   <form hx-post="{{ url }}/section" hx-target="#draft-body" hx-swap="outerHTML"
         data-dirty="this section">
     {{ m.state(token, focus, 'section') }}
     <input type="hidden" name="key" value="{{ sec.key }}">
 
     <div class="field">
-      <label for="s-title">Heading</label>
-      <p class="hint">The heading this section gets in the finished document.</p>
+      <label for="s-title">Heading {{ m.info('The heading this section gets in the finished document.') }}</label>
       <input type="text" id="s-title" name="title" maxlength="80" value="{{ sec.title or '' }}">
       {{ m.problems(review, at + ['title']) }}
     </div>
 
     <div class="field">
       <label for="s-description">
-        What it has to establish
-        {{ m.info('Shown to the author above the section. Also given to the assistant three times over: as context when it drafts, when it decides which of the author\'s pasted notes belong here, and when it proposes answers to the questions below.') }}
+        Purpose
+        {{ m.info('What this section establishes, as a statement. Shown to the author above the section. The assistant reads it to sort pasted material into this section, to propose answers, and to draft.') }}
       </label>
-      <p class="hint">
-        The test: would a new colleague be glad they read this?
-      </p>
-      <textarea id="s-description" name="description">{{ sec.description or '' }}</textarea>
-    </div>
-
-    <div class="field">
-      <label for="s-guidance">
-        Advice for writing it
-        {{ m.info('Shown to the author, and given to the assistant as advice when it drafts this section. Not used anywhere else.') }}
-      </label>
-      <p class="hint">
-        The note a senior colleague would give. Say what a good one contains, not
-        how to phrase a request to a machine.
-      </p>
-      <textarea id="s-guidance" name="guidance">{{ sec.guidance or '' }}</textarea>
-    </div>
-
-    <div class="field">
-      <label for="s-style">
-        How this section should read
-        {{ m.info('Tone and voice only. Layered under the document type\'s own house style, and given to the assistant as how to write, never as what to say.') }}
-      </label>
-      <p class="hint">Optional. Narrows the type's house style for this section only.</p>
-      <textarea id="s-style" name="style" rows="2">{{ sec.style or '' }}</textarea>
+      <textarea id="s-description" name="description"
+                placeholder="The verified root cause of the defect, and why it was not caught.">{{ sec.description or '' }}</textarea>
     </div>
 
     {% set allowed = drafts.allowed_dependencies(spec, sec.key) %}
-    {% if allowed %}
-    <fieldset class="choices">
-      <legend>Cannot be started until these are finished</legend>
-      <p class="hint">
-        Only sections that do not already wait on this one are listed, so this
-        cannot be made to wait on itself in a circle.
-      </p>
-      {% for other in allowed %}
-      {% set other_title = (spec.sections | selectattr('key', 'equalto', other) | first).title or other %}
-      <label class="option">
-        <input type="checkbox" name="depends_on" value="{{ other }}"
-               {% if other in (sec.depends_on or []) %}checked{% endif %}>
-        <span>{{ other_title }}</span>
-      </label>
-      {% endfor %}
-      {{ m.problems(review, at + ['depends_on']) }}
-    </fieldset>
-    {% endif %}
+    {# What is already filled in below, by the names the fields carry. #}
+    {% set set_more = [] %}
+    {% if sec.guidance %}{% set _ = set_more.append('Advice for writing it') %}{% endif %}
+    {% if sec.style %}{% set _ = set_more.append('Writing style') %}{% endif %}
+    {% if sec.depends_on %}{% set _ = set_more.append('Waits for: ' ~ (spec.sections | selectattr('key', 'in', sec.depends_on) | map(attribute='title') | join(', '))) %}{% endif %}
+    {% if not sec.get('required', true) %}{% set _ = set_more.append('Not required') %}{% endif %}
+    {% if sec.get('uses_images') %}{% set _ = set_more.append('Uses pictures') %}{% endif %}
+    <details class="more-settings" {% if review.under(at + ['depends_on']) %}open{% endif %}>
+      <summary>More settings{% if set_more %} <span class="hint">· set: {{ set_more|join(' · ') }}</span>{% endif %}</summary>
 
-    <fieldset class="choices">
-      <legend>Section properties</legend>
-      <label class="option">
-        <input type="checkbox" name="required" {% if sec.get('required', true) %}checked{% endif %}>
-        <span>Every document must have this section, it cannot be skipped</span>
-      </label>
-      <label class="option">
-        <input type="checkbox" name="uses_images" {% if sec.get('uses_images') %}checked{% endif %}>
-        <span>This section works with pictures the author supplies</span>
-      </label>
-    </fieldset>
+      <div class="field">
+        <label for="s-guidance">
+          Advice for writing it
+          {{ m.info('What a good one contains, as a senior colleague would say it. Shown to the author, and given to the assistant when it drafts.') }}
+        </label>
+        <textarea id="s-guidance" name="guidance">{{ sec.guidance or '' }}</textarea>
+      </div>
 
-    {{ m.save() }}
+      <div class="field">
+        <label for="s-style">
+          Writing style
+          {{ m.info('How this section reads, never what it says. Narrows the doctype\'s writing style for this section only.') }}
+        </label>
+        <textarea id="s-style" name="style" rows="2">{{ sec.style or '' }}</textarea>
+      </div>
+
+      {% if allowed %}
+      <fieldset class="choices">
+        <legend>Waits for {{ m.info('The author can start this section once these are complete. Only sections that do not already wait on this one are listed.') }}</legend>
+        {% for other in allowed %}
+        {% set other_title = (spec.sections | selectattr('key', 'equalto', other) | first).title or other %}
+        <label class="option">
+          <input type="checkbox" name="depends_on" value="{{ other }}"
+                 {% if other in (sec.depends_on or []) %}checked{% endif %}>
+          <span>{{ other_title }}</span>
+        </label>
+        {% endfor %}
+        {{ m.problems(review, at + ['depends_on']) }}
+      </fieldset>
+      {% endif %}
+
+      <fieldset class="choices">
+        <legend>Properties</legend>
+        <label class="option">
+          <input type="checkbox" name="required" {% if sec.get('required', true) %}checked{% endif %}>
+          <span>Required in every document</span>
+        </label>
+        <label class="option">
+          <input type="checkbox" name="uses_images" {% if sec.get('uses_images') %}checked{% endif %}>
+          <span>Works with pictures the author supplies</span>
+        </label>
+      </fieldset>
+
+      <div class="field">
+        <label for="s-key">Key {{ m.info('The section\'s name in the spec, used by checks and Word templates. Saving a new one rewrites every reference in the spec; a Word template naming the old one fails its next check.') }}</label>
+        <input type="text" id="s-key" name="new_key" maxlength="80" value="{{ sec.key }}" class="mono">
+      </div>
+    </details>
+
+    {{ m.save(delete_url=url ~ '/section', what='the section “' ~ (sec.title or sec.key) ~ '” and everything in it') }}
   </form>
-  <div class="actions">
-    {{ m.rowtools(url ~ '/section', token, focus, 'section', {'key': sec.key}, 'the section “' ~ (sec.title or sec.key) ~ '” and everything in it') }}
-  </div>
-  <div class="under-form">
-    {{ m.rename(url ~ '/section', token, focus, 'section', sec.key, 'section', true,
-                {'key': sec.key}) }}
-  </div>
 </div>
 
 {% elif phase == 'questions' %}
 {# --- questions -------------------------------------------------------------- #}
 <div class="card">
-  <h3>Asked before anything is written</h3>
-  <p class="lead">
-    This is how a section gets written without the author having to write it.
-    They answer a few short questions; the assistant drafts the content from those
-    answers and proposes it; they accept, edit or decline. Ask for the facts only
-    they know. The answers themselves never appear in the document, so ask
-    plainly rather than in finished prose.
-  </p>
-  <p class="hint">
-    A section with no questions still works: the author writes it themselves, or
-    the assistant drafts from whatever notes they pasted in.
-  </p>
+  <h3>Questions {{ m.info('Asked of the author before the section is written. The assistant drafts every block of the section from the answers and the pasted material. Ask for facts only the author knows; a field or a column already asks for itself. A section without questions still works.') }}</h3>
+
+  {% if question_suggestions is defined and question_suggestions is not none %}
+  <div class="notice proposal">
+    {% if question_suggestions %}
+    <h3>Suggested from the content</h3>
+    <form hx-post="{{ url }}/question/suggest" hx-target="#draft-body" hx-swap="outerHTML">
+      {{ m.state(token, focus, '') }}
+      <input type="hidden" name="op" value="accept">
+      <input type="hidden" name="section" value="{{ sec.key }}">
+      {% for s in question_suggestions %}
+      <label class="option">
+        <input type="checkbox" name="pick" value="{{ loop.index0 }}" checked>
+        <span>{{ s.prompt }}
+          <span class="hint">· {{ builder.QUESTION_TYPES | selectattr('0', 'equalto', s.type) | map(attribute=1) | first }}{% if s.options %}: {{ s.options|join(', ') }}{% endif %}</span>
+          {% if s.why %}<span class="hint suggestion-why">For: {{ s.why }}</span>{% endif %}
+        </span>
+      </label>
+      <input type="hidden" name="prompt_{{ loop.index0 }}" value="{{ s.prompt }}">
+      <input type="hidden" name="type_{{ loop.index0 }}" value="{{ s.type }}">
+      <input type="hidden" name="hint_{{ loop.index0 }}" value="{{ s.hint }}">
+      <input type="hidden" name="options_{{ loop.index0 }}" value="{{ s.options|join('\n') }}">
+      {% endfor %}
+      <div class="actions">
+        <button class="primary" type="submit">Add the ticked ones</button>
+        <button type="button" hx-post="{{ url }}/question/suggest" hx-vals='{"op": "discard"}'
+                hx-target="#draft-body" hx-swap="outerHTML">Discard</button>
+      </div>
+    </form>
+    {% else %}
+    <h3>Nothing to ask</h3>
+    <p>Everything it suggested is already asked here.</p>
+    <div class="actions">
+      <button type="button" hx-get="{{ url }}?focus={{ sec.key }}&phase=questions"
+              hx-target="#draft-body" hx-swap="outerHTML">OK</button>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
 
   {% for q in sec.questions or [] %}
   {% set qat = at + ['questions', loop.index0] %}
@@ -172,7 +190,7 @@
 
         <div class="field">
           <label>
-            The question, as the author reads it
+            Question
             {{ m.info('Shown to the author as the label on the answer box, and given to the assistant twice: when it tries to answer this from the author\'s pasted notes, and alongside the answer when it drafts the section.') }}
           </label>
           <input type="text" name="prompt" value="{{ q.prompt or '' }}">
@@ -182,7 +200,7 @@
         <div class="row">
           <div class="field">
             <label>
-              What kind of answer
+              Answer type
               {{ m.info('Decides what the author gets: a text box, a date picker, a number, yes/no, or a list to pick one from. The assistant is told which it is, so a date question comes back as a date.') }}
             </label>
             <select name="type"
@@ -195,7 +213,7 @@
           </div>
           <div class="field">
             <label>
-              A hint beside the box
+              Hint
               {{ m.info('Shown to the author under the question, and given to the assistant when it tries to answer this from their pasted notes. Use it to say how much detail you want.') }}
             </label>
             <input type="text" name="hint" value="{{ q.hint or '' }}"
@@ -210,19 +228,13 @@
         <label class="option">
           <input type="checkbox" name="required" {% if q.get('required') %}checked{% endif %}>
           <span>
-            The author cannot ask for a draft until this is answered
+            Required before drafting
             {{ m.info('A deterministic gate, decided by the app and not by the assistant. Leave it off for a question that is useful but not essential.') }}
           </span>
         </label>
 
-        {{ m.save() }}
+        {{ m.save(delete_url=url ~ '/question', what='this question') }}
       </form>
-      {# Outside the form above: a form inside a form is not valid HTML, and
-         browsers resolve it by dropping one of them. #}
-      <div class="actions">
-        {{ m.rowtools(url ~ '/question', token, focus, 'question:' ~ q.key,
-                      {'section': sec.key, 'key': q.key}, 'this question') }}
-      </div>
       <div class="under-form">
         {{ m.rename(url ~ '/question', token, focus, 'question:' ~ q.key, q.key, 'question', false,
                       {'section': sec.key, 'key': q.key}) }}
@@ -239,27 +251,23 @@
            aria-label="The new question">
     <button type="submit">Add</button>
   </form>
-  {% if sec.questions %}
-  <p class="hint">
-    Each question can become a section criterion: suggest one from it in this
-    section's <a href="{{ url }}?focus={{ sec.key }}&phase=checks">checks</a>.
-  </p>
+  {% if sec.blocks %}
+  <div class="actions">
+    <form hx-post="{{ url }}/question/suggest" hx-target="#draft-body" hx-swap="outerHTML"
+          hx-indicator="#questions-working" hx-disabled-elt="find button">
+      {{ m.state(token, focus, '') }}
+      <input type="hidden" name="section" value="{{ sec.key }}">
+      <button type="submit">✦ Suggest questions from the content</button>
+    </form>
+    <span class="htmx-indicator working" id="questions-working">Asking the assistant…</span>
+  </div>
   {% endif %}
 </div>
 
 {% elif phase == 'content' %}
 {# --- blocks ----------------------------------------------------------------- #}
 <div class="card">
-  <h3>What gets written here</h3>
-  <p class="lead">
-    The boxes the author fills in. Each one is drafted, checked and exported on its
-    own, and becomes a labelled part of the finished document.
-  </p>
-  <p class="hint">
-    If this section is simply a piece of prose, the single paragraph below is all
-    it needs. Rename it if you like and move on. Add more only when the section
-    has genuinely separate parts, or needs a table or a set of labelled fields.
-  </p>
+  <h3>Content {{ m.info('The blocks the finished section is made of. Each is drafted, checked and exported on its own, under its name. One paragraph is enough for a plain section; add blocks for separate parts, a table, or labelled fields.') }}</h3>
   {{ m.problems(review, at + ['blocks']) }}
 
   {% for b in sec.blocks or [] %}
@@ -277,7 +285,7 @@
     </summary>
     <div class="item-body">
       <form hx-post="{{ url }}/block" hx-target="#draft-body" hx-swap="outerHTML"
-            data-dirty="this block">
+            id="block-form-{{ b.key }}" data-dirty="this block">
         {{ m.state(token, focus, 'block:' ~ b.key) }}
         <input type="hidden" name="section" value="{{ sec.key }}">
         <input type="hidden" name="key" value="{{ b.key }}">
@@ -285,14 +293,14 @@
         <div class="row">
           <div class="field">
             <label>
-              What it is called
+              Name
               {{ m.info('The label the author sees above the box, the heading it gets in the exported document, and what the assistant is told it is writing.') }}
             </label>
             <input type="text" name="label" maxlength="80" value="{{ b.label or '' }}">
             {{ m.problems(review, bat + ['label']) }}
           </div>
           <div class="field">
-            <label>What shape it takes</label>
+            <label>Type</label>
             <select name="kind">
               {% for value, label, blurb in builder.BLOCK_KINDS %}
               <option value="{{ value }}" title="{{ blurb }}" {% if b.get('kind') == value %}selected{% endif %}>{{ label }}</option>
@@ -304,8 +312,8 @@
 
         <div class="field">
           <label>
-            A hint beside it
-            {{ m.info('Shown to the author under the box, and given to the assistant as a field-level expectation when it drafts this block.') }}
+            Hint
+            {{ m.info('What goes in it. Shown to the author under the box, and given to the assistant when it drafts this block.') }}
           </label>
           <input type="text" name="hint" value="{{ b.hint or '' }}" placeholder="One paragraph.">
         </div>
@@ -314,7 +322,7 @@
           <input type="checkbox" name="required"
                  {% if (sec.requirements or []) | selectattr('kind', 'equalto', 'present')
                        | selectattr('block', 'equalto', b.key) | list %}checked{% endif %}>
-          <span>This has to be filled in before the section can be finished</span>
+          <span>Required before the section can be completed</span>
         </label>
         {% if b.get('kind') == 'image_ref' %}
         <label class="option">
@@ -323,19 +331,16 @@
         </label>
         {% endif %}
 
-        {{ m.save() }}
       </form>
-      <div class="actions">
-        {{ m.rowtools(url ~ '/block', token, focus, 'block:' ~ b.key,
-                      {'section': sec.key, 'key': b.key},
-                      'the block “' ~ (b.label or b.key) ~ '” and the checks on it') }}
-      </div>
 
       {% if b.get('kind') in ('table', 'keyvalue') %}
         {% with block = b, block_at = bat %}
           {% include "partials/draft_columns.html" %}
         {% endwith %}
       {% endif %}
+
+      {{ m.save(delete_url=url ~ '/block', what='the block “' ~ (b.label or b.key) ~ '” and the checks on it',
+                form_id='block-form-' ~ b.key) }}
 
       <div class="under-form">
         {{ m.rename(url ~ '/block', token, focus, 'block:' ~ b.key, b.key, 'block', true,
@@ -363,22 +368,13 @@
     </select>
     <button type="submit">Add</button>
   </form>
-  <p class="hint">
-    A short heading, the way it should appear in the finished document: what the
-    box is called, not what belongs in it. Say what belongs in it under “a hint
-    beside it”, once the box exists.
-  </p>
+  <p class="hint">A short name, as it appears in the document. What goes in it is the block's hint.</p>
 </div>
 
 {% else %}
 {# --- checks ----------------------------------------------------------------- #}
 <div class="card">
-  <h3>Block checks</h3>
-  <p class="lead">
-    Rules for one block of this section. The assistant is given them as targets
-    when it drafts that block, except “Filled in”. App checks run when the author
-    reviews the section; assistant checks run at the final quality check.
-  </p>
+  <h3>Block checks {{ m.info('Rules for one block. The assistant is given them as targets when it drafts that block, except “Filled in”. App checks run when the author reviews the section; assistant checks run at the final quality check.') }}</h3>
 
   {% if not sec.blocks %}
   <p class="hint">Add something to write first. A check is always about one of them.</p>
@@ -424,13 +420,8 @@
 
         {{ m.severity(r.get('severity')) }}
 
-        {{ m.save() }}
+        {{ m.save(delete_url=url ~ '/check', what='this check') }}
       </form>
-      <div class="actions">
-        {{ m.rowtools(url ~ '/check', token, focus, '',
-                      {'section': sec.key, 'id': r.id}, 'this check') }}
-        <span class="why">Deleting a check removes it from the assistant's instructions too.</span>
-      </div>
       <div class="under-form">
         {{ m.rename(url ~ '/check', token, focus, 'check:' ~ r.id, r.id, 'check', false,
                       {'section': sec.key, 'id': r.id}) }}
@@ -479,12 +470,7 @@
 {# --- the section's quality criteria ------------------------------------------ #}
 {% set shared = builder.shared_criteria(spec, sec.key) %}
 <div class="card">
-  <h3>Section criteria</h3>
-  <p class="lead">
-    Judged by the assistant over the whole written section, at the final quality
-    check. Use them for what the section as a whole has to answer, typically one
-    per question. They are not given to the assistant when it drafts.
-  </p>
+  <h3>Section criteria {{ m.info('Judged by the assistant over the whole written section at the final quality check, typically one per question. Not given to the assistant when it drafts.') }}</h3>
 
   {% for c in own_criteria %}
   {% set index = (spec.quality_criteria or []).index(c) %}
@@ -521,8 +507,8 @@
         <input type="hidden" name="rubric" value="{{ suggestion.rubric }}">
         <button class="primary" type="submit">Accept</button>
       </form>
-      <button type="button" hx-get="{{ url }}?focus={{ sec.key }}&phase=checks"
-              hx-target="#draft-body" hx-swap="outerHTML">Discard</button>
+      <button type="button" hx-post="{{ url }}/criterion/suggest" hx-target="#draft-body" hx-swap="outerHTML"
+              hx-vals='{"op": "discard", "section": "{{ sec.key }}", "focus": "{{ sec.key }}", "phase": "checks"}'>Discard</button>
     </div>
   </div>
   {% endif %}

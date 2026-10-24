@@ -170,10 +170,13 @@ def many(form: FormData, name: str) -> list[str]:
 # its phases, then what spans sections, then publishing. Where someone is lives
 # in the URL (`focus`, `phase`), never in the draft.
 
+# Content before questions: decide what the section is made of, then ask the
+# author for what it is written from — which the assistant can propose from the
+# content. The document flow asks first and writes second, as an author must.
 PHASES: list[tuple[str, str]] = [
     ("about", "About"),
-    ("questions", "Questions"),
     ("content", "Content"),
+    ("questions", "Questions"),
     ("checks", "Checks"),
 ]
 PHASE_LABELS = dict(PHASES)

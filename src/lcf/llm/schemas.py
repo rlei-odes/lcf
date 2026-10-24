@@ -406,6 +406,49 @@ CRITERION_SCHEMA: dict[str, Any] = {
 }
 
 
+# The question comes first in each item, so a generation that stalls has written it.
+# At least one: allowed an empty list, the model takes it (ARCHITECTURE §14), and
+# the rule builder unticking a suggestion costs less than getting none.
+QUESTIONS_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "questions": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 5,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "prompt": {
+                        "type": "string",
+                        "description": "The question, as the author reads it",
+                    },
+                    "type": {
+                        "type": "string",
+                        "enum": ["text", "choice", "date", "number"],
+                    },
+                    "options": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "maxItems": 8,
+                        "description": "For 'choice': the options. Empty otherwise.",
+                    },
+                    "hint": {"type": "string", "description": "How much to say. May be empty."},
+                    "why": {
+                        "type": "string",
+                        "description": "Which part of the content the answer is written into.",
+                    },
+                },
+                "required": ["prompt", "type", "options", "hint", "why"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["questions"],
+    "additionalProperties": False,
+}
+
+
 def captions_schema(count: int) -> dict[str, Any]:
     """One caption per image, in the order the images were sent.
 

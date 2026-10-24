@@ -130,20 +130,15 @@ From [ARCHITECTURE §15.5](ARCHITECTURE.md#155-what-it-cost-and-what-it-bought):
   should collapse to a single line, with questions and checks folded behind "add rules to this
   section". Presentational; do this before considering a separate simple mode, which would be two
   things to keep true over one model.
-- **Each phase filled from the one before.** A section's phases ask for the same thing three
-  times: *About* says what it has to establish, *Questions* asks for those facts again as
-  questions, and *Content* names the blocks that hold them. At least one of these should be
-  proposed from the step before, for the rule builder to keep or edit rather than write — questions
-  from the description and guidance, or blocks from the questions. Either is an authoring call
-  like `propose_criterion`: a proposal shown in the phase, added only when kept. Open: which link
-  in the chain is worth it first, and whether a proposal runs on entering the phase or on a button.
-- **No questions for a one-block section.** A section that is one paragraph block gains little
-  from questions: drafting already works without them, from the author's pasted material
-  ([ARCHITECTURE §5.3](ARCHITECTURE.md#53-context-budget)). For such a section the *Questions*
-  phase could be skipped, or folded behind "add questions", in the builder and in the document
-  flow alike. Open: whether the rule is the block count, the block kind, or the rule builder's
-  choice, and what the section criteria suggested from questions are drawn from instead —
-  `propose_criterion` already reads the description and guidance, so from those.
+- **Content proposed from the purpose.** Questions are proposed from the content
+  (`propose_questions`); the link before it is not built. A section's blocks could be proposed
+  from its purpose and guidance the same way, kept by ticking. Open: whether proposals run on
+  entering a phase rather than on a button.
+- **The Questions phase for a section that needs none.** A section that is one paragraph block
+  drafts well from the pasted material alone, and the document flow already skips straight to
+  writing when a section has no questions. The builder still shows the phase. Open: whether to
+  fold it for such a section, and on what rule — the block count, the block kind, or the rule
+  builder's choice.
 - **Reordering.** `move_*` operations exist and are tested; no UI. Per-row arrows were built and
   removed as clutter. Drag, or a reorder mode showing the whole list, is the real answer.
 - **A scratch document from a draft.** The only real test of a type is walking it. Needs a document

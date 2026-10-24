@@ -170,3 +170,13 @@ def test_style_composes_in_order(spec_4d):
     assert "customer-facing" in style, "document type layer"
     assert "Strictly factual" in style, "section layer"
     assert style.index("Write plainly") < style.index("Strictly factual"), "later layers win"
+
+
+def test_sorting_knows_what_each_section_holds(spec_4d):
+    """A section with no questions is placed by what it is made of, not its title alone."""
+    from lcf.llm.calls import _sections_overview
+
+    overview = _sections_overview(spec_4d)
+    for section in spec_4d.sections:
+        for block in section.blocks:
+            assert block.label in overview

@@ -436,7 +436,7 @@ returns one schema. The complete set:
 
 | Call | Scope | Returns |
 |---|---|---|
-| `map_evidence_to_sections` | intake blob + section list | evidence → section assignments, confidence |
+| `map_evidence_to_sections` | intake blob + section list: title, purpose, block names, questions | evidence → section assignments, confidence |
 | `caption_images` | ≤ image budget | caption per image |
 | `prefill_answers` | one section's questions + mapped evidence | proposed answers, or "ask the user" |
 | `draft_section` | one section: spec, style, answers, evidence | block proposals + open gaps + unsupported claims |
@@ -448,9 +448,11 @@ returns one schema. The complete set:
 | `answer_from_chunk` | one authored question + one chunk | found, value, quote, confidence |
 | `propose_pattern` | real example values + the question | a regular expression, and what it matches |
 | `propose_keywords` | the question + the material's language | terms to search for, each with a reason |
+| `propose_criterion` | one section of a draft type, optionally one of its questions | a criterion: mentions or rubric |
+| `propose_questions` | one section of a draft type: purpose, guidance, blocks, its questions | one to five questions, each with the block it feeds |
 
-Eleven call types. Each has a fixed response schema, a prompt frame in `llm/prompts/`, and test
-fixtures. **A twelfth requires a design decision** — the pressure to add "just one more
+Each call has a fixed response schema, a prompt frame in `llm/prompts/`, and test fixtures. **A
+new one requires a design decision** — the pressure to add "just one more
 general-purpose call" is exactly what this table exists to resist.
 
 `revise_block` took the slot an unbuilt `suggest_span` held, and subsumes it rather than displacing
@@ -465,7 +467,7 @@ does not distinguish but the rule does:
 | Species | Calls | Bound by |
 |---|---|---|
 | **Finding** | everything above, plus `answer_from_chunk` and `caption_images` | `never_invent.md`, composed last; a quotation verified against its source before anything is stored |
-| **Authoring** | `propose_pattern`, `propose_keywords` | Verification or confirmation *before the output is data* — `fullmatch` against the supplied examples, or a person ticking the terms |
+| **Authoring** | `propose_pattern`, `propose_keywords`, `propose_criterion`, `propose_questions` | Verification or confirmation *before the output is data* — `fullmatch` against the supplied examples, or a person ticking the terms |
 
 The distinction matters because the contracts are genuinely different. A finding call's output
 becomes a candidate, so it is held to the author's own words. An authoring call's output becomes a
@@ -1099,11 +1101,35 @@ reported**: you cannot name a block that does not exist if you are choosing from
 
 **It is laid out as steps, like the document flow.** A rail lists the type, each section, the
 quality criteria that span sections, and publishing. A section is worked through four phases —
-*About* (what it is, what it waits on), *Questions*, *Content* (its blocks) and *Checks* — one at a
-time, with the way back and on at the foot of every step. Where the builder is lives in the URL
+*About* (heading and purpose, the rest folded under *More settings*), *Content* (its blocks),
+*Questions* and *Checks* — one at a time, with the way back and on at the foot of every step. Where the builder is lives in the URL
 (`focus`, `phase`), and every form carries both, so an edit lands back on the step it was made from.
 The problem list is folded above every step and open on the publish step, and each problem links to
 the step and row it belongs to.
+
+**Moving on saves first.** In the document flow the way on is the step's own submit button. In the
+builder a step holds several forms and the way on is a link, so the back and next links, the rail
+and the phase tabs carry `data-save-first`: `static/stepsave.js` submits each form `dirty.js`
+reports unsaved, one at a time, then follows the link, and stays put if a save fails or is refused.
+An unsaved form is marked where it is, and the next button reads *Save and next* while there is one.
+
+**A suggestion is held on the draft until it is kept or discarded.** `doc_type_draft.suggestions`
+holds the open question and criterion suggestions per section, so leaving a step does not lose
+them. It is written with `updated_at` pinned to itself: a suggestion is not an edit, and moving the
+concurrency token would make every open form on the page stale.
+
+**Content comes before questions, and proposes them.** Deciding what a section is made of comes
+first; the questions are what it is written from. `propose_questions` reads the purpose, the
+guidance and the blocks, and proposes questions the rule builder ticks to keep. Its prompt leaves
+out what a labelled field or a table column already asks for. The schema requires at least one
+question, because allowed an empty list this model returns one (§14); unticking is cheaper than
+getting nothing. A question names no block: every answer reaches every block's drafting, and the
+model places it. The document flow keeps its own order, questions before writing, because there
+the author answers before the assistant drafts.
+
+**Pasted material is sorted by what a section holds, not only by what it asks.** The overview the
+sorting call reads lists each section's block names beside its questions, so a section without
+questions is still placed by its content.
 
 **A section's checks include its own quality criteria.** A criterion scoped to exactly one section is
 shown and edited in that section's *Checks* phase, with its scope fixed. The quality step still lists

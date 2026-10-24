@@ -32,6 +32,7 @@ def draft_view(
     conflict: str | None = None,
     saved: bool = False,
     suggestion: dict | None = None,
+    question_suggestions: list | None = None,
 ) -> HTMLResponse:
     """Render the builder — the whole page, or just the part that swaps."""
     if not drafts.is_navigable(loaded.spec):
@@ -41,6 +42,11 @@ def draft_view(
         focus = keys[0] if keys else builder.TYPE
     if focus in keys:
         phase = phase if phase in builder.PHASE_LABELS else builder.phase_of(opened) or "about"
+        # Suggestions are held on the draft, so leaving a step does not lose them.
+        if suggestion is None:
+            suggestion = drafts.suggested(loaded.row, f"criterion:{focus}")
+        if question_suggestions is None:
+            question_suggestions = drafts.suggested(loaded.row, f"questions:{focus}")
     else:
         phase = ""
     before, after = builder.neighbours(loaded.spec, focus, phase)
@@ -58,6 +64,7 @@ def draft_view(
         "conflict": conflict,
         "saved": saved,
         "suggestion": suggestion,
+        "question_suggestions": question_suggestions,
     }
     partial = request.headers.get("hx-request") == "true"
     return page(request, "partials/draft_body.html" if partial else "draft.html", **context)
@@ -73,6 +80,7 @@ async def _apply(
     opened: str = "",
     moved: dict | None = None,
     saved: bool = False,
+    forget: str | None = None,
 ) -> HTMLResponse:
     """One edit, then the editor again.
 
@@ -83,7 +91,9 @@ async def _apply(
     phase = builder.text(form, "phase")
     async with session() as s:
         try:
-            loaded = await drafts.edit(s, draft_id, builder.text(form, "token"), mutate)
+            loaded = await drafts.edit(
+                s, draft_id, builder.text(form, "token"), mutate, forget=forget
+            )
         except (drafts.Conflict, drafts.Missing) as exc:
             loaded = await drafts.load(s, draft_id)
             return draft_view(
@@ -198,8 +208,14 @@ async def draft_section_op(request: Request, draft_id: UUID):
             "depends_on": builder.many(form, "depends_on"),
         }
 
+        new_key = builder.text(form, "new_key")
+
         def mutate(spec):
             drafts.update_section(spec, key, **fields)
+            # The key sits in More settings with the rest; saving a changed one
+            # is the rename, with every reference rewritten.
+            if new_key and new_key != key:
+                moved["focus"] = drafts.rename_section(spec, key, new_key)
 
     return await _apply(
         request,
@@ -263,6 +279,71 @@ async def draft_question(request: Request, draft_id: UUID):
         focus=section_key,
         opened=builder.text(form, "opened"),
         moved=moved,
+    )
+
+
+@router.post("/{draft_id}/question/suggest", response_class=HTMLResponse)
+async def suggest_questions(request: Request, draft_id: UUID):
+    """Ask the assistant which questions a section's content is written from.
+
+    Offered as a list with every one ticked; `op=accept` adds the ticked ones,
+    through the token like any other edit. Nothing is added before that.
+    """
+    from lcf.llm.calls import propose_questions
+    from lcf.llm.provider import LLMMalformed, LLMUnavailable
+
+    form = await request.form()
+    section_key = builder.text(form, "section")
+    slot = f"questions:{section_key}"
+
+    if builder.text(form, "op") == "discard":
+        async with session() as s:
+            await drafts.keep_suggestion(s, draft_id, slot, None)
+            loaded = await drafts.load(s, draft_id)
+        return draft_view(request, loaded, focus=section_key, phase="questions")
+
+    if builder.text(form, "op") == "accept":
+        picked = []
+        for index in builder.many(form, "pick"):
+            prompt_text = builder.text(form, f"prompt_{index}")
+            if prompt_text:
+                picked.append(
+                    {
+                        "prompt": prompt_text,
+                        "type": builder.text(form, f"type_{index}", "text") or "text",
+                        "hint": builder.text(form, f"hint_{index}"),
+                        "options": builder.lines(form, f"options_{index}"),
+                    }
+                )
+
+        def mutate(spec):
+            for q in picked:
+                key = drafts.add_question(spec, section_key, q["prompt"])
+                drafts.update_question(
+                    spec, section_key, key, type=q["type"], hint=q["hint"], options=q["options"]
+                )
+
+        return await _apply(request, draft_id, form, mutate, focus=section_key, forget=slot)
+
+    async with session() as s:
+        loaded = await drafts.load(s, draft_id)
+    try:
+        proposed = await propose_questions(loaded.spec, section_key)
+    except (LLMUnavailable, LLMMalformed) as exc:
+        return draft_view(
+            request,
+            loaded,
+            focus=section_key,
+            phase="questions",
+            conflict=f"The assistant could not suggest any: {exc}",
+        )
+    offered = [vars(q) for q in proposed]
+    if offered:
+        async with session() as s:
+            await drafts.keep_suggestion(s, draft_id, slot, offered)
+            loaded = await drafts.load(s, draft_id)
+    return draft_view(
+        request, loaded, focus=section_key, phase="questions", question_suggestions=offered
     )
 
 
@@ -506,6 +587,13 @@ async def suggest_criterion(request: Request, draft_id: UUID):
     question_key = builder.text(form, "question")
     focus = builder.text(form, "focus") or builder.QUALITY
     phase = builder.text(form, "phase")
+    slot = f"criterion:{section_key}"
+
+    if builder.text(form, "op") == "discard":
+        async with session() as s:
+            await drafts.keep_suggestion(s, draft_id, slot, None)
+            loaded = await drafts.load(s, draft_id)
+        return draft_view(request, loaded, focus=focus, phase=phase)
 
     if builder.text(form, "op") == "accept":
         kind = "mentions" if builder.text(form, "kind") == "mentions" else "rubric"
@@ -519,7 +607,7 @@ async def suggest_criterion(request: Request, draft_id: UUID):
                 spec, section_key, title, kind, points, rubric
             )
 
-        return await _apply(request, draft_id, form, mutate, focus=focus, moved=moved)
+        return await _apply(request, draft_id, form, mutate, focus=focus, moved=moved, forget=slot)
 
     async with session() as s:
         loaded = await drafts.load(s, draft_id)
@@ -541,13 +629,11 @@ async def suggest_criterion(request: Request, draft_id: UUID):
             phase=phase,
             conflict="The assistant had nothing to suggest.",
         )
-    return draft_view(
-        request,
-        loaded,
-        focus=focus,
-        phase=phase,
-        suggestion={"section": section_key, "question": question_key, **vars(proposed)},
-    )
+    offered = {"section": section_key, "question": question_key, **vars(proposed)}
+    async with session() as s:
+        await drafts.keep_suggestion(s, draft_id, slot, offered)
+        loaded = await drafts.load(s, draft_id)
+    return draft_view(request, loaded, focus=focus, phase=phase, suggestion=offered)
 
 
 @router.get("/{draft_id}/check-form", response_class=HTMLResponse)

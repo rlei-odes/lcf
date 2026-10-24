@@ -212,6 +212,7 @@ def _readable(purpose: str) -> str:
         "judge_rubric": "Judged a quality criterion",
         "caption_images": "Captioned images",
         "propose_criterion": "Suggested a quality criterion",
+        "propose_questions": "Suggested questions for a section",
     }.get(purpose, purpose.replace("_", " ").capitalize())
 
 

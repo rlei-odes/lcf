@@ -90,11 +90,8 @@
 
       {{ m.severity(c.get('severity')) }}
 
-      {{ m.save() }}
+      {{ m.save(delete_url=url ~ '/criterion', what='this criterion') }}
     </form>
-    <div class="actions">
-      {{ m.rowtools(url ~ '/criterion', token, crit_focus, '', {'id': c.id}, 'this criterion') }}
-    </div>
     <div class="under-form">
       {{ m.rename(url ~ '/criterion', token, crit_focus, 'criterion:' ~ c.id, c.id, 'criterion', false,
                   {'id': c.id}) }}
