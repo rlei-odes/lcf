@@ -64,10 +64,11 @@ async def test_the_desk_lists_cases_and_opens_one(client, case):
     assert client.get("/evidence").status_code == 200
     desk = client.get(f"/evidence/{case}")
     assert desk.status_code == 200
-    # The three moves are all on the page: a wizard would hide the questions
-    # from somebody who has already gathered.
+    # One move per page, but every one of them a click away.
     for step in ("Gather", "Formulate", "Find"):
-        assert step in desk.text
+        assert f"?step={step.lower()}" in desk.text
+    assert 'id="gather-card"' in desk.text, "a new case opens on gathering"
+    assert 'id="formulate-card"' not in desk.text
 
 
 async def test_pasting_text_chunks_it_and_shows_it(client, case):
@@ -124,7 +125,7 @@ async def test_the_image_tray_rides_along_with_the_panel_that_parsed_it(client, 
 
     # And the page that holds the tray in place must not mark it, or the swap
     # would be looking for one of two cards sharing an id.
-    desk = client.get(f"/evidence/{case}")
+    desk = client.get(f"/evidence/{case}?step=gather")
     tags = _assets_tags(desk.text)
     assert len(tags) == 1 and "hx-swap-oob" not in tags[0]
 
@@ -336,6 +337,8 @@ async def test_questions_can_be_saved_as_a_set_and_loaded_into_another_case(clie
     other = second.headers["location"].rsplit("/", 1)[-1]
     try:
         desk = client.get(f"/evidence/{other}")
+        assert 'id="gather-card"' in desk.text, "questions, but no material yet"
+        desk = client.get(f"/evidence/{other}?step=formulate")
         assert "Which batches are affected?" in desk.text
     finally:
         client.post(f"/evidence/{other}/remove")

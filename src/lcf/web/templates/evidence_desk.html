@@ -3,29 +3,51 @@
 {% block subtitle %}evidence desk{% endblock %}
 
 {% block content %}
+{% set counts = {'gather': sources|length, 'formulate': questions|length} %}
+{% set leads = {
+  'gather': 'Get the material in: files, mail threads, pasted text.',
+  'formulate': 'Say what has to come out of it, one question per fact.',
+  'find': 'Search the material and accept what is found.',
+} %}
 <div class="desk">
 
+  {# One move at a time, like the document flow. The three buttons are the
+     steps; each step is its own page, and the way on is at the foot. #}
   <header class="desk-head">
     <div>
       <h1>{{ case.title }}</h1>
-      <p class="hint">
-        Three moves, in order: get the material in, say what has to come out of
-        it, then accept what the desk finds.
-      </p>
+      <p class="hint">{{ leads[step] }}</p>
     </div>
-    <nav class="desk-steps">
-      <a href="#gather"><span class="step-n">1</span> Gather</a>
-      <a href="#formulate"><span class="step-n">2</span> Formulate</a>
-      <a href="#findings"><span class="step-n">3</span> Find</a>
+    <nav class="desk-steps" aria-label="Steps">
+      {% for key, label in desk_steps %}
+      <a href="/evidence/{{ case.id }}?step={{ key }}" data-save-first
+         class="{{ 'on' if key == step }}" {% if key == step %}aria-current="step"{% endif %}>
+        <span class="step-n">{{ loop.index }}</span> {{ label }}
+        {% if key in counts %}<span class="step-count">{{ counts[key] }}</span>{% endif %}
+      </a>
+      {% endfor %}
     </nav>
   </header>
 
   {# Each panel re-renders itself from the database after anything that changes
-     it, so the three can never disagree about what is in the case. #}
+     it. A change that touches another step's panel arrives out of band, and is
+     simply not applied when that panel is not on this page: the step renders
+     fresh when it is opened. #}
+  {% if step == 'gather' %}
   <section id="gather">{% include "partials/evidence_gather.html" %}</section>
   <section id="assets">{% include "partials/evidence_assets.html" %}</section>
+  {% elif step == 'formulate' %}
   <section id="formulate">{% include "partials/evidence_formulate.html" %}</section>
+  {% else %}
   <section id="findings">{% include "partials/evidence_findings.html" %}</section>
+  {% endif %}
+
+  <div class="actions guide-actions guide-foot desk-foot">
+    {% if before %}<a href="/evidence/{{ case.id }}?step={{ before[0] }}" class="back" data-save-first>← {{ before[1] }}</a>{% endif %}
+    <span class="spacer"></span>
+    {% if after %}<a class="button primary" href="/evidence/{{ case.id }}?step={{ after[0] }}" data-save-first>
+      <span class="if-unsaved">Save and next:</span><span class="if-clean">Next:</span> {{ after[1] }} →</a>{% endif %}
+  </div>
 
 </div>
 {% endblock %}

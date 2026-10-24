@@ -1,8 +1,8 @@
 """The evidence desk: gather, formulate, find.
 
 Thin over `services/evidence.py` and `services/extraction.py`, like every other
-router here. Three panels on one page, each re-rendered from the database by the
-mutation that changed it — the server stays the only authority on what is in the
+router here. Three steps, one per page, each panel re-rendered from the database by
+the mutation that changed it — the server stays the only authority on what is in the
 pile.
 """
 
@@ -46,14 +46,29 @@ async def drop_case(request: Request, case_id: UUID):
     return redirect(request, "/evidence")
 
 
-@router.get("/evidence/{case_id}", response_class=HTMLResponse)
-async def desk(request: Request, case_id: UUID):
-    """The desk. One request renders all three panels.
+DESK_STEPS = [("gather", "Gather"), ("formulate", "Formulate"), ("find", "Find")]
 
-    Deliberately rich, for the same reason `GET /documents/{id}` is: the page
-    never assembles the truth about a case from five endpoints.
+
+@router.get("/evidence/{case_id}", response_class=HTMLResponse)
+async def desk(request: Request, case_id: UUID, step: str = ""):
+    """The desk, one move at a time: gather, formulate, find.
+
+    One request still renders everything the step shows, for the same reason
+    `GET /documents/{id}` is rich: the page never assembles the truth about a
+    case from five endpoints. With no step asked for, it opens on the first move
+    with nothing done in it, as the document flow resumes on the first open step.
     """
     ctx = await _desk_context(case_id)
+    keys = [key for key, _ in DESK_STEPS]
+    if step not in keys:
+        step = "gather" if not ctx["sources"] else "formulate" if not ctx["questions"] else "find"
+    at = keys.index(step)
+    ctx.update(
+        step=step,
+        desk_steps=DESK_STEPS,
+        before=DESK_STEPS[at - 1] if at > 0 else None,
+        after=DESK_STEPS[at + 1] if at + 1 < len(DESK_STEPS) else None,
+    )
     return page(request, "evidence_desk.html", **ctx)
 
 

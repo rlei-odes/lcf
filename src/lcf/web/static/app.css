@@ -1065,11 +1065,10 @@ a.pill.needs_input:hover { background: var(--blocker-soft); }
 /* ===========================================================================
    The evidence desk.
 
-   One page, three moves down it: gather, formulate, find. The layout is a single
-   column rather than the flow area's rail-and-lane, because the moves are
-   sequential and each one's panel is wide — a table of files, a list of
-   questions, a tray of photographs. A rail would shrink all three to say nothing
-   the step numbers do not.
+   Three moves, one per page: gather, formulate, find. The layout is a single
+   column rather than the flow area's rail-and-lane, because each move's panel
+   is wide — a table of files, a list of questions, a tray of photographs. A
+   rail would shrink all three to say nothing the step buttons do not.
    =========================================================================== */
 
 .desk { max-width: var(--measure); margin: 0 auto; padding: var(--s5) var(--s4) var(--s7); }
@@ -1081,8 +1080,8 @@ a.pill.needs_input:hover { background: var(--blocker-soft); }
 .desk-head h1 { font-size: 24px; margin: 0 0 var(--s2); }
 .desk-head .hint { max-width: 52ch; margin: 0; }
 
-/* The three moves, as links rather than as a wizard: somebody who has already
-   gathered wants to jump to the questions, and the panels are all on the page. */
+/* The three moves are the steps: one per page, any of them a click away, the
+   current one marked. */
 .desk-steps { display: flex; gap: var(--s2); flex: none; }
 .desk-steps a {
   display: flex; align-items: center; gap: var(--s2);
@@ -1090,6 +1089,11 @@ a.pill.needs_input:hover { background: var(--blocker-soft); }
   background: var(--panel); font-size: 13px; text-decoration: none; color: var(--ink-2);
 }
 .desk-steps a:hover { border-color: var(--accent-line); color: var(--accent-ink); }
+.desk-steps a.on {
+  background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: 600;
+}
+.desk-steps a.on .step-n { background: var(--accent); color: var(--on-accent); }
+.desk-foot { margin-top: var(--s5); }
 
 .desk > section { scroll-margin-top: var(--s5); }
 .desk h3 .step-n, .desk-steps .step-n { margin-right: var(--s2); }

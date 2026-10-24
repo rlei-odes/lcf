@@ -854,7 +854,7 @@ schema change and gives `jobs.latest_for_scope(scope)` as the only addition.
 GET   /evidence                              cases, and starting one
 POST  /evidence                              create {title, from_set?}
 POST  /evidence/{case}/remove
-GET   /evidence/{case}                       the desk: gather · formulate · find
+GET   /evidence/{case}?step=…                the desk, one step a page: gather · formulate · find
 POST  /evidence/{case}/sources               multipart, many files      → a parse job each
 POST  /evidence/{case}/paste                 text or an image           → a source
 GET   /evidence/{case}/gather                the gather panel
