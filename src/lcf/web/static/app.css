@@ -166,6 +166,7 @@ header.top .version {
   color: var(--muted); font-size: 13px; font-family: var(--mono);
 }
 header.top .sub a { color: var(--muted); }
+header.top .sub .crumb-sep { margin: 0 var(--s2); color: var(--faint); }
 header.top .sub a:hover { color: var(--accent); }
 header.top .spacer { margin-left: auto; }
 

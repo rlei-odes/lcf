@@ -1,0 +1,21 @@
+{# Where you are inside an area: the thing being worked on, then the step.
+
+   The area itself is already lit in the nav, so it is never repeated here. The
+   first crumb links back to the thing; the last is where you are. `items` is a
+   list of (label, href) pairs, href none for a crumb that is not a link.
+
+   A page that changes step by swapping a region rather than loading answers
+   with `oob(items)`, which replaces the header's crumbs out of band — only for
+   an HTMX request, since a full page already has them in the header. #}
+{% macro crumbs(items) -%}
+  {%- for label, href in items -%}
+    {%- if href and not loop.last %}<a href="{{ href }}">{{ label }}</a>{% else %}<span>{{ label }}</span>{% endif -%}
+    {%- if not loop.last %}<span class="crumb-sep">›</span>{% endif -%}
+  {%- endfor -%}
+{%- endmacro %}
+
+{% macro oob(items) -%}
+  {%- if request is defined and request.headers.get('hx-request') == 'true' -%}
+  <span class="sub" id="crumbs" hx-swap-oob="true">{{ crumbs(items) }}</span>
+  {%- endif -%}
+{%- endmacro %}

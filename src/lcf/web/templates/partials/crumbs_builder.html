@@ -1,0 +1,13 @@
+{% import "partials/crumbs.html" as c with context %}
+{# The type being built, then the step and, in a section, its phase. #}
+{% set home = '/doc-types/drafts/' ~ draft.id %}
+{% set items = [(spec.title or 'Untitled document type', home ~ '?focus=type')] %}
+{% if focus == 'type' %}{% set _ = items.append(('Doctype settings', none)) %}
+{% elif focus == 'quality' %}{% set _ = items.append(('Quality across sections', none)) %}
+{% elif focus == 'publish' %}{% set _ = items.append(('Publish', none)) %}
+{% elif focus_index is not none %}
+  {% set s = spec.sections[focus_index] %}
+  {% set _ = items.append((REF.section ~ (focus_index + 1) ~ ' ' ~ (s.title or s.key), home ~ '?focus=' ~ s.key)) %}
+  {% set _ = items.append((builder.PHASE_LABELS.get(phase, ''), none)) %}
+{% endif %}
+{% if oob is defined and oob %}{{ c.oob(items) }}{% else %}{{ c.crumbs(items) }}{% endif %}

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ source.label }}{% endblock %}
-{% block subtitle %}what was read{% endblock %}
+{% block subtitle %}{% import "partials/crumbs.html" as c with context %}{{ c.crumbs([("Case", "/evidence/" ~ source.case_id ~ "?step=gather"), (source.label, none)]) }}{% endblock %}
 
 {% block content %}
 {# The one debugging surface a parser needs.

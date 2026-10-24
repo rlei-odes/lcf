@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Behind the scenes · {{ document.title }}{% endblock %}
-{% block subtitle %}{{ spec.title }} v{{ spec.version }}{% endblock %}
+{% block subtitle %}{% import "partials/crumbs.html" as c with context %}{{ c.crumbs([(document.title, guide.url(document.id)), ("Behind the scenes", none)]) }}{% endblock %}
 
 {# What happened to the author's material and to the assistant's proposals, and
    every check by name. Nothing here is needed to write the document. #}

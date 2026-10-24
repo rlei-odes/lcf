@@ -65,6 +65,7 @@ async def desk(request: Request, case_id: UUID, step: str = ""):
     at = keys.index(step)
     ctx.update(
         step=step,
+        step_label=f"{at + 1} {DESK_STEPS[at][1]}",
         desk_steps=DESK_STEPS,
         before=DESK_STEPS[at - 1] if at > 0 else None,
         after=DESK_STEPS[at + 1] if at + 1 < len(DESK_STEPS) else None,

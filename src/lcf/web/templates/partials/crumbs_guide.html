@@ -1,0 +1,16 @@
+{% import "partials/crumbs.html" as c with context %}
+{# The document, then the step: a section and where in it, or one of the steps
+   around the sections. #}
+{% set items = [(document.title, guide.url(document.id))] %}
+{% if step == guide.MATERIAL %}{% set _ = items.append(('Your material', none)) %}
+{% elif step == guide.QUALITY %}{% set _ = items.append(('Quality check', none)) %}
+{% elif step == guide.EXPORT %}{% set _ = items.append(('Export', none)) %}
+{% elif section is defined and section %}
+  {% set _ = items.append((ref(spec, section.key) ~ ' ' ~ section.title, guide.url(document.id, section.key))) %}
+  {% if guide.question_of(step) and current is defined and current %}
+    {% set _ = items.append(('Questions · ' ~ REF.question ~ (questions.index(current) + 1) ~ ' of ' ~ questions|length, none)) %}
+  {% elif step == guide.WRITE %}{% set _ = items.append(('Write', none)) %}
+  {% elif step == guide.CHECK %}{% set _ = items.append(('Review', none)) %}
+  {% endif %}
+{% endif %}
+{% if oob is defined and oob %}{{ c.oob(items) }}{% else %}{{ c.crumbs(items) }}{% endif %}

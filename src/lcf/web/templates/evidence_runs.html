@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Searches · {{ case.title }}{% endblock %}
-{% block subtitle %}how the searches went{% endblock %}
+{% block subtitle %}{% import "partials/crumbs.html" as c with context %}{{ c.crumbs([(case.title, "/evidence/" ~ case.id ~ "?step=find"), ("Searches", none)]) }}{% endblock %}
 
 {% block content %}
 {# The funnel.

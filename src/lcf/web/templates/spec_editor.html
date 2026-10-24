@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ heading }}{% endblock %}
-{% block subtitle %}<a href="/doc-types">document types</a>{% endblock %}
+{% block subtitle %}{% import "partials/crumbs.html" as c with context %}{{ c.crumbs([(heading, none), ("YAML", none)]) }}{% endblock %}
 
 {# The spec is edited as YAML on purpose. It is a nested, referential document —
    sections referring to sections, checks referring to columns — and a form-per-

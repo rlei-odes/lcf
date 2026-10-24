@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ draft.title or "New document type" }} · building{% endblock %}
-{% block subtitle %}<a href="/doc-types">document types</a> · building{% endblock %}
+{% block subtitle %}{% include "partials/crumbs_builder.html" %}{% endblock %}
 
 {# The structured editor (ARCHITECTURE §15). The YAML editor is still there and
    still authoritative — this page is a second view onto the same model, for the

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Not readable yet{% endblock %}
-{% block subtitle %}<a href="/doc-types/drafts/{{ draft.id }}">back to the builder</a>{% endblock %}
+{% block subtitle %}{% import "partials/crumbs.html" as c with context %}{{ c.crumbs([(draft.title or "Untitled document type", "/doc-types/drafts/" ~ draft.id), ("Read it back", none)]) }}{% endblock %}
 
 {# A draft mid-edit legitimately does not parse — that is the whole reason it is
    stored as raw JSON. Saying so, with the reasons, beats pretending the preview

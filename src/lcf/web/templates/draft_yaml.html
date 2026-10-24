@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ draft.title }} as YAML{% endblock %}
-{% block subtitle %}<a href="/doc-types/drafts/{{ draft.id }}">back to the builder</a>{% endblock %}
+{% block subtitle %}{% import "partials/crumbs.html" as c with context %}{{ c.crumbs([(draft.title or "Untitled document type", "/doc-types/drafts/" ~ draft.id), ("As YAML", none)]) }}{% endblock %}
 
 {# The same draft, as the file it will become.
 

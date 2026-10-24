@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ case.title }}{% endblock %}
-{% block subtitle %}evidence desk{% endblock %}
+{% block subtitle %}{% import "partials/crumbs.html" as c with context %}{{ c.crumbs([(case.title, "/evidence/" ~ case.id), (step_label, none)]) }}{% endblock %}
 
 {% block content %}
 {% set counts = {'gather': sources|length, 'formulate': questions|length} %}

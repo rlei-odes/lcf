@@ -1,9 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ spec.title }} v{{ spec.version }}{% endblock %}
-{% block subtitle %}
-  {%- if draft %}<a href="/doc-types/drafts/{{ draft.id }}">back to the builder</a>
-  {%- else %}<a href="/doc-types">document types</a>{% endif %}
-{% endblock %}
+{% block subtitle %}{% import "partials/crumbs.html" as c with context %}{%- if draft %}{{ c.crumbs([(draft.title or spec.title, "/doc-types/drafts/" ~ draft.id), ("Read it back", none)]) }}
+  {%- else %}{{ c.crumbs([(spec.title, "/doc-types/" ~ key) if key else (spec.title, none), ("v" ~ spec.version, none)]) }}{% endif -%}{% endblock %}
 
 {# What this type demands, read back in the words the assistant is given. Every
    check below is rendered by `spec/describe.py` — the same function that composes

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}What the assistant is told{% endblock %}
-{% block subtitle %}<a href="/doc-types/drafts/{{ draft.id }}">back to the builder</a>{% endblock %}
+{% block subtitle %}{% import "partials/crumbs.html" as c with context %}{{ c.crumbs([(draft.title or "Untitled document type", "/doc-types/drafts/" ~ draft.id), ("What the assistant is told", none)]) }}{% endblock %}
 
 {# DESIGN §5.8 promises the rule builder can read this, and until now it could
    not. It is assembled by the same function `draft_block` sends — not a second
