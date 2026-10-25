@@ -15,6 +15,10 @@ six photographs and sees two knows why.
 
 **A thumbnail.** The card shows a 320 px WebP and the original is kept for the
 model call and the download.
+
+**Something a browser can show.** A PDF may carry JPEG 2000 and a scan may be a
+TIFF; neither renders in most browsers, so those are stored as PNG. The hash
+stays the original's, so deduplication still recognises the file's own bytes.
 """
 
 import hashlib
@@ -27,6 +31,8 @@ MIN_PIXELS = 80 * 80
 # lopsided is a divider or a sidebar, never a photograph.
 MAX_ASPECT = 12
 THUMBNAIL = 320
+# Formats every browser renders; anything else is stored as PNG.
+SHOWABLE = {"JPEG", "PNG", "WEBP", "GIF"}
 
 
 @dataclass
@@ -134,14 +140,18 @@ def prepare(
             # thumbnail is read as a broken thumbnail.
             upright = ImageOps.exif_transpose(opened) or opened
             thumbnail = _thumbnail(upright)
-            resolved = media_type or _media_type(opened.format)
+            # What the bytes are, not what the container called them: a PDF's
+            # JPEG 2000 arrived labelled PNG.
+            stored, resolved = data, _media_type(opened.format) if opened.format else media_type
+            if (opened.format or "").upper() not in SHOWABLE:
+                stored, resolved = _as_png(upright), "image/png"
             width, height = upright.size
     except (UnidentifiedImageError, OSError, ValueError):
         return None
 
     return Prepared(
         sha256=digest or hashlib.sha256(data).hexdigest(),
-        data=data,
+        data=stored,
         media_type=resolved,
         thumbnail=thumbnail,
         width=width,
@@ -158,10 +168,33 @@ def _worth_keeping(width: int, height: int) -> bool:
     return short > 0 and long / short <= MAX_ASPECT
 
 
+def _flatten(image):
+    """RGB on white. A plain RGB conversion drops the alpha channel, and an
+    image drawn in transparency over black pixels comes out a black square."""
+    from PIL import Image
+
+    if image.mode in ("RGBA", "LA", "PA") or "transparency" in image.info:
+        rgba = image.convert("RGBA")
+        flat = Image.new("RGB", rgba.size, "white")
+        flat.paste(rgba, mask=rgba.getchannel("A"))
+        return flat
+    return image.convert("RGB")
+
+
+def _as_png(image) -> bytes:
+    import io
+
+    if image.mode not in ("1", "L", "LA", "P", "RGB", "RGBA"):
+        image = image.convert("RGBA" if "A" in image.mode else "RGB")
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
 def _thumbnail(image) -> bytes:
     import io
 
-    copy = image.convert("RGB")
+    copy = _flatten(image)
     copy.thumbnail((THUMBNAIL, THUMBNAIL))
     buffer = io.BytesIO()
     # WebP for the card: a quarter of the bytes of an equivalent PNG, and every
@@ -212,7 +245,7 @@ def for_call(data: bytes, media_type: str = "image/png", longest: int = 1024) ->
             upright = ImageOps.exif_transpose(opened) or opened
             if max(upright.size) <= longest and media_type in ("image/jpeg", "image/png"):
                 return data, media_type
-            copy = upright.convert("RGB")
+            copy = _flatten(upright)
             copy.thumbnail((longest, longest))
             buffer = io.BytesIO()
             copy.save(buffer, format="JPEG", quality=85)

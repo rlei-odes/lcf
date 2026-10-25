@@ -478,7 +478,33 @@ async def test_swapping_the_answer_to_a_single_answer_question_says_so(client, c
     assert "There may be several answers" in second.text, "and the way out is named"
     # The notice is at the head of the panel and the click was down the list, so
     # it has to be brought into view or it is never read.
-    assert second.headers["HX-Reswap"] == "outerHTML show:#findings-card:top"
+    assert second.headers["HX-Reswap"] == "outerHTML show:#findings-results:top"
+
+
+async def test_a_decided_candidate_stays_where_it_was(client, case):
+    """Accepting moved the row to a list at the top, which read as it vanishing."""
+    client.post(f"/evidence/{case}/paste", data={"text": fixtures.NOTES})
+    added = client.post(
+        f"/evidence/{case}/questions",
+        data={"prompt": "Which batches?", "type": "identifier", "multiple": "1"},
+    )
+    question = _question_id(added.text)
+    client.post(
+        f"/evidence/questions/{question}/commands",
+        data={"kind": "pattern", "pattern": r"LOT-\d{4}-\d{4}"},
+    )
+    client.post(f"/evidence/{case}/run")
+    await _settle(case)
+
+    findings = client.get(f"/evidence/{case}/findings")
+    order = re.findall(r'id="candidate-([0-9a-f-]{36})"', findings.text)
+    assert len(order) >= 2
+
+    client.post(f"/evidence/candidates/{order[0]}/accept")
+    after = client.post(f"/evidence/candidates/{order[1]}/dismiss")
+    assert re.findall(r'id="candidate-([0-9a-f-]{36})"', after.text) == order
+    assert f'id="candidate-{order[0]}" class="candidate is-accepted' in after.text
+    assert f'id="candidate-{order[1]}" class="candidate is-dismissed' in after.text
 
 
 async def test_the_runs_page_shows_the_funnel(client, case):
@@ -785,6 +811,137 @@ async def test_a_dropped_image_is_not_offered_for_captioning(client, case):
     assert "Describe the 2 images" not in dropped.text
 
 
+async def test_one_image_can_be_described_alone(client, case, monkeypatch):
+    """Kept on the tray even when the assistant calls it furniture: somebody
+    asked about this one."""
+    from lcf.llm.calls import Caption
+
+    sent = []
+
+    async def fake(batch):
+        sent.append(len(batch))
+        return [Caption(n=1, caption="Ein Stempel mit Datum.", evidence=False)]
+
+    monkeypatch.setattr("lcf.llm.calls.caption_images", fake)
+    for name in ("one.png", "two.png"):
+        client.post(
+            f"/evidence/{case}/sources",
+            files={
+                "files": (name, fixtures.png(400, 300 if name == "one.png" else 310), "image/png")
+            },
+        )
+    await _settle(case)
+    tray = client.get(f"/evidence/{case}/assets")
+    asset = re.search(r"/evidence/assets/([0-9a-f-]{36})/describe", tray.text).group(1)
+
+    described = client.post(f"/evidence/assets/{asset}/describe")
+    assert sent == [1]
+    assert "Ein Stempel mit Datum." in described.text
+    assert "Describe the 1 image" in described.text
+    assert "Dropped (" not in described.text
+
+
+async def test_suggested_words_come_per_language_and_keep_what_was_typed(client, case, monkeypatch):
+    """Asking redrew the panel from the database, so the typed word and the
+    ticked way vanished before anything was saved."""
+    from lcf.llm.calls import ProposedTerm
+
+    asked = []
+
+    async def fake(prompt, language, already):
+        asked.append((language, already))
+        word = {"de": "Ersatzschlüssel", "en": "synthetic key"}[language]
+        return [ProposedTerm(term=word, why="same thing"), ProposedTerm(term="SK", why="short")]
+
+    monkeypatch.setattr("lcf.llm.calls.propose_keywords", fake)
+    client.post(
+        f"/evidence/{case}/paste",
+        data={"text": "Der Schlüssel der Tabelle wird von der Datenbank vergeben, nie geändert."},
+    )
+    client.post(
+        f"/evidence/{case}/paste",
+        data={"text": "The key of the table is assigned by the database and never changes."},
+    )
+    client.post(f"/evidence/{case}/questions", data={"prompt": "Surrogate Key", "type": "text"})
+    panel = client.get(f"/evidence/{case}/questions")
+    question = re.search(r'id="question-([0-9a-f-]{36})"', panel.text).group(1)
+
+    answer = client.post(
+        f"/evidence/questions/{question}/keywords",
+        data={"ask": "Surrogate Key", "use_keyword_ask": "1", "keywords": "Surrogate Key"},
+    )
+    assert sorted(asked) == [("de", ["Surrogate Key"]), ("en", ["Surrogate Key"])]
+    assert 'value="Surrogate Key"' in answer.text
+    assert re.search(r'name="use_keyword_ask" value="1" checked', answer.text)
+    for word in ("Ersatzschlüssel", "synthetic key"):
+        assert f'name="keywords" value="{word}" checked' in answer.text
+    assert answer.text.count('name="keywords" value="SK"') == 1
+    assert "HX-Reswap" not in answer.headers
+
+
+async def test_removing_a_file_takes_its_images(client, case):
+    client.post(
+        f"/evidence/{case}/sources",
+        files={"files": ("defect.png", fixtures.png(400, 300), "image/png")},
+    )
+    await _settle(case)
+    gather = client.get(f"/evidence/{case}/gather")
+    source = re.search(r"/evidence/sources/([0-9a-f-]{36})/remove", gather.text).group(1)
+
+    removed = client.post(f"/evidence/sources/{source}/remove")
+    assert "Images found" not in removed.text
+    async with session() as s:
+        assert await evidence.assets_of(s, uuid.UUID(case)) == []
+
+
+async def test_dropping_an_image_answers_with_that_card_alone(client, case):
+    """A tray-wide swap orphaned a second request still in flight, and its
+    answer never reached the page."""
+    for name in ("one.png", "two.png"):
+        client.post(
+            f"/evidence/{case}/sources",
+            files={
+                "files": (name, fixtures.png(400, 300 if name == "one.png" else 310), "image/png")
+            },
+        )
+    await _settle(case)
+    tray = client.get(f"/evidence/{case}/assets")
+    first, second = re.findall(r'id="asset-([0-9a-f-]{36})"', tray.text)
+
+    dropped = client.post(f"/evidence/assets/{first}/dismiss")
+    assert 'id="assets-card"' not in dropped.text
+    assert f'id="asset-{first}"' not in dropped.text
+    assert f'id="asset-{second}"' not in dropped.text
+    assert re.findall(r'id="([^"]+)" hx-swap-oob', dropped.text) == ["assets-head", "assets-gone"]
+    assert "Dropped (1)" in dropped.text
+
+    kept = client.post(f"/evidence/assets/{second}/accept")
+    assert f'id="asset-{second}"' in kept.text
+    assert "1 image kept" in kept.text
+
+
+async def test_the_assistants_words_saved_unchanged_stay_its_own(client, case, monkeypatch):
+    from lcf.llm.calls import Caption
+
+    async def fake(batch):
+        return [Caption(n=1, caption="Riefen in der Bohrung.")]
+
+    monkeypatch.setattr("lcf.llm.calls.caption_images", fake)
+    client.post(
+        f"/evidence/{case}/sources",
+        files={"files": ("defect.png", fixtures.png(400, 300), "image/png")},
+    )
+    await _settle(case)
+    tray = client.get(f"/evidence/{case}/assets")
+    asset = re.search(r'id="asset-([0-9a-f-]{36})"', tray.text).group(1)
+    client.post(f"/evidence/assets/{asset}/describe")
+
+    saved = client.post(f"/evidence/assets/{asset}/label", data={"label": "Riefen in der Bohrung."})
+    assert "written by the assistant" in saved.text
+    edited = client.post(f"/evidence/assets/{asset}/label", data={"label": "Riefen, 0,2 mm tief."})
+    assert "edited by you" in edited.text
+
+
 async def test_adding_a_way_to_find_something_re_enables_the_search(client, case):
     """The Find panel holds the plan it was rendered with. Without an
     out-of-band swap the button stays disabled until the page is reloaded, and
@@ -832,7 +989,9 @@ async def test_an_accepted_finding_keeps_every_place_it_was_found(client, case):
     candidate = re.search(r"/evidence/candidates/([0-9a-f-]{36})/accept", found.text).group(1)
 
     accepted = client.post(f"/evidence/candidates/{candidate}/accept")
-    body = accepted.text[accepted.text.index('class="plain accepted"') :]
+    start = accepted.text.index(f'id="candidate-{candidate}" class="candidate is-accepted')
+    end = accepted.text.find('id="candidate-', start + 1)
+    body = accepted.text[start : end if end > 0 else None]
     assert body.count("blockquote") >= 4, "both places and both quotes should survive"
     assert "route-line" in body
 

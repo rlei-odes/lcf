@@ -542,6 +542,8 @@ class Removed:
 async def remove_source(session: AsyncSession, source_id: UUID) -> Removed:
     source = await get_source(session, source_id)
     case_id, digest, was_real = source.case_id, source.sha256, source.counts
+    # Its images go with it. A promoted copy below harvests them again.
+    await session.execute(delete(EvidenceAsset).where(EvidenceAsset.source_id == source_id))
     await session.delete(source)
     await session.flush()
 
@@ -995,11 +997,40 @@ async def decide_asset(session: AsyncSession, asset_id: UUID, status: str) -> Ev
 
 
 async def label_asset(session: AsyncSession, asset_id: UUID, label: str) -> EvidenceAsset:
-    """What a person says an image shows, which always wins over the caption."""
+    """What a person says an image shows, which always wins over the caption.
+
+    The caption saved back unchanged is not a label: it is still the
+    assistant's words, and the card should go on saying so.
+    """
     asset = await get_asset(session, asset_id)
-    asset.label = clean_line(label or "") or None
+    text = clean_line(label or "") or None
+    asset.label = None if text == clean_line(asset.caption or "") else text
     await session.flush()
     return asset
+
+
+async def describe_asset(asset_id: UUID) -> None:
+    """Caption one image, at a person's request.
+
+    Not dismissed when the assistant calls it furniture, as the batch does: this
+    is the image somebody chose to ask about. Raises `LLMUnavailable` or
+    `LLMMalformed` from the call.
+    """
+    from lcf.llm.calls import caption_images
+
+    async with db_session() as s:
+        asset = await get_asset(s, asset_id)
+        data = asset_bytes(asset)
+        media_type = asset.media_type
+    if data is None:
+        raise Refused("That image is no longer stored.")
+
+    captions = await caption_images([image_tools.for_call(data, media_type)])
+    if not captions:
+        return
+    async with db_session() as s:
+        asset = await get_asset(s, asset_id)
+        asset.caption = captions[0].caption
 
 
 def asset_bytes(asset: EvidenceAsset, thumbnail: bool = False) -> bytes | None:

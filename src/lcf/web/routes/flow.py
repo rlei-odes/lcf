@@ -454,6 +454,10 @@ _WORKING_TITLES = {
     "draft_section": "The assistant is working",
     "revise_block": "The assistant is rewriting",
     "intake": "Sorting what you pasted",
+    "discuss_block": "The assistant is thinking",
+    "extract": "Searching the pile",
+    "parse_source": "Reading what you dropped in",
+    "caption_assets": "Looking at the images",
 }
 
 

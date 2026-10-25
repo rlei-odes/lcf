@@ -45,6 +45,9 @@ from lcf.services.evidence import NotFound, Refused
 # part number in a 90-page parts list would otherwise bury everything else, and
 # the hundredth occurrence of the same value adds nothing the first ten did not.
 MAX_PATTERN_HITS = 400
+# How many keyword hits ranked too low to be read are kept on the run. Enough to
+# see what was skipped; a keyword in every passage is a keyword to fix instead.
+MAX_UNREAD_LISTED = 20
 
 
 @dataclass
@@ -116,6 +119,10 @@ class Step:
     # must not present document order as a ranking.
     arbitrary: bool = False
     error: str = ""
+    # Every passage the step read, and what came of it; for a keyword step also
+    # the hits it ranked too low to read. What lets a question that found one
+    # unhelpful value show the passages it went past.
+    passages: list[dict] = field(default_factory=list)
 
     @property
     def ranked_not_asked(self) -> int:
@@ -489,6 +496,12 @@ async def _run_asked(
     chosen = _ranked(query, scoped, among, top_k) if among else []
     step.asked = len(chosen)
     step.arbitrary = bool(chosen) and all(entry.arbitrary for entry in chosen)
+    if command.kind == "keyword_ask":
+        read = {entry.index for entry in chosen}
+        unread = [i for i in among if i not in read][:MAX_UNREAD_LISTED]
+        step.passages.extend(
+            {"chunk": str(scoped[i].chunk.id), "rank": None, "outcome": "not_read"} for i in unread
+        )
 
     out: list[Found] = []
     problems: list[str] = []
@@ -511,9 +524,17 @@ async def _run_asked(
                     await progress.step(f"Asked about {item.source.label}")
 
     for entry, answer in await asyncio.gather(*(one(e) for e in chosen)):
+        item = scoped[entry.index]
+
+        def passed(outcome: str, entry=entry, item=item) -> None:
+            step.passages.append(
+                {"chunk": str(item.chunk.id), "rank": entry.rank, "outcome": outcome}
+            )
+
         if isinstance(answer, Exception):
             problems.append(f"{question.prompt}: {answer}")
             step.error = str(answer)
+            passed("error")
             continue
         if not answer.found:
             # A quote the model produced that is not in the chunk it was shown is
@@ -521,16 +542,19 @@ async def _run_asked(
             # funnel reports them apart.
             if answer.quote:
                 step.quote_rejected += 1
+                passed("quote_rejected")
             else:
                 step.not_stated += 1
+                passed("not_stated")
             continue
 
         norm = values.normalise(answer.value, question.type)
         if not norm or not values.fits(answer.value, question.type, question.options):
             step.type_rejected += 1
+            passed("type_rejected")
             continue
 
-        item = scoped[entry.index]
+        passed("found")
         step.found += 1
         if command.kind == "keyword_ask":
             found_by = (
@@ -703,6 +727,7 @@ def _question_stats(entry: QuestionPlan | None, question: EvidenceQuestion, grou
                 "ranked_not_asked": s.ranked_not_asked,
                 "arbitrary": s.arbitrary,
                 "error": s.error,
+                "passages": s.passages,
             }
             for s in steps
         ],
@@ -718,7 +743,11 @@ class Group:
 
     tier: str
     label: str
+    # Still to decide.
     rows: list[EvidenceCandidate]
+    # Every candidate of the tier, decided or not, in one order that a decision
+    # does not change: a value accepted or dismissed stays where it was, marked.
+    shown: list[EvidenceCandidate] = field(default_factory=list)
 
     @property
     def shows_confidence(self) -> bool:
@@ -732,6 +761,28 @@ class Group:
 
 
 @dataclass
+class PassedOver:
+    """A passage the last search read, or skipped, and took nothing from."""
+
+    where: str
+    kind: str
+    text: str
+    source_id: UUID
+    outcome: str
+    rank: int | None
+
+    @property
+    def why(self) -> str:
+        return {
+            "not_stated": "read; it did not answer the question",
+            "quote_rejected": "read; the quote offered is not in the passage",
+            "type_rejected": "read; the answer was not the kind asked for",
+            "error": "could not be read",
+            "not_read": "has a keyword, but ranked below the ones read",
+        }.get(self.outcome, self.outcome)
+
+
+@dataclass
 class QuestionReview:
     question: EvidenceQuestion
     accepted: list[EvidenceCandidate]
@@ -742,6 +793,11 @@ class QuestionReview:
     # its provenance line cites a command that is gone, and saying nothing about
     # that is how an edited question looks like a search that ignored it.
     orphaned: list[EvidenceCandidate] = field(default_factory=list)
+    passed_over: list[PassedOver] = field(default_factory=list)
+
+    @property
+    def unread(self) -> int:
+        return sum(1 for p in self.passed_over if p.outcome == "not_read")
 
     @property
     def commands(self) -> list[Command]:
@@ -807,16 +863,80 @@ async def review(session: AsyncSession, case_id: UUID) -> list[QuestionReview]:
         orphaned = _orphaned(question, accepted)
 
         groups: list[Group] = []
-        for tier in sorted({r.tier for r in pending}, key=lambda t: TIER_ORDER.get(t, 9)):
+        for tier in sorted({r.tier for r in mine}, key=lambda t: TIER_ORDER.get(t, 9)):
             groups.append(
                 Group(
                     tier=tier,
                     label=TIER_LABELS.get(tier, tier),
                     rows=[r for r in pending if r.tier == tier],
+                    shown=[r for r in mine if r.tier == tier],
                 )
             )
         out.append(QuestionReview(question, accepted, groups, dismissed, orphaned))
+
+    await _attach_passed_over(session, case_id, out)
     return out
+
+
+async def _attach_passed_over(
+    session: AsyncSession, case_id: UUID, reviews: list[QuestionReview]
+) -> None:
+    """Hang the last search's empty-handed passages on each question.
+
+    From the latest run only: an older run read other passages for other
+    commands, and listing those would answer a question nobody is asking now.
+    A passage read by two ways of the same question is listed once, and not at
+    all if either way found something in it.
+    """
+    latest = await runs_of(session, case_id, limit=1)
+    if not latest or not latest[0].stats:
+        return
+    by_key = {q.get("key"): q for q in latest[0].stats.get("questions") or []}
+
+    wanted: dict[UUID, list[tuple[str, str, int | None]]] = {}
+    chunk_ids: set[UUID] = set()
+    for review_ in reviews:
+        entry = by_key.get(review_.question.key)
+        if not entry:
+            continue
+        taken: set[str] = set()
+        listed: dict[str, tuple[str, int | None]] = {}
+        for step in entry.get("steps") or []:
+            for p in step.get("passages") or []:
+                if p["outcome"] == "found":
+                    taken.add(p["chunk"])
+                elif p["chunk"] not in listed:
+                    listed[p["chunk"]] = (p["outcome"], p.get("rank"))
+        picked = [(c, o, r) for c, (o, r) in listed.items() if c not in taken]
+        # Read ones first, by rank; then the ones never read.
+        picked.sort(key=lambda x: (x[1] == "not_read", x[2] or 0))
+        wanted[review_.question.id] = picked
+        chunk_ids.update(UUID(c) for c, _, _ in picked)
+
+    if not chunk_ids:
+        return
+    rows = await session.execute(
+        select(EvidenceChunk, EvidenceSource)
+        .join(EvidenceSource, EvidenceChunk.source_id == EvidenceSource.id)
+        .where(EvidenceChunk.id.in_(chunk_ids))
+    )
+    scoped = {str(chunk.id): Scoped(chunk=chunk, source=source) for chunk, source in rows.all()}
+
+    for review_ in reviews:
+        for chunk_id, outcome, rank in wanted.get(review_.question.id, []):
+            item = scoped.get(chunk_id)
+            if item is None:  # its file has since been removed
+                continue
+            review_.passed_over.append(
+                PassedOver(
+                    where=item.where,
+                    kind=item.file_kind,
+                    text=item.chunk.text,
+                    source_id=item.source.id,
+                    outcome=outcome,
+                    rank=rank,
+                )
+            )
 
 
 def _orphaned(
@@ -985,6 +1105,31 @@ async def findings(session: AsyncSession, case_id: UUID) -> dict:
     }
 
 
+def _stamp(iso: str) -> str:
+    """`2026-10-25T10:22:35+00:00` as `2026-10-25 10:22 UTC`."""
+    try:
+        at = datetime.fromisoformat(iso).astimezone(UTC)
+    except (TypeError, ValueError):
+        return iso
+    return at.strftime("%Y-%m-%d %H:%M UTC")
+
+
+def says_no_more(quote: str | None, value: str | None) -> bool:
+    """Does the quote only repeat the value?
+
+    An answer read from a passage is often the passage itself, and printing it
+    twice, once as the value and once quoted, reads as two findings. Compared
+    without case, spacing and punctuation, so a stray full stop does not make
+    them differ.
+    """
+
+    def bare(text: str | None) -> str:
+        return "".join(ch for ch in (text or "").casefold() if ch.isalnum())
+
+    q, v = bare(quote), bare(value)
+    return bool(q) and q in v
+
+
 def as_markdown(report: dict) -> str:
     """The findings as something pasteable.
 
@@ -992,8 +1137,13 @@ def as_markdown(report: dict) -> str:
     end of a paste is `map_evidence_to_sections`, which may only point at words a
     person supplied — and a bare list of values would arrive with nothing to
     quote.
+
+    Laid out by passage, each quoted once with its source under it. Two answers
+    read out of one passage share it, and an answer is written above it only
+    where it says more than the passage does: a value that is the passage would
+    otherwise be printed twice and read as two findings.
     """
-    lines = [f"# {report['case']}", "", f"Findings as of {report['at']}.", ""]
+    lines = [f"# {report['case']}", "", f"Findings as of {_stamp(report['at'])}.", ""]
 
     for entry in report["questions"]:
         lines.append(f"## {entry['question']}")
@@ -1002,14 +1152,31 @@ def as_markdown(report: dict) -> str:
             lines.append("_Nothing accepted yet._")
             lines.append("")
             continue
-        for answer in entry["answers"]:
-            lines.append(f"- **{answer['value']}**")
-            if answer.get("quote"):
-                lines.append(f"  > {answer['quote']}")
+
+        passages: dict[str, dict] = {}
+        for n, answer in enumerate(entry["answers"]):
+            quote = (answer.get("quote") or "").strip()
+            group = passages.setdefault(
+                quote or f"\0{n}", {"quote": quote, "values": [], "places": []}
+            )
+            if not says_no_more(quote, answer["value"]):
+                group["values"].append(answer["value"])
             for place in answer.get("places") or []:
-                if place:
-                    lines.append(f"  - {place}")
-        lines.append("")
+                if place and place not in group["places"]:
+                    group["places"].append(place)
+
+        for group in passages.values():
+            for value in group["values"]:
+                lines.append(f"**{value}**")
+                lines.append("")
+            if group["quote"]:
+                lines.extend(f"> {line}".rstrip() for line in group["quote"].splitlines())
+                if group["places"]:
+                    lines.append(">")
+                    lines.append(f"> — {'; '.join(group['places'])}")
+            elif group["places"]:
+                lines.append(f"— {'; '.join(group['places'])}")
+            lines.append("")
 
     if report["images"]:
         lines.extend(["## Images kept", ""])

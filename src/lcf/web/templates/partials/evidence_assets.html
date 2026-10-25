@@ -11,137 +11,17 @@
    parse, which is reported in the Gather card, so the panel that changes and the
    panel that answers are not the same one — without it the tray only appeared on
    the next full page load. #}
+{% import "partials/evidence_asset_parts.html" as parts with context %}
 {% if assets %}
 <div class="card" id="assets-card" {% if oob %}hx-swap-oob="true"{% endif %}>
-  <h3>Images found · {{ assets|length }}</h3>
-
-  {% set pending = assets|selectattr('status', 'equalto', 'pending')|list %}
-  {% set kept = assets|selectattr('status', 'equalto', 'accepted')|list %}
-  {% set gone = assets|selectattr('status', 'equalto', 'dismissed')|list %}
-  {# Dropped images are excluded: describing one costs a call for a card that
-     is not on the tray, and it is how a dropped image appeared to come back. #}
-  {% set uncaptioned = (pending + kept)|rejectattr('caption')|list %}
-
-  <p class="lead">
-    {{ count(kept|length, 'image') }} kept, {{ pending|length }} still to look at.
-    Repeats and page furniture were dropped before they got here.
-  </p>
-
-  <div id="assets-slot">
-    {% if captioning %}
-      {% with job = captioning,
-              done_url = "/evidence/" ~ case.id ~ "/assets",
-              done_target = "#assets-card",
-              working_title = "Looking at the images" %}
-        {% include "partials/job.html" %}
-      {% endwith %}
-    {% endif %}
-  </div>
-
-  {% if uncaptioned and not captioning %}
-  <form hx-post="/evidence/{{ case.id }}/caption" hx-target="#assets-slot" hx-swap="innerHTML"
-        hx-disabled-elt="find button">
-    <div class="actions">
-      <button type="submit">Describe the {{ count(uncaptioned|length, 'image') }}</button>
-      <span class="why">
-        One assistant call per {{ max_images }} images. Needs a model that accepts
-        pictures. If yours does not, the thumbnails and the page numbers still
-        work and you can type a label yourself.
-      </span>
-    </div>
-  </form>
-  {% endif %}
+  {{ parts.head(assets) }}
 
   <div class="tray">
-    {% for a in pending + kept %}
-    <figure class="asset {{ 'asset-kept' if a.status == 'accepted' }}">
-      {# Opens in the page rather than a tab: looking at a photograph is part of
-         deciding about it, and a tab loses the card it belongs to. The link is a
-         real href, so it still works with the script absent. #}
-      <a href="/evidence/images/{{ a.id }}" target="_blank" rel="noopener"
-         data-lightbox="{{ a.label or a.caption or 'image from the pile' }}">
-        <img src="/evidence/images/{{ a.id }}/thumb" alt="{{ a.caption or 'image from the pile' }}"
-             loading="lazy" width="160">
-      </a>
-      <figcaption>
-        {# The pill says what the image is; the line under it says where it was
-           found. Those are two different facts and the pill was giving the
-           second one. #}
-        <span class="where">
-          <span class="pill-kind">{{ a.image_kind }}</span>
-          {{ a.width }}×{{ a.height }}
-        </span>
-        {% if a.source_name %}
-        <span class="where asset-from">
-          from {{ a.source_name }}{% if a.page %}, p. {{ a.page }}{% endif %}
-        </span>
-        {% elif a.page %}<span class="where asset-from">p. {{ a.page }}</span>{% endif %}
-      </figcaption>
-      <div class="asset-tools">
-        {% if a.status == 'accepted' %}
-        <form hx-post="/evidence/assets/{{ a.id }}/reopen" hx-target="#assets-card"
-              hx-swap="outerHTML" class="inline-form">
-          <button class="tool" type="submit">undo</button>
-        </form>
-        {% else %}
-        <form hx-post="/evidence/assets/{{ a.id }}/accept" hx-target="#assets-card"
-              hx-swap="outerHTML" class="inline-form">
-          <button class="tool accept" type="submit">✓ keep</button>
-        </form>
-        <form hx-post="/evidence/assets/{{ a.id }}/dismiss" hx-target="#assets-card"
-              hx-swap="outerHTML" class="inline-form">
-          <button class="tool" type="submit">✗ drop</button>
-        </form>
-        {% endif %}
-      </div>
-      {# One description per image, not two. The assistant writes the first
-         draft into the same box a person types in, so correcting it is editing
-         text that is already there rather than discovering a second field that
-         silently overrides the first.
-
-         The description is the tallest thing on the card because it is the part
-         a person actually reads; `save` sits at the bottom edge so every card
-         ends the same way whatever its text is. #}
-      <form hx-post="/evidence/assets/{{ a.id }}/label" hx-target="#assets-card"
-            hx-swap="outerHTML" class="asset-label">
-        <textarea name="label" rows="5"
-                  placeholder="{{ 'Describe this image' if not a.caption else '' }}"
-                  aria-label="description of this image">{{ a.label or a.caption or '' }}</textarea>
-        <div class="asset-save">
-          {% if a.caption and not a.label %}<span class="hint">written by the assistant</span>
-          {% elif a.label and a.caption %}<span class="hint">edited by you</span>
-          {% else %}<span class="hint"></span>{% endif %}
-          <button class="tool" type="submit">save</button>
-        </div>
-      </form>
-    </figure>
-    {% endfor %}
+    {% for a in assets|selectattr('status', 'equalto', 'pending') %}{{ parts.card(a) }}{% endfor %}
+    {% for a in assets|selectattr('status', 'equalto', 'accepted') %}{{ parts.card(a) }}{% endfor %}
   </div>
 
-  {% if gone %}
-  <details class="quiet-details">
-    <summary>Dropped ({{ gone|length }})</summary>
-    <div class="tray">
-      {% for a in gone %}
-      <figure class="asset asset-gone">
-        <a href="/evidence/images/{{ a.id }}" target="_blank" rel="noopener"
-           data-lightbox="{{ a.caption or 'dropped image' }}">
-          <img src="/evidence/images/{{ a.id }}/thumb" alt="dropped image" loading="lazy" width="90">
-        </a>
-        <figcaption>
-          <span class="hint">{{ a.caption|truncate(70) if a.caption else 'no description' }}</span>
-        </figcaption>
-        <div class="asset-tools">
-          <form hx-post="/evidence/assets/{{ a.id }}/reopen" hx-target="#assets-card"
-                hx-swap="outerHTML" class="inline-form">
-            <button class="tool" type="submit">put back</button>
-          </form>
-        </div>
-      </figure>
-      {% endfor %}
-    </div>
-  </details>
-  {% endif %}
+  {{ parts.dropped(assets) }}
 </div>
 {% else %}
 {# No images: an empty card would be a panel about nothing. The id stays so a

@@ -304,9 +304,11 @@ async def _formulate(
     # Swapping a whole panel leaves the browser at the pixel offset it had, which
     # after a height change is somewhere arbitrary - usually the bottom. Naming
     # the element to bring into view makes the page land on the question that was
-    # just worked on instead.
-    target = f"#question-{ctx['finding_for']}" if ctx["finding_for"] else "#formulate-card"
-    response.headers["HX-Reswap"] = f"outerHTML show:{target}:top"
+    # just worked on instead. Not for an assistant's answer: that lands under the
+    # button that asked for it, and steady.js keeps the page where it was.
+    if not proposal:
+        target = f"#question-{ctx['finding_for']}" if ctx["finding_for"] else "#formulate-card"
+        response.headers["HX-Reswap"] = f"outerHTML show:{target}:top"
     return response
 
 
@@ -542,7 +544,7 @@ async def drop_command(request: Request, question_id: UUID, at: int):
 
 
 @router.post("/evidence/questions/{question_id}/pattern", response_class=HTMLResponse)
-async def propose_pattern(request: Request, question_id: UUID, examples: str = Form("")):
+async def propose_pattern(request: Request, question_id: UUID):
     """Examples in, a verified pattern out, with its matches in this case.
 
     The verification is the point. A proposal that does not match every example
@@ -554,9 +556,12 @@ async def propose_pattern(request: Request, question_id: UUID, examples: str = F
     from lcf.llm.calls import propose_pattern as ask_for_pattern
     from lcf.llm.provider import LLMMalformed, LLMUnavailable
 
+    typed = _typed(await request.form())
+    examples = typed["examples"]
     wanted = [e.strip() for e in examples.replace("\n", ",").split(",") if e.strip()]
     problems: list[str] = []
-    proposal: dict | None = None
+    # Carried on failure too, so what was typed survives the redraw.
+    unanswered = {"question_id": str(question_id), "typed": typed, "way": "pattern"}
 
     async with session() as s:
         question = await evidence.get_question(s, question_id)
@@ -565,16 +570,18 @@ async def propose_pattern(request: Request, question_id: UUID, examples: str = F
 
     if not wanted:
         problems.append("Paste one or two real examples first.")
-        return await _formulate(request, case_id, problems=problems, finding=str(question_id))
+        return await _formulate(request, case_id, problems=problems, proposal=unanswered)
 
     try:
         written = await ask_for_pattern(prompt, wanted)
     except (LLMUnavailable, LLMMalformed) as exc:
         problems.append(f"The assistant could not write a pattern: {exc}")
-        return await _formulate(request, case_id, problems=problems, finding=str(question_id))
+        return await _formulate(request, case_id, problems=problems, proposal=unanswered)
 
     proposal = {
         "question_id": str(question_id),
+        "typed": typed,
+        "way": "pattern",
         "pattern": written.pattern,
         "note": written.note,
         "examples": wanted,
@@ -620,18 +627,50 @@ async def propose_pattern(request: Request, question_id: UUID, examples: str = F
     return await _formulate(request, case_id, proposal=proposal)
 
 
+def _typed(form) -> dict:
+    """What the finder held when one of its assistant buttons was pressed.
+
+    The answer redraws the panel, and a redraw from the database alone threw away
+    a ticked way and the words typed into it before anything was saved.
+    """
+    words = [
+        part.strip()
+        for value in form.getlist("keywords")
+        for part in str(value).replace("\n", ",").split(",")
+        if part.strip()
+    ]
+    return {
+        "ask": str(form.get("ask") or ""),
+        "use_pattern": bool(form.get("use_pattern")),
+        "pattern": str(form.get("pattern") or ""),
+        "examples": str(form.get("examples") or ""),
+        "note": str(form.get("note") or ""),
+        "use_keyword_ask": bool(form.get("use_keyword_ask")),
+        "keywords": list(dict.fromkeys(words)),
+        "use_ask": bool(form.get("use_ask")),
+    }
+
+
 @router.post("/evidence/questions/{question_id}/keywords", response_class=HTMLResponse)
-async def propose_keywords(request: Request, question_id: UUID, keywords: str = Form("")):
+async def propose_keywords(request: Request, question_id: UUID):
     """Offer terms to search for; the person ticks the ones to keep.
 
     Authoring-time, not run-time. A term nobody saw could quietly turn a narrowed
     question into an unnarrowed one — three calls into forty — and the plan's
     cost estimate would then be a lie.
+
+    One call per language the pile is written in, at once. The customer wrote
+    the documents and their vocabulary is what has to be searched for: a German
+    complaint with an English report attached needs both sets of words, and a
+    model asked for both in one breath gives mostly one.
     """
+    import asyncio
+
     from lcf.llm.calls import propose_keywords as ask_for_keywords
     from lcf.llm.provider import LLMMalformed, LLMUnavailable
 
-    already = [k.strip() for k in keywords.replace("\n", ",").split(",") if k.strip()]
+    typed = _typed(await request.form())
+    already = typed["keywords"]
     problems: list[str] = []
 
     async with session() as s:
@@ -640,25 +679,31 @@ async def propose_keywords(request: Request, question_id: UUID, keywords: str = 
         prompt = question.prompt
         sources = await evidence.sources_of(s, case_id)
 
-    # The language of the material, not of the question: the customer wrote the
-    # documents and their vocabulary is what has to be searched for.
-    tongues = [src.language for src in sources if src.language]
-    language = max(set(tongues), key=tongues.count) if tongues else "en"
+    tongues = [src.language for src in sources if src.language and src.counts]
+    languages = sorted(set(tongues), key=lambda code: -tongues.count(code))[:3] or ["en"]
 
-    try:
-        terms = await ask_for_keywords(prompt, language, already)
-    except (LLMUnavailable, LLMMalformed) as exc:
-        problems.append(f"The assistant could not suggest terms: {exc}")
-        return await _formulate(request, case_id, problems=problems, finding=str(question_id))
+    async def one(language: str):
+        try:
+            return await ask_for_keywords(prompt, language, already)
+        except (LLMUnavailable, LLMMalformed) as exc:
+            return exc
 
-    proposal = {
-        "question_id": str(question_id),
-        "terms": [{"term": t.term, "why": t.why} for t in terms],
-        "keywords": already,
-        "language": language,
-        "prompt": prompt,
-    }
-    return await _formulate(request, case_id, proposal=proposal)
+    answers = await asyncio.gather(*(one(code) for code in languages))
+    terms: list[dict] = []
+    seen = {k.casefold() for k in already}
+    for language, answer in zip(languages, answers, strict=True):
+        if isinstance(answer, Exception):
+            problems.append(f"The assistant could not suggest {language} terms: {answer}")
+            continue
+        for t in answer:
+            if t.term.casefold() not in seen:
+                seen.add(t.term.casefold())
+                terms.append({"term": t.term, "why": t.why, "language": language})
+
+    proposal = {"question_id": str(question_id), "typed": typed, "way": "keywords"}
+    if len(problems) < len(languages):
+        proposal.update(terms=terms, languages=languages)
+    return await _formulate(request, case_id, problems=problems, proposal=proposal)
 
 
 @router.post("/evidence/{case_id}/sets", response_class=HTMLResponse)
@@ -748,7 +793,7 @@ async def decide_candidate(request: Request, candidate_id: UUID, decision: str):
         # sits off-screen — the same silence it exists to break. Only when there
         # is something to read: pulling the page up after every accept would be
         # its own nuisance on a question that takes several.
-        response.headers["HX-Reswap"] = "outerHTML show:#findings-card:top"
+        response.headers["HX-Reswap"] = "outerHTML show:#findings-results:top"
     return response
 
 
@@ -824,25 +869,58 @@ async def start_captions(request: Request, case_id: UUID):
 
 @router.get("/evidence/{case_id}/assets", response_class=HTMLResponse)
 async def assets_panel(request: Request, case_id: UUID):
+    return await _assets(request, case_id)
+
+
+async def _assets(request: Request, case_id: UUID):
     ctx = await _desk_context(case_id)
     ctx["problems"] = []
     return page(request, "partials/evidence_assets.html", **ctx)
 
 
+async def _card(request: Request, asset_id: UUID, problem: str = ""):
+    """One card, with the tray's head and dropped list out of band.
+
+    An action on one image answers with that image alone, so two of them in
+    flight at once each land on their own card.
+    """
+    async with session() as s:
+        case_id = (await evidence.get_asset(s, asset_id)).case_id
+    ctx = await _desk_context(case_id)
+    ctx["problems"] = []
+    ctx["asset"] = next((a for a in ctx["assets"] if a.id == asset_id), None)
+    ctx["asset_problems"] = {str(asset_id): problem} if problem else {}
+    return page(request, "partials/evidence_asset_swap.html", **ctx)
+
+
+# Before the decision route, which would otherwise take `describe` as a decision.
+@router.post("/evidence/assets/{asset_id}/describe", response_class=HTMLResponse)
+async def describe_asset(request: Request, asset_id: UUID):
+    from lcf.llm.provider import LLMMalformed, LLMUnavailable
+
+    problem = ""
+    try:
+        await evidence.describe_asset(asset_id)
+    except (LLMUnavailable, LLMMalformed, evidence.Refused) as exc:
+        problem = f"The assistant could not describe it: {exc}"
+    return await _card(request, asset_id, problem)
+
+
 @router.post("/evidence/assets/{asset_id}/label", response_class=HTMLResponse)
 async def label_asset(request: Request, asset_id: UUID, label: str = Form("")):
     async with session() as s:
-        asset = await evidence.label_asset(s, asset_id, label)
-        case_id = asset.case_id
-    return await assets_panel(request, case_id)
+        await evidence.label_asset(s, asset_id, label)
+    return await _card(request, asset_id)
 
 
 @router.post("/evidence/assets/{asset_id}/{decision}", response_class=HTMLResponse)
-async def decide_asset(request: Request, asset_id: UUID, decision: str):
+async def decide_asset(request: Request, asset_id: UUID, decision: str, whole: str = Form("")):
     async with session() as s:
         asset = await evidence.decide_asset(s, asset_id, _decision(decision))
         case_id = asset.case_id
-    return await assets_panel(request, case_id)
+    if whole:
+        return await _assets(request, case_id)
+    return await _card(request, asset_id)
 
 
 # After the decision routes: a typed path parameter is validated only after

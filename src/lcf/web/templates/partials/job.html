@@ -24,7 +24,7 @@
     <span class="s-needs_input">Failed: {{ job.error or 'unknown error' }}</span>
   {%- else -%}
     <span class="typing" aria-hidden="true"><i></i><i></i><i></i></span>
-    <span class="muted">{{ working_title|default('Working') }}…</span>
+    <span class="muted">{{ working_title or 'Working' }}…</span>
   {%- endif -%}
 </div>
 {% else %}
@@ -32,7 +32,7 @@
      hx-get="/jobs/{{ job.id }}/card?next={{ done_url|urlencode }}&target={{ done_target|urlencode }}"
      hx-trigger="load delay:900ms"
      hx-swap="outerHTML">
-  <h3>{{ working_title|default('The assistant is working') }}</h3>
+  <h3>{{ working_title or 'The assistant is working' }}</h3>
   <div>
     {%- if job.status == 'failed' -%}
       <span class="s-needs_input">Failed: {{ job.error or 'unknown error' }}</span>

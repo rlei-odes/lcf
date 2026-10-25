@@ -4,6 +4,7 @@ No database and no model anywhere in this file, which is the point of `ingest/`
 being a pure package. Everything here is a bytestring in and an assertion out.
 """
 
+import hashlib
 import unicodedata
 
 import pytest
@@ -520,6 +521,40 @@ def test_a_prepared_image_carries_a_thumbnail():
     assert prepared is not None
     assert prepared.thumbnail and len(prepared.thumbnail) < len(prepared.data)
     assert prepared.width == 800
+
+
+def test_an_image_no_browser_shows_is_stored_as_png():
+    """A PDF's JPEG 2000 arrived labelled PNG and opened as a broken image."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    buffer = BytesIO()
+    Image.new("RGB", (300, 200), (90, 130, 110)).save(buffer, format="JPEG2000")
+    original = buffer.getvalue()
+
+    prepared = images.prepare(original, media_type="image/png")
+    assert prepared is not None
+    assert prepared.media_type == "image/png"
+    assert prepared.data.startswith(b"\x89PNG")
+    assert prepared.sha256 == hashlib.sha256(original).hexdigest()
+
+
+def test_a_transparent_image_is_not_thumbnailed_black():
+    """Black pixels drawn through an alpha channel; dropping the alpha left a
+    black square."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    shape = Image.new("RGBA", (300, 300), (0, 0, 0, 0))
+    shape.paste((0, 0, 0, 90), (50, 50, 250, 250))
+    buffer = BytesIO()
+    shape.save(buffer, format="PNG")
+
+    prepared = images.prepare(buffer.getvalue())
+    thumb = Image.open(BytesIO(prepared.thumbnail)).convert("RGB")
+    assert thumb.getpixel((5, 5)) == (255, 255, 255)
 
 
 def test_an_image_for_a_call_is_shrunk():

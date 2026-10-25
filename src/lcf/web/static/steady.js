@@ -103,24 +103,53 @@
     return el;
   }
 
+  // For when the anchor does not come back. First what encloses it, nearest
+  // first: an accepted candidate's form turns into an undo form, but the row
+  // around it keeps its id.
+  function around(el, target) {
+    var out = [];
+    for (var n = el && el.parentElement; n && n !== target && out.length < 3; n = n.parentElement) {
+      if (n.id) out.push({ sel: "#" + CSS.escape(n.id), top: n.getBoundingClientRect().top });
+    }
+    return out;
+  }
+
+  // Then, when the whole thing is gone — a dropped card: whatever with an id was
+  // on screen outside the region, first in reading order.
+  function besides(target) {
+    var out = [];
+    var all = document.querySelectorAll("[id]");
+    for (var i = 0; i < all.length && out.length < 6; i++) {
+      var el = all[i];
+      if (target.contains(el) || el.contains(target) || el.closest(STICKY)) continue;
+      if (onScreen(el)) out.push({ sel: "#" + CSS.escape(el.id), top: el.getBoundingClientRect().top });
+    }
+    return out;
+  }
+
   document.addEventListener("htmx:beforeSwap", function (event) {
     anchor = null;
     var target = event.detail.target;
     if (!target || !target.isConnected || target.closest(STICKY)) return;
     var elt = event.detail.requestConfig && event.detail.requestConfig.elt;
     var el = choose(target, elt);
-    if (!el) return;
     anchor = {
-      loc: locator(el, target),
+      loc: el ? locator(el, target) : null,
       targetId: target.id,
-      top: el.getBoundingClientRect().top,
+      top: el ? el.getBoundingClientRect().top : 0,
+      besides: around(el, target).concat(besides(target)),
     };
   });
 
   document.addEventListener("htmx:afterSwap", function () {
     if (!anchor) return;
-    var el = resolve(anchor.loc, anchor.targetId);
-    if (el) window.scrollBy(0, el.getBoundingClientRect().top - anchor.top);
+    var el = anchor.loc && resolve(anchor.loc, anchor.targetId);
+    var top = anchor.top;
+    for (var i = 0; !el && i < anchor.besides.length; i++) {
+      el = document.querySelector(anchor.besides[i].sel);
+      top = anchor.besides[i].top;
+    }
+    if (el) window.scrollBy(0, el.getBoundingClientRect().top - top);
     anchor = null;
   });
 })();

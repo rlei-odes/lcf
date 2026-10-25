@@ -1,0 +1,157 @@
+{# The image tray in pieces: the head with its counts, one card, and the dropped
+   list. The whole tray is built from them, and so is the answer to an action on
+   one card — which swaps that card alone and refreshes the head and the dropped
+   list out of band. Two cards described at once then each land on their own
+   card, where one tray-wide swap used to orphan the other. #}
+
+{% macro head(assets, oob=False) %}
+{% set pending = assets|selectattr('status', 'equalto', 'pending')|list %}
+{% set kept = assets|selectattr('status', 'equalto', 'accepted')|list %}
+{# Dropped images are excluded: describing one costs a call for a card that
+   is not on the tray, and it is how a dropped image appeared to come back. #}
+{% set uncaptioned = (pending + kept)|rejectattr('caption')|list %}
+<div id="assets-head" {% if oob %}hx-swap-oob="true"{% endif %}>
+  <h3>Images found · {{ assets|length }}</h3>
+  <p class="lead">
+    {{ count(kept|length, 'image') }} kept, {{ pending|length }} still to look at.
+    Repeats and page furniture were dropped before they got here.
+  </p>
+
+  <div id="assets-slot">
+    {% if captioning %}
+      {% with job = captioning,
+              done_url = "/evidence/" ~ case.id ~ "/assets",
+              done_target = "#assets-card",
+              working_title = "Looking at the images" %}
+        {% include "partials/job.html" %}
+      {% endwith %}
+    {% endif %}
+  </div>
+
+  {% if uncaptioned and not captioning %}
+  <form hx-post="/evidence/{{ case.id }}/caption" hx-target="#assets-slot" hx-swap="innerHTML"
+        hx-disabled-elt="find button">
+    <div class="actions">
+      <button type="submit">Describe the {{ count(uncaptioned|length, 'image') }}</button>
+      <span class="why">
+        One assistant call per {{ max_images }} images. Needs a model that accepts
+        pictures. If yours does not, the thumbnails and the page numbers still
+        work and you can type a label yourself.
+      </span>
+    </div>
+  </form>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% macro card(a) %}
+<figure class="asset {{ 'asset-kept' if a.status == 'accepted' }}" id="asset-{{ a.id }}">
+  {# Opens in the page rather than a tab: looking at a photograph is part of
+     deciding about it, and a tab loses the card it belongs to. The link is a
+     real href, so it still works with the script absent. #}
+  <a href="/evidence/images/{{ a.id }}" target="_blank" rel="noopener"
+     data-lightbox="{{ a.label or a.caption or 'image from the pile' }}">
+    {# Both dimensions, so the box keeps its height before the thumbnail loads. #}
+    <img src="/evidence/images/{{ a.id }}/thumb" alt="{{ a.caption or 'image from the pile' }}"
+         loading="lazy" width="{{ a.width or 160 }}" height="{{ a.height or 120 }}">
+  </a>
+  <figcaption>
+    {# The pill says what the image is; the line under it says where it was
+       found. Those are two different facts and the pill was giving the
+       second one. #}
+    <span class="where">
+      <span class="pill-kind">{{ a.image_kind }}</span>
+      {{ a.width }}×{{ a.height }}
+    </span>
+    {% if a.source_name %}
+    <span class="where asset-from">
+      from {{ a.source_name }}{% if a.page %}, p. {{ a.page }}{% endif %}
+    </span>
+    {% elif a.page %}<span class="where asset-from">p. {{ a.page }}</span>{% endif %}
+  </figcaption>
+  <div class="asset-tools">
+    {% if a.status == 'accepted' %}
+    <form hx-post="/evidence/assets/{{ a.id }}/reopen" hx-target="closest figure"
+          hx-swap="outerHTML" class="inline-form">
+      <button class="tool" type="submit">undo</button>
+    </form>
+    {% else %}
+    <form hx-post="/evidence/assets/{{ a.id }}/accept" hx-target="closest figure"
+          hx-swap="outerHTML" class="inline-form">
+      <button class="tool accept" type="submit">✓ keep</button>
+    </form>
+    <form hx-post="/evidence/assets/{{ a.id }}/dismiss" hx-target="closest figure"
+          hx-swap="outerHTML" class="inline-form">
+      <button class="tool" type="submit">✗ drop</button>
+    </form>
+    {% endif %}
+    {# Not offered over a person's own words: a description would land under
+       them, unseen. #}
+    {% if not a.label and not captioning %}
+    <form hx-post="/evidence/assets/{{ a.id }}/describe" hx-target="closest figure"
+          hx-swap="outerHTML" hx-disabled-elt="find button" class="inline-form">
+      <button class="tool" type="submit">{{ 'describe again' if a.caption else 'describe' }}</button>
+      <span class="htmx-indicator working">looking…</span>
+    </form>
+    {% endif %}
+  </div>
+  {% if asset_problems and asset_problems.get(a.id|string) %}
+  <span class="why">{{ asset_problems[a.id|string] }}</span>
+  {% endif %}
+  {# One description per image, not two. The assistant writes the first draft
+     into the same box a person types in, so correcting it is editing text that
+     is already there rather than discovering a second field that silently
+     overrides the first.
+
+     The description is the tallest thing on the card because it is the part a
+     person actually reads; `save` sits at the bottom edge so every card ends
+     the same way whatever its text is. It is pressable only while the text
+     differs from what is stored, which dirty.js decides. #}
+  <form hx-post="/evidence/assets/{{ a.id }}/label" hx-target="closest figure"
+        hx-swap="outerHTML" class="asset-label" data-dirty="the description of an image">
+    <textarea name="label" rows="5"
+              placeholder="{{ 'Describe this image' if not a.caption else '' }}"
+              aria-label="description of this image">{{ a.label or a.caption or '' }}</textarea>
+    <div class="asset-save">
+      {% if a.caption and not a.label %}<span class="hint">written by the assistant</span>
+      {% elif a.label and a.caption %}<span class="hint">edited by you</span>
+      {% elif a.label %}<span class="hint">written by you</span>
+      {% else %}<span class="hint"></span>{% endif %}
+      <button class="tool accept" type="submit" data-save>save</button>
+    </div>
+  </form>
+</figure>
+{% endmacro %}
+
+{% macro dropped(assets, oob=False) %}
+{% set gone = assets|selectattr('status', 'equalto', 'dismissed')|list %}
+<div id="assets-gone" {% if oob %}hx-swap-oob="true"{% endif %}>
+  {% if gone %}
+  <details class="quiet-details">
+    <summary>Dropped ({{ gone|length }})</summary>
+    <div class="tray">
+      {% for a in gone %}
+      <figure class="asset asset-gone">
+        <a href="/evidence/images/{{ a.id }}" target="_blank" rel="noopener"
+           data-lightbox="{{ a.caption or 'dropped image' }}">
+          <img src="/evidence/images/{{ a.id }}/thumb" alt="dropped image" loading="lazy"
+               width="{{ a.width or 90 }}" height="{{ a.height or 68 }}">
+        </a>
+        <figcaption>
+          <span class="hint">{{ a.caption|truncate(70) if a.caption else 'no description' }}</span>
+        </figcaption>
+        <div class="asset-tools">
+          {# The whole tray, not a card: the image goes back among the others,
+             and there is no card for it there to swap. #}
+          <form hx-post="/evidence/assets/{{ a.id }}/reopen" hx-target="#assets-card"
+                hx-swap="outerHTML" hx-vals='{"whole": "1"}' class="inline-form">
+            <button class="tool" type="submit">put back</button>
+          </form>
+        </div>
+      </figure>
+      {% endfor %}
+    </div>
+  </details>
+  {% endif %}
+</div>
+{% endmacro %}

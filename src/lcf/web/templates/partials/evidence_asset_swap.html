@@ -1,0 +1,6 @@
+{# The answer to an action on one card: that card, or nothing once it is dropped,
+   with the head and the dropped list brought up to date out of band. #}
+{% import "partials/evidence_asset_parts.html" as parts with context %}
+{% if asset and asset.status != 'dismissed' %}{{ parts.card(asset) }}{% endif %}
+{{ parts.head(assets, oob=True) }}
+{{ parts.dropped(assets, oob=True) }}

@@ -703,6 +703,10 @@ async def propose_keywords(
             ("## Already on the list — do not repeat these\n\n" + ", ".join(known))
             if known
             else "",
+            # Without the shape spelled out, the schema-constrained model closed
+            # the list at once — `{"terms": []}` every time — while the same
+            # prompt unconstrained gave six good terms.
+            'Answer as {"terms": [{"term": "…", "why": "…"}, …]}.',
         ]
         if part
     )

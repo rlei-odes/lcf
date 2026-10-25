@@ -16,9 +16,12 @@
     one way to be found, and may have several.
   </p>
 
+  {# An assistant's answer carries its problems under the button that asked. #}
+  {% if not proposal %}
   {% for problem in problems %}
   <div class="notice blocker">{{ problem }}</div>
   {% endfor %}
+  {% endif %}
 
   {% if questions %}
   <ul class="plain questions">
@@ -88,6 +91,10 @@
          the old values straight back on the screen. #}
       {% set offered = proposal if proposal and proposal.question_id == q.id|string
                        and proposal.pattern is defined else none %}
+      {# What the form held when an assistant button was pressed. Until it is
+         saved it exists nowhere else, and the answer redraws the panel. #}
+      {% set mine = proposal if proposal and proposal.question_id == q.id|string else none %}
+      {% set typed = mine.typed if mine and mine.typed is defined else none %}
       <form class="finder" id="finder-{{ q.id }}"
             hx-post="/evidence/questions/{{ q.id }}/ways"
             hx-target="#formulate-card" hx-swap="outerHTML">
@@ -102,7 +109,7 @@
 
         <div class="field shared-ask">
           <label for="sa-{{ q.id }}">What to ask the assistant</label>
-          <input type="text" id="sa-{{ q.id }}" name="ask" value="{{ shared_ask }}">
+          <input type="text" id="sa-{{ q.id }}" name="ask" value="{{ typed.ask if typed else shared_ask }}">
           <span class="hint">
             Used by both assistant-backed ways below. Filled in from the question
             above; reword it if a passage needs asking differently.
@@ -111,7 +118,7 @@
 
         <div class="tiers">
           {% set on = by_kind.get('pattern') %}
-          {% set lit = offered or on %}
+          {% set lit = offered or (typed.use_pattern if typed else on) %}
           <div class="tier-form way {{ 'way-on' if lit }}">
             <label class="way-head">
               <input type="checkbox" name="use_pattern" value="1" {{ 'checked' if lit }}>
@@ -125,13 +132,15 @@
             <div class="field">
               <label for="pt-{{ q.id }}">The pattern</label>
               <input type="text" id="pt-{{ q.id }}" name="pattern" spellcheck="false"
-                     value="{{ offered.pattern if offered else (on.pattern if on else '') }}"
+                     value="{{ offered.pattern if offered else (typed.pattern if typed else (on.pattern if on else '')) }}"
                      placeholder="write one, or have it written below">
             </div>
             <div class="field">
               <label for="ex-{{ q.id }}">Real examples, separated by commas</label>
               <input type="text" id="ex-{{ q.id }}" name="examples"
-                     value="{{ (offered.examples if offered else (on.examples if on else []))|join(', ') }}"
+                     value="{{ offered.examples|join(', ') if offered
+                              else (typed.examples if typed
+                              else (on.examples if on else [])|join(', ')) }}"
                      placeholder="NW-CL-88213, NW-CL-90104">
               <span class="hint">
                 Paste the values as they appear in the documents, commas between
@@ -141,19 +150,28 @@
               </span>
             </div>
             <input type="hidden" name="note"
-                   value="{{ offered.note if offered else (on.note if on and on.note else '') }}">
+                   value="{{ offered.note if offered else (typed.note if typed
+                            else (on.note if on and on.note else '')) }}">
             <button type="submit" class="quiet"
                     hx-post="/evidence/questions/{{ q.id }}/pattern"
                     hx-target="#formulate-card" hx-swap="outerHTML"
-                    hx-include="closest form">Write me a pattern</button>
+                    hx-include="closest form" hx-indicator="next .htmx-indicator"
+                    hx-disabled-elt="this">Write me a pattern</button>
+            <span class="htmx-indicator working">writing…</span>
+            {% if mine and mine.way == 'pattern' %}
+              {% with part = 'pattern' %}{% include "partials/evidence_proposal.html" %}{% endwith %}
+            {% endif %}
           </div>
 
           {% set on = by_kind.get('keyword_ask') %}
-          <div class="tier-form way {{ 'way-on' if on }}">
+          {# Asking for words is choosing this way: the ticked suggestions count
+             only while it is on. #}
+          {% set kw_on = (typed.use_keyword_ask or mine.terms is defined) if typed else on %}
+          <div class="tier-form way {{ 'way-on' if kw_on }}">
             <label class="way-head">
-              <input type="checkbox" name="use_keyword_ask" value="1" {{ 'checked' if on }}>
+              <input type="checkbox" name="use_keyword_ask" value="1" {{ 'checked' if kw_on }}>
               <span class="chip tier-keyword_ask">Found near a word</span>
-              <span class="way-state">{{ 'in use' if on else 'off' }}</span>
+              <span class="way-state">{{ 'in use' if kw_on else 'off' }}</span>
             </label>
             <p class="hint">
               Only passages mentioning one of these words are read, so this is the
@@ -163,16 +181,21 @@
             <div class="field">
               <label for="kw-{{ q.id }}">Words to look near</label>
               <input type="text" id="kw-{{ q.id }}" name="keywords"
-                     value="{{ on.keywords|join(', ') if on else '' }}"
+                     value="{{ typed.keywords|join(', ') if typed else (on.keywords|join(', ') if on else '') }}"
                      placeholder="Toleranz, tolerance, Sollmaß">
             </div>
             <button type="submit" class="quiet"
                     hx-post="/evidence/questions/{{ q.id }}/keywords"
                     hx-target="#formulate-card" hx-swap="outerHTML"
-                    hx-include="closest form">Suggest more words</button>
+                    hx-include="closest form" hx-indicator="next .htmx-indicator"
+                    hx-disabled-elt="this">Suggest more words</button>
+            <span class="htmx-indicator working">thinking…</span>
+            {% if mine and mine.way == 'keywords' %}
+              {% with part = 'keywords' %}{% include "partials/evidence_proposal.html" %}{% endwith %}
+            {% endif %}
           </div>
 
-          {% set on = by_kind.get('ask') %}
+          {% set on = typed.use_ask if typed else by_kind.get('ask') %}
           <div class="tier-form way {{ 'way-on' if on }}">
             <label class="way-head">
               <input type="checkbox" name="use_ask" value="1" {{ 'checked' if on }}>
@@ -202,12 +225,6 @@
         </div>
 
       </form>
-
-      {# The proposal carries forms of its own, so it sits after this one rather
-         than inside it. Below the form that asked for it either way. #}
-      {% if proposal and proposal.question_id == q.id|string %}
-        {% include "partials/evidence_proposal.html" %}
-      {% endif %}
       {% else %}
       <div class="finder-closed">
         <button class="tool add" type="button"

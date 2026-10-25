@@ -1113,7 +1113,13 @@ a.pill.needs_input:hover { background: var(--blocker-soft); }
 .dropzone label { display: block; padding: var(--s6) var(--s4); cursor: pointer; }
 .dropzone label strong { display: block; font-size: 15px; color: var(--ink); }
 .dropzone label .hint { margin: var(--s1) 0 0; }
-.dropzone .working { position: absolute; right: var(--s3); bottom: var(--s2); }
+/* While the files are on their way, the zone itself says so: a large PDF takes
+   seconds to arrive, and a corner label was read as nothing happening. */
+.dropzone .working { position: absolute; inset: 0; margin: 0; font-size: 15px; font-weight: 600; }
+.dropzone.htmx-request { border-color: var(--accent); background: var(--accent-soft); cursor: progress; }
+.dropzone.htmx-request label { visibility: hidden; }
+.dropzone.htmx-request input[type="file"] { pointer-events: none; }
+.dropzone.htmx-request .working { display: flex; align-items: center; justify-content: center; }
 
 details.paste-more > summary {
   cursor: pointer; color: var(--muted); font-size: 13px; padding: var(--s1) 0;
@@ -1232,14 +1238,15 @@ ul.matches .quote { margin: var(--s1) 0 0; font-size: 12.5px; }
 ul.findings > li.finding { padding: var(--s5) 0; border-top: 1px solid var(--line-2); }
 ul.findings > li.finding:first-child { border-top: 0; }
 
-ul.accepted { margin: var(--s3) 0 0; padding-left: calc(22px + var(--s3)); }
-/* Block, not flex. These rows were flat spans once; they now hold a head and a
-   provenance block, and under `flex-wrap` those sit side by side when the
-   provenance happens to be short and stack when it happens to be long — so the
-   layout moved with the length of a sentence. */
-ul.accepted > li { padding: var(--s2) 0; display: block; }
-ul.accepted .mark { font-family: var(--mono); color: var(--ok); }
-ul.accepted .quote { margin: var(--s1) 0 0; }
+/* A decided candidate stays in its place, marked. Accepted carries the green
+   edge a kept image carries; dismissed is faded, there to be found again. */
+li.candidate .mark { font-family: var(--mono); color: var(--ok); }
+li.candidate.is-accepted {
+  border-left: 3px solid var(--ok); padding-left: var(--s3);
+  background: color-mix(in srgb, var(--ok-soft) 55%, transparent);
+}
+li.candidate.is-dismissed { opacity: .55; }
+li.candidate.is-dismissed .value { font-weight: 400; text-decoration: line-through; }
 
 .asked-as {
   margin-top: var(--s1); padding-left: calc(22px + var(--s3));
@@ -1257,6 +1264,11 @@ ul.candidates > li { padding: var(--s2) 0; display: block; border-top: 1px solid
    `NW-CL-88213` and `NWCL88213` have to be told apart at a glance, and a
    proportional font is where that difference goes to hide. */
 .value { font-family: var(--mono); font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.value.value-prose { font-family: inherit; font-size: 14px; font-weight: 500; line-height: 1.5; }
+
+.passed-over { margin: var(--s3) 0 0; padding-left: calc(22px + var(--s3)); }
+.passed-over > summary { font-size: 12.5px; }
+.passed-over .where a { color: inherit; }
 
 /* How a candidate was found, and every place it was found in. Shown rather than
    folded: a value backed by four passages is not the same claim as one backed by
@@ -1375,7 +1387,8 @@ figure.asset img {
 figure.asset figcaption { font-size: 12.5px; color: var(--ink-2); line-height: 1.4; }
 figure.asset figcaption .where { display: block; margin-top: var(--s1); }
 figure.asset figcaption .value { font-size: 12.5px; }
-.asset-tools { display: flex; gap: var(--s2); }
+.asset-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); }
+.asset-tools .working { margin-left: 0; font-size: 12px; }
 /* The description grows into whatever room the card has, and `save` is pinned
    under it, so a row of cards ends on one line however long their captions are. */
 .asset-label { display: flex; flex-direction: column; flex: 1; gap: var(--s2); }
@@ -1388,6 +1401,10 @@ figure.asset figcaption .value { font-size: 12.5px; }
   gap: var(--s2); margin-top: auto;
 }
 .asset-save .hint { font-size: 11px; }
+/* Green only when there is something to save; grey and flat when it matches. */
+.asset-save button.tool.accept:disabled {
+  color: var(--muted); border-color: transparent; background: transparent; opacity: .6;
+}
 
 /* The image, full size, without leaving the page. `<dialog>` so Escape, the
    backdrop and focus are the browser's problem rather than ours. */
@@ -1415,8 +1432,8 @@ figure.asset a { cursor: zoom-in; display: block; }
 
 /* A finding whose way of being found is gone. Marked, not greyed: it is still a
    decision somebody made, and still true until they say otherwise. */
-ul.accepted > li.orphaned { border-left: 2px solid var(--warning); padding-left: var(--s3); }
-ul.accepted > li.orphaned .mark { color: var(--warning); font-weight: 700; }
+li.candidate.is-accepted.orphaned { border-left-color: var(--warning); }
+li.candidate.orphaned .mark { color: var(--warning); font-weight: 700; }
 
 button.tool.accept { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, transparent); }
 button.tool.accept:hover { background: var(--ok-soft); }

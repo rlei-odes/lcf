@@ -22,7 +22,7 @@
       </span>
       {# The value marked inside the sentence it was found in. What a person is
          checking on this card is exactly that it is there. #}
-      {% if place.get('quote') %}
+      {% if place.get('quote') and not says_no_more(place['quote'], row.value) %}
       <blockquote class="quote">{{ highlight(place['quote'], row.value) }}</blockquote>
       {% endif %}
     </li>
@@ -31,18 +31,21 @@
 </div>
 {% endmacro %}
 
-<div class="card" id="findings-card" {% if oob %}hx-swap-oob="true"{% endif %}>
+{# A value read out of prose is often a sentence; set in the bold code face it
+   was a wall. Short values keep it, because a part number is read character by
+   character. #}
+{% macro value(row) %}
+<span class="value {{ 'value-prose' if row.value|length > 60 }}">{{ row.value }}</span>
+{% endmacro %}
+
+{# Two boxes: what a search will cost, and what searching found. The wrapper keeps
+   the one id every swap on this step targets. #}
+<div id="findings-card" {% if oob %}hx-swap-oob="true"{% endif %}>
+<div class="card">
   <h3><span class="step-n">3</span> Find</h3>
 
   {% for problem in problems %}
   <div class="notice blocker">{{ problem }}</div>
-  {% endfor %}
-
-  {# Something that happened rather than something that went wrong: a
-     single-answer question swapping one accepted value for another changes
-     nothing a person can see, so it has to be said. #}
-  {% for note in notices or [] %}
-  <div class="notice">{{ note }}</div>
   {% endfor %}
 
   {# The plan, before anybody spends it. Every number here is one the run has to
@@ -66,7 +69,7 @@
   </div>
 
   {% if plan.questions %}
-  <h4 class="section-h">What a search would do</h4>
+  <h4 class="section-h">What the search will do</h4>
   <table class="config plan-table">
     <thead>
       <tr>
@@ -116,6 +119,18 @@
     </div>
   </div>
   {% endif %}
+
+</div>
+
+<div class="card" id="findings-results">
+  <h3>What was found</h3>
+
+  {# Something that happened rather than something that went wrong: a
+     single-answer question swapping one accepted value for another changes
+     nothing a person can see, so it has to be said. #}
+  {% for note in notices or [] %}
+  <div class="notice">{{ note }}</div>
+  {% endfor %}
 
   <div id="findings-slot">
     {% if running %}
@@ -174,48 +189,28 @@
       </div>
       {% endif %}
 
-      {% if entry.accepted %}
-      <ul class="plain accepted">
-        {% for row in entry.accepted %}
-        <li class="{{ 'orphaned' if row in entry.orphaned }}">
-          <div class="candidate-head">
-            <span class="mark">{{ '!' if row in entry.orphaned else '✓' }}</span>
-            <span class="value">{{ row.value }}</span>
-            <span class="where">
-              {{ count(row.places, 'place') }}
-              {%- if row in entry.orphaned %} · its way of being found is gone{% endif %}
-            </span>
-            <span class="rowtools-right">
-              <form hx-post="/evidence/candidates/{{ row.id }}/reopen"
-                    hx-target="#findings-card" hx-swap="outerHTML" class="inline-form">
-                <button class="tool" type="submit"
-                        title="put it back among the candidates">undo</button>
-              </form>
-            </span>
-          </div>
-          {# Accepting does not throw the other places away. A complaint number
-             found in four passages is one finding backed by four, and the one
-             quote that happened to score best is not the finding. #}
-          {{ places(row) }}
-        </li>
-        {% endfor %}
-      </ul>
-      {% endif %}
-
+      {# A decision marks a candidate where it stands rather than moving it:
+         the list keeps its order, and what was just clicked is still under the
+         pointer. Accepting does not throw the other places away either — a
+         complaint number found in four passages is one finding backed by four. #}
       {% for group in entry.groups %}
       <div class="tier-group">
         <h5><span class="chip tier-{{ group.tier }}">{{ group.label }}</span></h5>
         <ul class="plain candidates">
-          {% for row in group.rows %}
-          <li>
+          {% for row in group.shown %}
+          {% set gone = row in entry.orphaned %}
+          <li id="candidate-{{ row.id }}" class="candidate is-{{ row.status }} {{ 'orphaned' if gone }}">
             <div class="candidate-head">
-              <span class="value">{{ row.value }}</span>
+              {% if row.status == 'accepted' %}<span class="mark">{{ '!' if gone else '✓' }}</span>{% endif %}
+              {{ value(row) }}
               <span class="where">
                 {{ count(row.places, 'place') }}
                 {%- if group.shows_confidence and row.score %}
                 · confidence {{ '%.2f'|format(row.score) }}{% endif %}
+                {%- if gone %} · its way of being found is gone{% endif %}
               </span>
               <span class="rowtools-right">
+                {% if row.status == 'pending' %}
                 <form hx-post="/evidence/candidates/{{ row.id }}/accept"
                       hx-target="#findings-card" hx-swap="outerHTML" class="inline-form">
                   <button class="tool accept" type="submit">✓ accept</button>
@@ -224,14 +219,50 @@
                       hx-target="#findings-card" hx-swap="outerHTML" class="inline-form">
                   <button class="tool" type="submit">✗ dismiss</button>
                 </form>
+                {% else %}
+                <span class="tag {{ 'tag-ok' if row.status == 'accepted' }}">{{ row.status }}</span>
+                <form hx-post="/evidence/candidates/{{ row.id }}/reopen"
+                      hx-target="#findings-card" hx-swap="outerHTML" class="inline-form">
+                  <button class="tool" type="submit"
+                          title="put it back among the candidates">undo</button>
+                </form>
+                {% endif %}
               </span>
             </div>
-            {{ places(row) }}
+            {# A dismissed one keeps its line and loses its evidence: it is there
+               to be found again, not to be read again. #}
+            {% if row.status != 'dismissed' %}{{ places(row) }}{% endif %}
           </li>
           {% endfor %}
         </ul>
       </div>
       {% endfor %}
+
+      {# What the last search went past. One value found in seven passages is
+         either the answer or a sign the question was asked wrongly, and only
+         the other six say which. #}
+      {% if entry.passed_over %}
+      {% set read = entry.passed_over|length - entry.unread %}
+      <details class="quiet-details passed-over">
+        <summary>
+          {%- if read %}{{ count(read, 'other passage') }} read, nothing taken{% endif -%}
+          {%- if read and entry.unread %} · {% endif -%}
+          {%- if entry.unread %}{{ entry.unread }} with a keyword, not read{% endif -%}
+        </summary>
+        <ul class="plain places">
+          {% for p in entry.passed_over %}
+          <li>
+            <span class="where">
+              <span class="pill-kind">{{ p.kind }}</span>
+              <a href="/evidence/sources/{{ p.source_id }}/text">{{ p.where }}</a>
+              · {{ p.why }}{% if p.rank %} · ranked {{ p.rank }}{% endif %}
+            </span>
+            <blockquote class="quote">{{ p.text|truncate(480) }}</blockquote>
+          </li>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endif %}
     </li>
     {% endfor %}
   </ul>
@@ -253,4 +284,5 @@
     Nothing searched for yet.
   </div>
   {% endif %}
+</div>
 </div>

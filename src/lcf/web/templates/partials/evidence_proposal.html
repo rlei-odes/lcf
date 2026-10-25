@@ -1,18 +1,21 @@
-{# What the assistant just proposed, shown under the form it was asked from.
+{# What the assistant just proposed, under the button that asked for it. `part`
+   says which way's answer this is.
 
    Neither a pattern nor a word list is data yet. The pattern has already been
    held to the examples it was built from and run over this pile; the words are
    inert until somebody ticks them. That verification-or-confirmation step is the
    whole reason these are safe to ask a model for (EVIDENCE-DESK §8).
 
-   Nothing here saves on its own. The proposed pattern is already in the field
-   above - this is its evidence, not a second copy of it - and the one Save
-   button on the form is what commits it. Two save buttons for one setting is
-   how a person ends up looking at a field that says one thing and a stored
-   value that says another. #}
+   Nothing here saves on its own. It sits inside the finder form, so its one
+   Save button commits it: the proposed pattern is already in the field above,
+   and a ticked word is one more `keywords` value beside the ones typed. Two save
+   buttons for one setting is how a person ends up looking at a field that says
+   one thing and a stored value that says another. #}
 
-{% if proposal.pattern is defined %}
-<div class="proposal {{ 'proposal-bad' if proposal.problem }}">
+{% if part == 'pattern' %}
+<div class="proposal {{ 'proposal-bad' if proposal.problem or problems }}">
+  {% for problem in problems %}<p class="lead">{{ problem }}</p>{% endfor %}
+  {% if proposal.pattern is defined %}
   {% if proposal.problem %}
   <p class="lead">
     <strong>That pattern will not do.</strong> {{ proposal.problem }}
@@ -44,44 +47,41 @@
     {% endfor %}
   </ul>
   <p class="hint">
-    Keep it with <strong>Save how this is found</strong> above, or edit the
+    Keep it with <strong>Save how this is found</strong> below, or edit the
     pattern first.
   </p>
+  {% endif %}
   {% endif %}
 </div>
 {% endif %}
 
-{% if proposal.terms is defined %}
-<div class="proposal">
+{% if part == 'keywords' %}
+<div class="proposal {{ 'proposal-bad' if problems and proposal.terms is not defined }}">
+  {% for problem in problems %}<p class="hint">{{ problem }}</p>{% endfor %}
+  {% if proposal.terms is defined %}
+  {% if proposal.terms %}
   <p class="lead">
-    Words worth searching for, read in <strong>{{ proposal.language }}</strong>
-    because that is what the material is in. Tick the ones to keep.
+    Words worth searching for, in
+    {% for code in proposal.languages %}<strong>{{ languages.get(code, code) }}</strong>{{ ' and ' if not loop.last }}{% endfor %}
+    because that is what the material is in. Ticked ones are added when you save.
   </p>
-  {# Posts the whole finder, not just these boxes: `hx-include` pulls in the
-     question being asked and the other ways, so keeping words is a save of the
-     same configuration rather than a second, partial one. #}
-  <form hx-post="/evidence/questions/{{ proposal.question_id }}/ways"
-        hx-include="#finder-{{ proposal.question_id }}"
-        hx-target="#formulate-card" hx-swap="outerHTML">
-    <input type="hidden" name="use_keyword_ask" value="1">
-    <fieldset class="choices">
-      {% for t in proposal.terms %}
-      <label class="option">
-        <input type="checkbox" name="keywords" value="{{ t.term }}" checked>
-        <span>{{ t.term }}</span> <span class="why">{{ t.why }}</span>
-      </label>
-      {% endfor %}
-    </fieldset>
-    {% if not proposal.terms %}
-    <p class="hint">Nothing further was suggested.</p>
-    {% endif %}
-    <div class="actions">
-      <button class="primary" type="submit">Keep the ticked words</button>
-      <span class="why">
-        Added to the words already in the field above. One that appears in every
-        document of this kind narrows nothing, so untick those.
-      </span>
-    </div>
-  </form>
+  <fieldset class="choices">
+    {% for t in proposal.terms %}
+    <label class="option">
+      <input type="checkbox" name="keywords" value="{{ t.term }}" checked>
+      <span>{{ t.term }}</span>
+      {% if proposal.languages|length > 1 %}<span class="tag">{{ t.language }}</span>{% endif %}
+      <span class="why">{{ t.why }}</span>
+    </label>
+    {% endfor %}
+  </fieldset>
+  <p class="hint">
+    One that appears in every document of this kind narrows nothing, so untick
+    those.
+  </p>
+  {% else %}
+  <p class="hint">Nothing further was suggested.</p>
+  {% endif %}
+  {% endif %}
 </div>
 {% endif %}

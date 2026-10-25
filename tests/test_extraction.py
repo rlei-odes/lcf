@@ -204,6 +204,29 @@ async def test_keyword_ask_only_reads_the_passages_that_hit(case, monkeypatch):
     assert all("Toleranz" in text for text in seen), "only hitting passages may be read"
 
 
+async def test_the_passages_a_search_went_past_are_listed_under_the_question(case, monkeypatch):
+    """One value out of several passages read is either the answer or a sign the
+    question was asked wrongly, and only the passages it went past say which."""
+    calls = []
+
+    async def fake(prompt, chunk_text, question_type="text", options=None, where=""):
+        calls.append(chunk_text)
+        if len(calls) == 1:
+            return ChunkAnswer(found=True, value="Toleranz", quote="Toleranz")
+        return ChunkAnswer(found=False)
+
+    monkeypatch.setattr("lcf.llm.calls.answer_from_chunk", fake)
+    await _question(case, "What was measured?", "text", Command(kind="ask", ask="Measured?"))
+    await extraction.run(case)
+
+    async with session() as s:
+        (entry,) = await extraction.review(s, case)
+    read = len(calls)
+    assert len(entry.passed_over) == read - 1
+    assert all(p.outcome == "not_stated" and p.text for p in entry.passed_over)
+    assert [p.rank for p in entry.passed_over] == sorted(p.rank for p in entry.passed_over)
+
+
 async def test_an_unverifiable_quote_is_discarded_and_counted(case, monkeypatch):
     """Intake's contract, in a second place that needs it.
 
@@ -577,3 +600,42 @@ async def test_the_markdown_export_carries_the_quote_behind_every_answer(case):
     assert "LOT-2026-0417" in body
     assert "> " in body, "every answer carries the passage it came from"
     assert "Which batch?" in body
+
+
+def test_an_answer_that_is_its_passage_is_exported_once():
+    """Printed bold and then quoted, one finding read as two; and two answers
+    read out of one passage printed that passage twice."""
+    sentence = "Eingangszone für alle Rohdaten von externen Systemen"
+    bullets = "Ingestion point from external systems ● Daten werden nur vorübergehend gespeichert"
+    report = {
+        "case": "c",
+        "at": "2026-10-25T10:22:35+00:00",
+        "questions": [
+            {
+                "question": "What is a landing zone?",
+                "answers": [
+                    {"value": sentence, "quote": sentence + ".", "places": ["a.pdf · p. 38"]},
+                    {
+                        "value": "Ingestion point from external systems; Daten werden nur"
+                        " vorübergehend gespeichert",
+                        "quote": bullets,
+                        "places": ["a.pdf · p. 44"],
+                    },
+                    {
+                        "value": "Ingestion point; data is only stored temporarily.",
+                        "quote": bullets,
+                        "places": ["a.pdf · p. 44"],
+                    },
+                ],
+            }
+        ],
+        "images": [],
+    }
+    body = extraction.as_markdown(report)
+    assert "2026-10-25 10:22 UTC" in body
+    assert body.count("Eingangszone") == 1
+    assert f"> {sentence}.\n>\n> — a.pdf · p. 38" in body
+    assert body.count(bullets) == 1, "one passage, quoted once"
+    assert body.count("a.pdf · p. 44") == 1
+    assert "**Ingestion point; data is only stored temporarily.**" in body
+    assert "**Ingestion point from external systems;" not in body

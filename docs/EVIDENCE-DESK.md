@@ -420,7 +420,10 @@ So the keywords field carries an **Expand** action: `propose_keywords` returns c
 synonyms, the other language's equivalents, the abbreviations — each with a one-line reason, and the
 person **ticks the ones to keep**. The detected language of the material in the case
 ([§4.4](#44-language-is-a-property-of-the-source)) goes into the call, so a German pile is offered
-`Charge` and `Fertigungslos` rather than `batch` and `lot`.
+`Charge` and `Fertigungslos` rather than `batch` and `lot`. A pile in several languages gets one call
+per language, at once, and the answers are merged with each term tagged by its language: a model
+asked for two languages in one call answers mostly in one. The suggestions appear under the field
+already ticked, and are saved with the rest of the form.
 
 Two properties of doing it at authoring time rather than at run time, and they are the whole reason
 for the design:

@@ -19,6 +19,7 @@ from lcf.core.text import count, verb
 from lcf.engine.state import Status
 from lcf.ingest import commands as ingest_commands
 from lcf.services import drafts, events
+from lcf.services.extraction import says_no_more
 from lcf.spec.describe import describe_criterion, describe_requirement, scope_of
 from lcf.web import builder, guide
 from lcf.web.presenters import (
@@ -145,6 +146,10 @@ def highlight(quote: str, value: str) -> Markup:
 
 
 templates.env.globals["highlight"] = highlight
+
+
+# The same test the Markdown export applies, so the page and the paste agree.
+templates.env.globals["says_no_more"] = says_no_more
 
 
 @lru_cache(maxsize=1)
