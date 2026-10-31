@@ -59,7 +59,7 @@ jobs:
       # Pinned exactly because this action stopped publishing a moving `v10`
       # tag. Dependabot's github-actions ecosystem is what keeps it current.
       - name: Install uv
-        uses: astral-sh/setup-uv@v10.3.0
+        uses: astral-sh/setup-uv@v10.3.2
         with:
           # The version this is developed and deployed on. uv provisions it, so
           # there is no separate setup-python step. Raise it here when the
